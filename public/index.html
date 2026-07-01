@@ -210,6 +210,8 @@
       border-radius: var(--radius-l);
       box-shadow: 6px 6px 0 var(--ice);
       animation: fadeInUp 0.5s ease both;
+      position: relative;
+      overflow: hidden;
     }
     .tools-panel .panel:nth-of-type(1) { animation-delay: 0.05s; }
     .tools-panel .panel:nth-of-type(2) { animation-delay: 0.15s; }
@@ -234,6 +236,35 @@
     .dot-coral { background: var(--coral); }
 
     .edit-panel { transition: opacity 0.25s ease; }
+    .panel-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(2px);
+      border-radius: inherit;
+      z-index: 2;
+      text-align: center;
+      pointer-events: none;
+    }
+    .panel-overlay.is-hidden {
+      display: none;
+    }
+    .panel-overlay-text {
+      max-width: 240px;
+      padding: 12px 14px;
+      border: 2px solid var(--ocean);
+      border-radius: 999px;
+      background: var(--cream);
+      color: var(--navy);
+      font-size: 0.84rem;
+      font-weight: 700;
+      line-height: 1.4;
+      box-shadow: 3px 3px 0 rgba(69, 123, 157, 0.2);
+    }
 
     /* ---------- Form elements ---------- */
     label {
@@ -503,6 +534,9 @@
     <aside class="tools-panel">
 
       <div class="panel edit-panel" id="editPanel" style="opacity: 0.5; pointer-events: none;">
+        <div class="panel-overlay" id="editPanelOverlay">
+          <div class="panel-overlay-text">Upload a document first to edit fields</div>
+        </div>
         <h3><span class="panel-dot dot-ocean"></span>Edit Selected Field</h3>
         <form id="editFieldForm">
           <input type="hidden" id="editOriginalName">
@@ -527,6 +561,9 @@
       </div>
 
       <div class="panel">
+        <div class="panel-overlay" id="addSigPanelOverlay">
+          <div class="panel-overlay-text">Upload a document first to add a signature field</div>
+        </div>
         <h3><span class="panel-dot dot-coral"></span>Add New Signature</h3>
         <form id="addSigForm">
           <div class="form-group">
@@ -645,9 +682,49 @@
     function updateViewerControlsState() {
       const zoomOutBtn = document.getElementById('btnZoomOut');
       const zoomInBtn = document.getElementById('btnZoomIn');
+      const downloadBtn = document.getElementById('btnDownloadAs');
+      const copyBtn = document.getElementById('btnCopyBase64');
+      const editPanel = document.getElementById('editPanel');
+      const addSigForm = document.getElementById('addSigForm');
+      const placeFieldBtn = document.getElementById('btnPlaceField');
+      const addSigBtn = document.getElementById('btnAddSig');
+      const editPanelOverlay = document.getElementById('editPanelOverlay');
+      const addSigPanelOverlay = document.getElementById('addSigPanelOverlay');
       const hasDocument = Boolean(pdfDoc);
+
       zoomOutBtn.disabled = !hasDocument;
       zoomInBtn.disabled = !hasDocument;
+      downloadBtn.disabled = !hasDocument;
+      copyBtn.disabled = !hasDocument;
+
+      if (editPanel) {
+        editPanel.style.opacity = hasDocument ? '1' : '0.5';
+        editPanel.style.pointerEvents = hasDocument ? 'auto' : 'none';
+        if (editPanelOverlay) {
+          editPanelOverlay.classList.toggle('is-hidden', hasDocument);
+        }
+        editPanel.querySelectorAll('input, select, textarea, button').forEach((el) => {
+          el.disabled = !hasDocument;
+        });
+      }
+
+      if (addSigForm) {
+        if (addSigPanelOverlay) {
+          addSigPanelOverlay.classList.toggle('is-hidden', hasDocument);
+        }
+        addSigForm.querySelectorAll('input, select, textarea, button').forEach((el) => {
+          if (el.id === 'btnAddSig') {
+            el.disabled = !hasDocument || !pendingField;
+          } else if (el.id === 'btnPlaceField') {
+            el.disabled = !hasDocument;
+          } else {
+            el.disabled = !hasDocument;
+          }
+        });
+      }
+
+      if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument;
+      if (addSigBtn) addSigBtn.disabled = !hasDocument || !pendingField;
     }
 
     async function processNewFile(file, options = {}) {
@@ -658,11 +735,6 @@
       document.getElementById('loadingState').style.display = 'inline';
       updateViewerControlsState();
 
-      // Enable global UI
-      document.getElementById('btnPlaceField').disabled = false;
-      document.getElementById('btnDownloadAs').disabled = false;
-      document.getElementById('btnCopyBase64').disabled = false;
-
       // A brand new document means any previous pending placement/selection is stale
       clearPendingField();
       activeField = null;
@@ -671,10 +743,6 @@
       // Toggle Viewer Visibility
       document.getElementById('emptyStateViewer').style.display = 'none';
       document.getElementById('pdfContainer').style.display = 'inline-block';
-
-      // Reset Edit Panel
-      document.getElementById('editPanel').style.opacity = '0.5';
-      document.getElementById('editPanel').style.pointerEvents = 'none';
 
       try {
         // 1. Fetch info/metadata
@@ -1094,7 +1162,7 @@
       pdfContainer.classList.remove('placing-mode');
       const existing = overlayLayer.querySelector('.field-overlay.pending');
       if (existing) existing.remove();
-      document.getElementById('btnAddSig').disabled = true;
+      updateViewerControlsState();
     }
 
     // Replace the current active file with the API response, then re-render
@@ -1246,6 +1314,7 @@
 
     document.getElementById('btnZoomOut').addEventListener('click', () => changeScale(-0.25));
     document.getElementById('btnZoomIn').addEventListener('click', () => changeScale(0.25));
+    updateViewerControlsState();
 
     function changeScale(delta) {
       if (!pdfDoc) return;
