@@ -1,6 +1,8 @@
-# pdf-seal
+<img width="1648" height="954" alt="pdf-seal" src="https://github.com/user-attachments/assets/f5dd1848-342e-4afa-807d-3739a9cefa58" />
 
 pdf-seal is a browser-based PDF signature field editor built with Node.js, Express, TypeScript, and pdf-lib. It helps you upload a PDF, place signature fields directly on the document, adjust their size and position, and save the updated file.
+
+[Live App](https://pdf-seal-production.up.railway.app)
 
 ## What the UI does
 
