@@ -4,7 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PDF Seal :: Workspace</title>
-  
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -12,266 +17,493 @@
 
   <style>
     :root {
-      --bg-base: #f1f5f9;
-      --bg-surface: #ffffff;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --text-main: #0f172a;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --radius: 8px;
+      --coral: #e63946;
+      --coral-dark: #c8313d;
+      --cream: #f1faee;
+      --ice: #a8dadc;
+      --ocean: #457b9d;
+      --ocean-dark: #33566d;
+      --navy: #1d3557;
+      --radius-s: 10px;
+      --radius-m: 16px;
+      --radius-l: 24px;
+      --font-display: 'Fredoka', system-ui, sans-serif;
+      --font-body: 'Inter', system-ui, -apple-system, sans-serif;
     }
-    
+
     * { box-sizing: border-box; }
-    
-    body { 
-      font-family: system-ui, -apple-system, sans-serif; 
-      margin: 0; 
-      padding: 24px; 
-      background: var(--bg-base); 
-      color: var(--text-main);
+
+    body {
+      font-family: var(--font-body);
+      margin: 0;
+      padding: 0;
+      background-color: var(--cream);
+      background-image: radial-gradient(var(--ice) 1.2px, transparent 1.2px);
+      background-size: 24px 24px;
+      color: var(--navy);
     }
-    
-    /* Header / Top Bar */
-    .header { 
-      background: var(--bg-surface); 
-      padding: 16px 24px; 
-      border-radius: var(--radius); 
-      margin-bottom: 24px; 
-      display: flex; 
-      align-items: center; 
+
+    h1, h2, h3 { font-family: var(--font-display); }
+
+    /* ---------- Top Bar ---------- */
+    .topbar {
+      background: #ffffff;
+      border-bottom: 3px solid var(--navy);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .topbar-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
       justify-content: space-between;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      gap: 20px;
+      flex-wrap: wrap;
     }
-    
-    .header-left { display: flex; align-items: center; gap: 20px; }
-    .header-right { display: flex; gap: 12px; }
-    
-    h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
 
-    /* Buttons & Inputs */
-    button { 
-      padding: 8px 16px; 
-      background: var(--bg-base); 
-      color: var(--text-main); 
-      border: 1px solid var(--border); 
-      border-radius: 6px; 
-      cursor: pointer; 
-      font-weight: 500;
-      font-size: 0.875rem;
-      transition: all 0.15s ease;
+    .brand { display: flex; align-items: center; }
+    .brand-logo {
+      height: 56px;
+      width: auto;
+      display: block;
+      object-fit: contain;
+      transition: transform 0.35s ease;
     }
-    button:hover:not(:disabled) { background: #e2e8f0; }
-    
-    button.primary { background: var(--primary); color: white; border: none; }
-    button.primary:hover:not(:disabled) { background: var(--primary-hover); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .brand:hover .brand-logo { transform: rotate(-4deg) scale(1.05); }
 
+    .upload-zone { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+    input[type="file"] {
+      font-family: var(--font-body);
+      font-size: 0.85rem;
+      color: var(--navy);
+      background: #ffffff;
+      border: 2px solid var(--navy);
+      border-radius: 999px;
+      padding: 5px 16px 5px 5px;
+      box-shadow: 3px 3px 0 var(--ice);
+      cursor: pointer;
+      max-width: 280px;
+    }
     input[type="file"]::file-selector-button {
-      padding: 6px 12px; border-radius: 4px; border: none; background: var(--primary); 
-      color: white; cursor: pointer; margin-right: 12px; font-weight: 500; transition: background 0.2s;
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: none;
+      background: var(--coral);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      margin-right: 12px;
+      transition: background 0.2s ease, transform 0.15s ease;
     }
-    input[type="file"]::file-selector-button:hover { background: var(--primary-hover); }
+    input[type="file"]::file-selector-button:hover {
+      background: var(--coral-dark);
+      transform: translateY(-1px);
+    }
 
-    input[type="number"], input[type="text"] { 
-      width: 100%; 
-      padding: 8px 12px; 
-      border: 1px solid var(--border); 
-      border-radius: 6px; 
-      background: var(--bg-base);
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.2s;
+    .loading-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--ocean-dark);
+      background: var(--ice);
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 2px solid var(--navy);
     }
-    input[type="number"]:focus, input[type="text"]:focus { border-color: var(--primary); }
-    
+    .spinner {
+      width: 13px; height: 13px;
+      border: 2px solid rgba(29,53,87,0.25);
+      border-top-color: var(--navy);
+      border-radius: 50%;
+      display: inline-block;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .topbar-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+    .wave-divider {
+      height: 24px;
+      width: 100%;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 24'%3E%3Cpath d='M0 12 Q14 0 28 12 T56 12 V24 H0 Z' fill='%23a8dadc'/%3E%3C/svg%3E");
+      background-repeat: repeat-x;
+      background-size: 56px 24px;
+      animation: waveScroll 4s linear infinite;
+    }
+    @keyframes waveScroll { from { background-position-x: 0; } to { background-position-x: -56px; } }
+
+    /* ---------- Buttons ---------- */
+    .btn {
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 10px 20px;
+      border-radius: 999px;
+      border: 2px solid var(--navy);
+      background: #ffffff;
+      color: var(--navy);
+      cursor: pointer;
+      box-shadow: 3px 3px 0 var(--navy);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+    }
+    .btn:hover:not(:disabled) { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--navy); background: var(--cream); }
+    .btn:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--navy); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary { background: var(--ocean); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--ocean-dark); }
+
+    .btn-ghost { background: #ffffff; color: var(--navy); }
+
+    .btn-block { width: 100%; justify-content: center; margin-top: 10px; }
+
+    .icon-btn {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      border: 2px solid var(--navy);
+      background: #ffffff;
+      color: var(--navy);
+      font-size: 1.15rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 2px 2px 0 var(--navy);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+    .icon-btn:hover:not(:disabled) { background: var(--cream); transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--navy); }
+    .icon-btn:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--navy); }
+    .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ---------- Layout ---------- */
+    .workspace {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 32px 28px 64px;
+      display: flex;
+      gap: 28px;
+      align-items: flex-start;
+    }
+    .viewer-panel { flex: 1 1 auto; min-width: 0; overflow-x: auto; }
+    .tools-panel { display: flex; flex-direction: column; gap: 24px; width: min(380px, 100%); flex-shrink: 0; }
+
+    .viewer-panel::-webkit-scrollbar { height: 10px; }
+    .viewer-panel::-webkit-scrollbar-track { background: var(--cream); border-radius: 999px; }
+    .viewer-panel::-webkit-scrollbar-thumb { background: var(--ice); border-radius: 999px; border: 2px solid var(--cream); }
+    .viewer-panel::-webkit-scrollbar-thumb:hover { background: var(--ocean); }
+
+    /* ---------- Panels ---------- */
+    .panel {
+      background: #ffffff;
+      padding: 26px;
+      border: 2.5px solid var(--navy);
+      border-radius: var(--radius-l);
+      box-shadow: 6px 6px 0 var(--ice);
+      animation: fadeInUp 0.5s ease both;
+    }
+    .tools-panel .panel:nth-of-type(1) { animation-delay: 0.05s; }
+    .tools-panel .panel:nth-of-type(2) { animation-delay: 0.15s; }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .panel h3 {
+      margin: 0 0 18px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--navy);
+      padding-bottom: 12px;
+      border-bottom: 2px dashed var(--ice);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .panel-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot-ocean { background: var(--ocean); }
+    .dot-coral { background: var(--coral); }
+
+    .edit-panel { transition: opacity 0.25s ease; }
+
+    /* ---------- Form elements ---------- */
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ocean-dark);
+    }
     .form-group { margin-bottom: 16px; }
     .form-row { display: flex; gap: 12px; margin-bottom: 16px; }
     .form-row > div { flex: 1; min-width: 0; }
-    label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.875rem; color: var(--text-muted); }
 
-    /* Workspace layout */
-    .workspace { display: flex; gap: 24px; align-items: flex-start; }
-    .viewer-panel { flex: 1 1 auto; min-width: 0; }
-    .tools-panel { display: flex; flex-direction: column; gap: 24px; width: min(380px, 100%); flex-shrink: 0; }
-    
-    /* Panel Containers */
-    .panel { 
-      background: var(--bg-surface); 
-      padding: 24px; 
-      border-radius: var(--radius); 
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
+    input[type="number"], input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      border: 2px solid var(--ice);
+      border-radius: 12px;
+      background: var(--cream);
+      font-family: inherit;
+      font-size: 0.9rem;
+      color: var(--navy);
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
     }
-    
-    /* Viewer */
-    .viewer-panel { overflow-x: auto; }
-    .viewer-controls { display: flex; justify-content: space-between; margin-bottom: 20px; align-items: center; font-size: 0.875rem; }
-    .viewer-controls-group { display: flex; align-items: center; gap: 8px; }
-    
+    input[type="number"]:focus, input[type="text"]:focus {
+      border-color: var(--ocean);
+      background: #fff;
+      box-shadow: 0 0 0 4px rgba(69, 123, 157, 0.15);
+    }
+
+    .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .checkbox-group input { margin: 0; width: 17px; height: 17px; accent-color: var(--coral); cursor: pointer; }
+    .checkbox-group label { margin: 0; cursor: pointer; color: var(--navy); text-transform: none; letter-spacing: normal; font-size: 0.875rem; font-weight: 500; }
+
+    .placement-hint {
+      font-size: 0.78rem;
+      color: var(--ocean-dark);
+      background: var(--cream);
+      border: 1.5px dashed var(--ice);
+      border-radius: 12px;
+      padding: 10px 12px;
+      line-height: 1.5;
+      margin: -4px 0 16px;
+    }
+
+    .status-text {
+      min-height: 20px;
+      margin-top: 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 999px;
+    }
+    .status-text:not(:empty) { display: inline-flex; align-items: center; padding: 8px 14px; }
+    .status-text.success:not(:empty) { background: rgba(69, 123, 157, 0.15); color: var(--ocean-dark); border: 1.5px solid var(--ocean); }
+    .status-text.error:not(:empty) { background: rgba(230, 57, 70, 0.12); color: var(--coral-dark); border: 1.5px solid var(--coral); }
+    .status-text.loading:not(:empty) { background: rgba(168, 218, 220, 0.4); color: var(--navy); border: 1.5px solid var(--ice); }
+
+    /* ---------- Viewer ---------- */
+    .viewer-controls { display: flex; justify-content: space-between; margin-bottom: 22px; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .viewer-controls-group {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--cream);
+      border: 2px solid var(--navy);
+      border-radius: 999px;
+      padding: 6px 14px;
+      box-shadow: 2px 2px 0 var(--ice);
+      font-size: 0.85rem;
+    }
+    .page-indicator, .zoom-level { font-weight: 600; color: var(--navy); white-space: nowrap; }
+
     /* Empty State Viewer */
     .empty-state-viewer {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      padding: 80px 20px; text-align: center; background: #f8fafc;
-      border: 2px dashed var(--border); border-radius: var(--radius); color: var(--text-muted); margin-top: 10px;
+      padding: 70px 20px; text-align: center; background: var(--cream);
+      border: 2.5px dashed var(--ice); border-radius: var(--radius-l); color: var(--ocean-dark); margin-top: 4px;
     }
-    .empty-state-viewer svg { width: 64px; height: 64px; margin-bottom: 16px; color: #94a3b8; }
-    .empty-state-viewer h3 { margin: 0 0 8px 0; color: var(--text-main); font-size: 1.125rem; font-weight: 600; }
-    .empty-state-viewer p { margin: 0; font-size: 0.875rem; max-width: 350px; line-height: 1.5; }
+    .empty-icon-wrap {
+      width: 84px; height: 84px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2.5px solid var(--navy);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+      box-shadow: 4px 4px 0 var(--ice);
+      animation: bob 3s ease-in-out infinite;
+    }
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .empty-icon { width: 36px; height: 36px; color: var(--ocean); }
+    .empty-state-viewer h3 { margin: 0 0 8px 0; color: var(--navy); font-size: 1.2rem; font-weight: 600; }
+    .empty-state-viewer p { margin: 0; font-size: 0.875rem; max-width: 350px; line-height: 1.6; }
 
-    .pdf-container { position: relative; display: inline-block; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .pdf-container {
+      position: relative; display: inline-block; background: #fff;
+      border: 2.5px solid var(--navy); border-radius: 14px; overflow: hidden;
+      box-shadow: 5px 5px 0 var(--ice);
+      animation: fadeInUp 0.4s ease both;
+    }
     canvas { display: block; }
-    
+
     /* Interactive Overlays */
     #overlay-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
     .field-overlay {
-      position: absolute; border: 2px solid rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.1);
+      position: absolute; border: 2px solid var(--ocean); background: rgba(69, 123, 157, 0.15);
       pointer-events: auto; cursor: pointer; display: flex; align-items: center; justify-content: center;
-      font-size: 1.2rem; transition: background 0.15s ease, border-color 0.15s ease; border-radius: 2px;
-      user-select: none;
+      font-size: 1.2rem; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+      border-radius: 6px; user-select: none;
     }
     .field-overlay .field-label {
-      display: none; position: absolute; left: 4px; bottom: 4px; max-width: calc(100% - 8px);
-      padding: 3px 6px; border-radius: 4px; background: rgba(15, 23, 42, 0.8); color: white;
-      font-size: 0.7rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      pointer-events: none; z-index: 5;
+      display: none; position: absolute; left: 50%; top: -34px;
+      transform: translateX(-50%); padding: 6px 8px; border-radius: 8px; background: var(--navy); color: white;
+      font-size: 0.72rem; line-height: 1.25; white-space: nowrap;
+      pointer-events: none; z-index: 5; font-weight: 600; box-sizing: border-box;
     }
     .field-overlay:hover .field-label,
     .field-overlay.active .field-label,
     .field-overlay.pending .field-label { display: block; }
-    .field-overlay:hover { background: rgba(59, 130, 246, 0.2); }
+    .field-overlay:not(:hover):not(.active):not(.pending) .field-label { display: none; }
+    .field-overlay:hover { background: rgba(69, 123, 157, 0.28); transform: scale(1.02); }
+    .field-overlay.required {
+      border-color: var(--coral); background: rgba(230, 57, 70, 0.16);
+    }
+    .field-overlay.required:hover {
+      background: rgba(230, 57, 70, 0.24);
+    }
+    .field-overlay.required .field-label {
+      background: var(--coral);
+    }
     .field-overlay.active {
-      border-color: var(--primary); background: rgba(59, 130, 246, 0.3); z-index: 10;
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); cursor: move;
+      border-color: var(--navy); background: rgba(69, 123, 157, 0.32); z-index: 10;
+      box-shadow: 0 0 0 4px rgba(29, 53, 87, 0.18); cursor: move;
+    }
+    .field-overlay.required.active {
+      border-color: var(--coral); background: rgba(230, 57, 70, 0.28); box-shadow: 0 0 0 4px rgba(230, 57, 70, 0.18);
     }
 
     /* Placement mode: user is about to click on the PDF to drop a new field */
     .pdf-container.placing-mode canvas { cursor: crosshair; }
+    .pdf-container.placing-mode::after {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      box-shadow: inset 0 0 0 3px rgba(230, 57, 70, 0.5);
+      animation: placingPulse 1.4s ease-in-out infinite;
+    }
+    @keyframes placingPulse {
+      0%, 100% { box-shadow: inset 0 0 0 3px rgba(230, 57, 70, 0.25); }
+      50% { box-shadow: inset 0 0 0 3px rgba(230, 57, 70, 0.7); }
+    }
 
     /* Pending (unsaved) new-field ghost box */
     .field-overlay.pending {
-      border: 2px dashed #10b981;
-      background: rgba(16, 185, 129, 0.15);
+      border: 2.5px dashed var(--coral);
+      background: rgba(230, 57, 70, 0.15);
       cursor: move;
       z-index: 20;
+      animation: pendingPulse 1.8s ease-in-out infinite;
     }
-    .field-overlay.pending:hover { background: rgba(16, 185, 129, 0.25); }
+    @keyframes pendingPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(230, 57, 70, 0.28); }
+      50% { box-shadow: 0 0 0 7px rgba(230, 57, 70, 0); }
+    }
+    .field-overlay.pending:hover { background: rgba(230, 57, 70, 0.25); }
 
     .pending-remove {
-      position: absolute; top: -10px; right: -10px; width: 20px; height: 20px;
-      background: #ef4444; color: white; border-radius: 50%; display: flex;
+      position: absolute; top: -11px; right: -11px; width: 22px; height: 22px;
+      background: var(--coral); color: white; border: 2px solid #fff; border-radius: 50%; display: flex;
       align-items: center; justify-content: center; font-size: 12px; line-height: 1;
-      cursor: pointer; pointer-events: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      cursor: pointer; pointer-events: auto; box-shadow: 2px 2px 0 var(--navy);
+      transition: transform 0.15s ease;
     }
+    .pending-remove:hover { transform: scale(1.15) rotate(90deg); }
 
     .resize-handle {
-      position: absolute; bottom: -6px; right: -6px; width: 14px; height: 14px;
-      background: var(--primary); border: 2px solid white; border-radius: 50%;
-      cursor: nwse-resize; pointer-events: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      position: absolute; bottom: -7px; right: -7px; width: 15px; height: 15px;
+      background: var(--ocean); border: 2px solid white; border-radius: 50%;
+      cursor: nwse-resize; pointer-events: auto; box-shadow: 2px 2px 0 var(--navy);
       display: none;
     }
     .field-overlay.active .resize-handle { display: block; }
-    .field-overlay.pending .resize-handle { display: block; background: #10b981; }
-
-    .placement-hint {
-      font-size: 0.8125rem; color: var(--text-muted); margin: -8px 0 16px 0; line-height: 1.4;
-    }
-
-    /* Right Tools */
-    .tools-panel h3 { margin-top: 0; margin-bottom: 20px; font-size: 1rem; font-weight: 600; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-    
-    .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-    .checkbox-group input { margin: 0; width: 16px; height: 16px; accent-color: var(--primary); }
-    .checkbox-group label { margin: 0; cursor: pointer; color: var(--text-main); }
-    
-    .status-text { font-size: 0.875rem; margin-top: 12px; min-height: 20px; }
-    .success { color: #10b981; }
-    .error { color: #ef4444; }
-    .loading { color: var(--primary); }
+    .field-overlay.pending .resize-handle { display: block; background: var(--coral); }
 
     @media (max-width: 960px) {
-      .workspace {
-        flex-direction: column;
-      }
-
-      .tools-panel {
-        width: 100%;
-      }
+      .workspace { flex-direction: column; padding: 24px 18px 50px; }
+      .tools-panel { width: 100%; }
     }
 
     @media (max-width: 640px) {
-      body {
-        padding: 16px;
-      }
+      .topbar-inner { padding: 16px 18px 20px; gap: 14px; }
+      .brand-logo { height: 44px; }
+      .topbar-actions { width: 100%; }
+      .topbar-actions .btn { flex: 1; justify-content: center; }
+      .upload-zone { width: 100%; }
+      input[type="file"] { max-width: 100%; flex: 1; }
+      .form-row { flex-direction: column; gap: 16px; }
+      .panel { padding: 20px; }
+    }
 
-      .header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
-      }
-
-      .header-left,
-      .header-right {
-        width: 100%;
-        flex-wrap: wrap;
-      }
-
-      .form-row {
-        flex-direction: column;
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
       }
     }
   </style>
 </head>
 <body>
 
-  <div class="header">
-    <div class="header-left">
-      <h2>Signature Workspace</h2>
-      <input type="file" id="mainFileInput" accept="application/pdf">
-      <span id="loadingState" style="display: none; font-size: 0.875rem; color: var(--text-muted);">Processing...</span>
-    </div>
-    <div class="header-right">
-      <button id="btnCopyBase64" disabled>Copy as Base64</button>
-      <button id="btnDownloadAs" class="primary" disabled>Save Document...</button>
-    </div>
-  </div>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img class="brand-logo" src="assets/logo_app.png" alt="PDF Seal logo">
+      </div>
 
-  <div class="workspace">
-    <div class="panel viewer-panel">
+      <div class="upload-zone">
+        <input type="file" id="mainFileInput" accept="application/pdf">
+        <span id="loadingState" class="loading-pill" style="display: none;">
+          <span class="spinner" aria-hidden="true"></span>Processing...
+        </span>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="btnCopyBase64" class="btn btn-ghost" disabled>Copy as Base64</button>
+        <button id="btnDownloadAs" class="btn btn-primary" disabled>Save Document...</button>
+      </div>
+    </div>
+    <div class="wave-divider" aria-hidden="true"></div>
+  </header>
+
+  <main class="workspace">
+    <section class="panel viewer-panel">
       <div class="viewer-controls">
         <div class="viewer-controls-group">
-          <button id="btnPrev" disabled>Prev</button>
-          <span>Page <span id="pageNum">0</span> / <span id="pageCount">0</span></span>
-          <button id="btnNext" disabled>Next</button>
+          <button id="btnPrev" class="icon-btn" disabled aria-label="Previous page">‹</button>
+          <span class="page-indicator">Page <span id="pageNum">0</span> / <span id="pageCount">0</span></span>
+          <button id="btnNext" class="icon-btn" disabled aria-label="Next page">›</button>
         </div>
         <div class="viewer-controls-group">
-          <button onclick="changeScale(-0.25)">-</button>
-          <span id="zoomLevel">100%</span>
-          <button onclick="changeScale(0.25)">+</button>
+          <button id="btnZoomOut" class="icon-btn" disabled aria-label="Zoom out">−</button>
+          <span id="zoomLevel" class="zoom-level">100%</span>
+          <button id="btnZoomIn" class="icon-btn" disabled aria-label="Zoom in">+</button>
         </div>
       </div>
-      
+
       <div class="empty-state-viewer" id="emptyStateViewer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-          <line x1="16" y1="13" x2="8" y2="13"></line>
-          <line x1="16" y1="17" x2="8" y2="17"></line>
-          <polyline points="10 9 9 9 8 9"></polyline>
-        </svg>
+        <div class="empty-icon-wrap">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
         <h3>No Document Loaded</h3>
-        <p>Upload a PDF file using the button in the top header to begin viewing, annotating, and editing signatures.</p>
+        <p>Upload a PDF file using the button in the top header, or drag and drop one directly into this area to begin viewing, annotating, and editing signatures.</p>
       </div>
 
       <div class="pdf-container" id="pdfContainer" style="display: none;">
         <canvas id="pdf-canvas"></canvas>
         <div id="overlay-layer"></div>
       </div>
-    </div>
+    </section>
 
-    <div class="tools-panel">
-      
-      <div class="panel" id="editPanel" style="opacity: 0.5; pointer-events: none;">
-        <h3>Edit Selected Field</h3>
+    <aside class="tools-panel">
+
+      <div class="panel edit-panel" id="editPanel" style="opacity: 0.5; pointer-events: none;">
+        <h3><span class="panel-dot dot-ocean"></span>Edit Selected Field</h3>
         <form id="editFieldForm">
           <input type="hidden" id="editOriginalName">
           <div class="form-group">
@@ -290,20 +522,20 @@
             <input type="checkbox" id="editRequired">
             <label for="editRequired">Required Field</label>
           </div>
-          <button type="submit" class="primary" style="width: 100%;">Update Field</button>
+          <button type="submit" class="btn btn-primary btn-block">Update Field</button>
         </form>
       </div>
 
       <div class="panel">
-        <h3>Add New Signature</h3>
+        <h3><span class="panel-dot dot-coral"></span>Add New Signature</h3>
         <form id="addSigForm">
           <div class="form-group">
             <label>Field Name</label>
             <input type="text" id="sigName" placeholder="e.g. Signature1" required>
           </div>
           <div class="form-row">
-            <div><label>Width</label><input type="number" id="sigWidth" value="200" min="10"></div>
-            <div><label>Height</label><input type="number" id="sigHeight" value="60" min="10"></div>
+            <div><label>Width</label><input type="number" id="sigWidth" value="200" min="10" step="0.1"></div>
+            <div><label>Height</label><input type="number" id="sigHeight" value="60" min="10" step="0.1"></div>
           </div>
           <div class="checkbox-group">
             <input type="checkbox" id="sigRequired">
@@ -311,17 +543,17 @@
           </div>
 
           <p class="placement-hint" id="placementHint">
-            Click <strong>Place on Document</strong>, then click anywhere on the PDF to drop the field. Drag it to reposition, or drag the green handle to resize.
+            Click <strong>Place on Document</strong>, then click anywhere on the PDF to drop the field. Drag it to reposition, or drag the coral handle to resize.
           </p>
 
-          <button type="button" id="btnPlaceField" disabled style="width: 100%; margin-bottom: 10px;">Place on Document</button>
-          <button type="submit" id="btnAddSig" class="primary" disabled style="width: 100%;">Add to Document</button>
+          <button type="button" id="btnPlaceField" class="btn btn-ghost btn-block" disabled>Place on Document</button>
+          <button type="submit" id="btnAddSig" class="btn btn-primary btn-block" disabled>Add to Document</button>
         </form>
         <div id="actionStatus" class="status-text"></div>
       </div>
 
-    </div>
-  </div>
+    </aside>
+  </main>
 
   <script>
     // State variables
@@ -340,11 +572,12 @@
     // Currently selected existing field (for the Edit panel + drag/resize)
     let activeField = null;
     let activeFieldDiv = null;
-    
+
     const canvas = document.getElementById('pdf-canvas');
     const ctx = canvas.getContext('2d');
     const overlayLayer = document.getElementById('overlay-layer');
     const pdfContainer = document.getElementById('pdfContainer');
+    const emptyStateViewer = document.getElementById('emptyStateViewer');
     const statusEl = document.getElementById('actionStatus');
 
     // Utility to show status
@@ -359,10 +592,72 @@
       if (e.target.files[0]) processNewFile(e.target.files[0]);
     });
 
-    async function processNewFile(file) {
+    function isPdfFile(file) {
+      return file && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''));
+    }
+
+    function handleDroppedFile(file) {
+      if (!isPdfFile(file)) {
+        setStatus('Please drop a PDF file.', 'error');
+        return;
+      }
+      processNewFile(file);
+    }
+
+    function setDropZoneActive(target, active) {
+      target.classList.toggle('drag-active', active);
+    }
+
+    [emptyStateViewer, pdfContainer].forEach((target) => {
+      if (!target) return;
+      target.addEventListener('dragenter', (e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDropZoneActive(target, true);
+      });
+
+      target.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+        setDropZoneActive(target, true);
+      });
+
+      target.addEventListener('dragleave', (e) => {
+        if (e.relatedTarget && target.contains(e.relatedTarget)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDropZoneActive(target, false);
+      });
+
+      target.addEventListener('drop', (e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDropZoneActive(target, false);
+        const file = e.dataTransfer.files[0];
+        if (file) handleDroppedFile(file);
+      });
+    });
+
+    function updateViewerControlsState() {
+      const zoomOutBtn = document.getElementById('btnZoomOut');
+      const zoomInBtn = document.getElementById('btnZoomIn');
+      const hasDocument = Boolean(pdfDoc);
+      zoomOutBtn.disabled = !hasDocument;
+      zoomInBtn.disabled = !hasDocument;
+    }
+
+    async function processNewFile(file, options = {}) {
+      const preservePage = Boolean(options.preservePage);
+      const targetPage = preservePage && Number.isInteger(pageNum) && pageNum > 0 ? pageNum : 1;
+
       activeFile = file;
       document.getElementById('loadingState').style.display = 'inline';
-      
+      updateViewerControlsState();
+
       // Enable global UI
       document.getElementById('btnPlaceField').disabled = false;
       document.getElementById('btnDownloadAs').disabled = false;
@@ -372,11 +667,11 @@
       clearPendingField();
       activeField = null;
       activeFieldDiv = null;
-      
+
       // Toggle Viewer Visibility
       document.getElementById('emptyStateViewer').style.display = 'none';
       document.getElementById('pdfContainer').style.display = 'inline-block';
-      
+
       // Reset Edit Panel
       document.getElementById('editPanel').style.opacity = '0.5';
       document.getElementById('editPanel').style.pointerEvents = 'none';
@@ -392,12 +687,15 @@
         // 2. Render PDF
         const arrayBuffer = await file.arrayBuffer();
         pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        
+
         document.getElementById('pageCount').textContent = pdfDoc.numPages;
-        pageNum = 1;
+        pageNum = Math.min(Math.max(targetPage, 1), pdfDoc.numPages);
+        updateViewerControlsState();
         await renderPage(pageNum);
 
       } catch (err) {
+        pdfDoc = null;
+        updateViewerControlsState();
         alert('Error processing PDF: ' + err.message);
       } finally {
         document.getElementById('loadingState').style.display = 'none';
@@ -408,7 +706,7 @@
       if (!pdfDoc) return;
       const page = await pdfDoc.getPage(num);
       const viewport = page.getViewport({ scale: currentScale });
-      
+
       canvas.height = viewport.height;
       canvas.width = viewport.width;
 
@@ -424,6 +722,7 @@
       document.getElementById('pageNum').textContent = num;
       document.getElementById('btnPrev').disabled = num <= 1;
       document.getElementById('btnNext').disabled = num >= pdfDoc.numPages;
+      updateViewerControlsState();
     }
 
     function drawFieldOverlays(viewport) {
@@ -436,7 +735,7 @@
         if (!field.rect) return;
 
         const div = document.createElement('div');
-        div.className = 'field-overlay';
+        div.className = `field-overlay${field.required ? ' required' : ''}`;
         div.title = field.name || 'Signature field';
         div.textContent = field.type === 'Signature' ? '✍️' : '📝';
         applyRectToOverlay(div, field.rect);
@@ -452,6 +751,24 @@
 
         // Click (no drag) selects the field and populates the Edit panel
         div.addEventListener('click', () => selectFieldOverlay(div, field));
+
+        div.addEventListener('mouseenter', () => {
+          overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
+            if (el !== div) {
+              const label = el.querySelector('.field-label');
+              if (label) label.style.display = 'none';
+            }
+          });
+          const label = div.querySelector('.field-label');
+          if (label) label.style.display = 'block';
+        });
+
+        div.addEventListener('mouseleave', () => {
+          if (!div.classList.contains('active')) {
+            const label = div.querySelector('.field-label');
+            if (label) label.style.display = 'none';
+          }
+        });
 
         // Drag the body to reposition
         div.addEventListener('mousedown', (e) => {
@@ -522,10 +839,16 @@
     }
 
     function selectFieldOverlay(div, field) {
-      overlayLayer.querySelectorAll('.field-overlay').forEach(el => el.classList.remove('active'));
+      overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
+        el.classList.remove('active');
+        const label = el.querySelector('.field-label');
+        if (label) label.style.display = 'none';
+      });
       div.classList.add('active');
       activeField = field;
       activeFieldDiv = div;
+      const activeLabel = div.querySelector('.field-label');
+      if (activeLabel) activeLabel.style.display = 'block';
       populateEditPanel(field);
     }
 
@@ -652,7 +975,7 @@
 
       const ghostName = document.getElementById('sigName').value.trim() || 'Signature field';
       const ghost = document.createElement('div');
-      ghost.className = 'field-overlay pending';
+      ghost.className = `field-overlay pending${document.getElementById('sigRequired').checked ? ' required' : ''}`;
       ghost.title = ghostName;
       ghost.textContent = '✍️';
       applyRectToOverlay(ghost, pendingField);
@@ -786,8 +1109,8 @@
         // Get updated PDF as a Blob and convert back to File object
         const blob = await response.blob();
         const updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
-        
-        await processNewFile(updatedFile);
+
+        await processNewFile(updatedFile, { preservePage: true });
         setStatus('Update successful.', 'success');
       } catch (err) {
         setStatus(`Error: ${err.message}`, 'error');
@@ -832,7 +1155,7 @@
       formData.append('y', document.getElementById('editY').value);
       formData.append('width', document.getElementById('editWidth').value);
       formData.append('height', document.getElementById('editHeight').value);
-      
+
       // Kľúčová oprava: explicitné poslanie reťazca "true"/"false"
       const isRequired = document.getElementById('editRequired').checked;
       formData.append('required', isRequired ? 'true' : 'false');
@@ -855,7 +1178,7 @@
 
     document.getElementById('btnCopyBase64').addEventListener('click', async () => {
       if (!activeFile) return;
-      
+
       const btn = document.getElementById('btnCopyBase64');
       const originalText = btn.textContent;
       btn.textContent = 'Converting...';
@@ -878,19 +1201,19 @@
           // 3. Fallback for older browsers or non-HTTPS local environments (like 192.168.x.x)
           const textArea = document.createElement("textarea");
           textArea.value = base64data;
-          
+
           // Hide the textarea entirely
           textArea.style.position = "fixed";
           textArea.style.left = "-999999px";
           textArea.style.top = "-999999px";
           document.body.appendChild(textArea);
-          
+
           textArea.focus();
           textArea.select();
-          
+
           const successful = document.execCommand('copy');
           textArea.remove(); // Clean up
-          
+
           if (!successful) {
             throw new Error("Your browser blocked the fallback copy action.");
           }
@@ -901,25 +1224,28 @@
         console.error(err);
         alert('Failed to copy: ' + err.message);
       } finally {
-        setTimeout(() => { 
+        setTimeout(() => {
           btn.textContent = originalText;
-          btn.disabled = false; 
+          btn.disabled = false;
         }, 2000);
       }
     });
 
     // --- Viewer Controls ---
     document.getElementById('btnPrev').addEventListener('click', () => {
-      if (pageNum <= 1) return;
+      if (pageNum <= 1 || !pdfDoc) return;
       pageNum--;
       renderPage(pageNum);
     });
 
     document.getElementById('btnNext').addEventListener('click', () => {
-      if (pageNum >= pdfDoc.numPages) return;
+      if (pageNum >= pdfDoc.numPages || !pdfDoc) return;
       pageNum++;
       renderPage(pageNum);
     });
+
+    document.getElementById('btnZoomOut').addEventListener('click', () => changeScale(-0.25));
+    document.getElementById('btnZoomIn').addEventListener('click', () => changeScale(0.25));
 
     function changeScale(delta) {
       if (!pdfDoc) return;
