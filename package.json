@@ -1,0 +1,23 @@
+{
+  "name": "pdf-seal",
+  "version": "1.0.0",
+  "description": "Browser-based PDF signature field editor",
+  "main": "lib/PdfSignatureTool.ts",
+  "scripts": {
+    "start": "ts-node server.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.2.0",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@tsconfig/node20": "^20.1.9",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^26.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

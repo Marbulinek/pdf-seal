@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Signature Workspace</title>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+
+  <style>
+    :root {
+      --bg-base: #f1f5f9;
+      --bg-surface: #ffffff;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 8px;
+    }
+    
+    * { box-sizing: border-box; }
+    
+    body { 
+      font-family: system-ui, -apple-system, sans-serif; 
+      margin: 0; 
+      padding: 24px; 
+      background: var(--bg-base); 
+      color: var(--text-main);
+    }
+    
+    /* Header / Top Bar */
+    .header { 
+      background: var(--bg-surface); 
+      padding: 16px 24px; 
+      border-radius: var(--radius); 
+      margin-bottom: 24px; 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    
+    .header-left { display: flex; align-items: center; gap: 20px; }
+    .header-right { display: flex; gap: 12px; }
+    
+    h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+
+    /* Buttons & Inputs */
+    button { 
+      padding: 8px 16px; 
+      background: var(--bg-base); 
+      color: var(--text-main); 
+      border: 1px solid var(--border); 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.15s ease;
+    }
+    button:hover:not(:disabled) { background: #e2e8f0; }
+    
+    button.primary { background: var(--primary); color: white; border: none; }
+    button.primary:hover:not(:disabled) { background: var(--primary-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    input[type="file"]::file-selector-button {
+      padding: 6px 12px; border-radius: 4px; border: none; background: var(--primary); 
+      color: white; cursor: pointer; margin-right: 12px; font-weight: 500; transition: background 0.2s;
+    }
+    input[type="file"]::file-selector-button:hover { background: var(--primary-hover); }
+
+    input[type="number"], input[type="text"] { 
+      width: 100%; 
+      padding: 8px 12px; 
+      border: 1px solid var(--border); 
+      border-radius: 6px; 
+      background: var(--bg-base);
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="number"]:focus, input[type="text"]:focus { border-color: var(--primary); }
+    
+    .form-group { margin-bottom: 16px; }
+    .form-row { display: flex; gap: 12px; margin-bottom: 16px; }
+    .form-row > div { flex: 1; min-width: 0; }
+    label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.875rem; color: var(--text-muted); }
+
+    /* Workspace layout */
+    .workspace { display: flex; gap: 24px; align-items: flex-start; }
+    .viewer-panel { flex: 1 1 auto; min-width: 0; }
+    .tools-panel { display: flex; flex-direction: column; gap: 24px; width: min(380px, 100%); flex-shrink: 0; }
+    
+    /* Panel Containers */
+    .panel { 
+      background: var(--bg-surface); 
+      padding: 24px; 
+      border-radius: var(--radius); 
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
+    }
+    
+    /* Viewer */
+    .viewer-panel { overflow-x: auto; }
+    .viewer-controls { display: flex; justify-content: space-between; margin-bottom: 20px; align-items: center; font-size: 0.875rem; }
+    .viewer-controls-group { display: flex; align-items: center; gap: 8px; }
+    
+    /* Empty State Viewer */
+    .empty-state-viewer {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 80px 20px; text-align: center; background: #f8fafc;
+      border: 2px dashed var(--border); border-radius: var(--radius); color: var(--text-muted); margin-top: 10px;
+    }
+    .empty-state-viewer svg { width: 64px; height: 64px; margin-bottom: 16px; color: #94a3b8; }
+    .empty-state-viewer h3 { margin: 0 0 8px 0; color: var(--text-main); font-size: 1.125rem; font-weight: 600; }
+    .empty-state-viewer p { margin: 0; font-size: 0.875rem; max-width: 350px; line-height: 1.5; }
+
+    .pdf-container { position: relative; display: inline-block; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    canvas { display: block; }
+    
+    /* Interactive Overlays */
+    #overlay-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .field-overlay {
+      position: absolute; border: 2px solid rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.1);
+      pointer-events: auto; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; transition: background 0.15s ease, border-color 0.15s ease; border-radius: 2px;
+      user-select: none;
+    }
+    .field-overlay .field-label {
+      display: none; position: absolute; left: 4px; bottom: 4px; max-width: calc(100% - 8px);
+      padding: 3px 6px; border-radius: 4px; background: rgba(15, 23, 42, 0.8); color: white;
+      font-size: 0.7rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      pointer-events: none; z-index: 5;
+    }
+    .field-overlay:hover .field-label,
+    .field-overlay.active .field-label,
+    .field-overlay.pending .field-label { display: block; }
+    .field-overlay:hover { background: rgba(59, 130, 246, 0.2); }
+    .field-overlay.active {
+      border-color: var(--primary); background: rgba(59, 130, 246, 0.3); z-index: 10;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); cursor: move;
+    }
+
+    /* Placement mode: user is about to click on the PDF to drop a new field */
+    .pdf-container.placing-mode canvas { cursor: crosshair; }
+
+    /* Pending (unsaved) new-field ghost box */
+    .field-overlay.pending {
+      border: 2px dashed #10b981;
+      background: rgba(16, 185, 129, 0.15);
+      cursor: move;
+      z-index: 20;
+    }
+    .field-overlay.pending:hover { background: rgba(16, 185, 129, 0.25); }
+
+    .pending-remove {
+      position: absolute; top: -10px; right: -10px; width: 20px; height: 20px;
+      background: #ef4444; color: white; border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; font-size: 12px; line-height: 1;
+      cursor: pointer; pointer-events: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+
+    .resize-handle {
+      position: absolute; bottom: -6px; right: -6px; width: 14px; height: 14px;
+      background: var(--primary); border: 2px solid white; border-radius: 50%;
+      cursor: nwse-resize; pointer-events: auto; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      display: none;
+    }
+    .field-overlay.active .resize-handle { display: block; }
+    .field-overlay.pending .resize-handle { display: block; background: #10b981; }
+
+    .placement-hint {
+      font-size: 0.8125rem; color: var(--text-muted); margin: -8px 0 16px 0; line-height: 1.4;
+    }
+
+    /* Right Tools */
+    .tools-panel h3 { margin-top: 0; margin-bottom: 20px; font-size: 1rem; font-weight: 600; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    
+    .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .checkbox-group input { margin: 0; width: 16px; height: 16px; accent-color: var(--primary); }
+    .checkbox-group label { margin: 0; cursor: pointer; color: var(--text-main); }
+    
+    .status-text { font-size: 0.875rem; margin-top: 12px; min-height: 20px; }
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+    .loading { color: var(--primary); }
+
+    @media (max-width: 960px) {
+      .workspace {
+        flex-direction: column;
+      }
+
+      .tools-panel {
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 16px;
+      }
+
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .header-left,
+      .header-right {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+
+      .form-row {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-left">
+      <h2>Signature Workspace</h2>
+      <input type="file" id="mainFileInput" accept="application/pdf">
+      <span id="loadingState" style="display: none; font-size: 0.875rem; color: var(--text-muted);">Processing...</span>
+    </div>
+    <div class="header-right">
+      <button id="btnCopyBase64" disabled>Copy as Base64</button>
+      <button id="btnDownloadAs" class="primary" disabled>Save Document...</button>
+    </div>
+  </div>
+
+  <div class="workspace">
+    <div class="panel viewer-panel">
+      <div class="viewer-controls">
+        <div class="viewer-controls-group">
+          <button id="btnPrev" disabled>Prev</button>
+          <span>Page <span id="pageNum">0</span> / <span id="pageCount">0</span></span>
+          <button id="btnNext" disabled>Next</button>
+        </div>
+        <div class="viewer-controls-group">
+          <button onclick="changeScale(-0.25)">-</button>
+          <span id="zoomLevel">100%</span>
+          <button onclick="changeScale(0.25)">+</button>
+        </div>
+      </div>
+      
+      <div class="empty-state-viewer" id="emptyStateViewer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <h3>No Document Loaded</h3>
+        <p>Upload a PDF file using the button in the top header to begin viewing, annotating, and editing signatures.</p>
+      </div>
+
+      <div class="pdf-container" id="pdfContainer" style="display: none;">
+        <canvas id="pdf-canvas"></canvas>
+        <div id="overlay-layer"></div>
+      </div>
+    </div>
+
+    <div class="tools-panel">
+      
+      <div class="panel" id="editPanel" style="opacity: 0.5; pointer-events: none;">
+        <h3>Edit Selected Field</h3>
+        <form id="editFieldForm">
+          <input type="hidden" id="editOriginalName">
+          <div class="form-group">
+            <label>Field Name</label>
+            <input type="text" id="editName" required>
+          </div>
+          <div class="form-row">
+            <div><label>X Position</label><input type="number" id="editX" step="0.1" required></div>
+            <div><label>Y Position</label><input type="number" id="editY" step="0.1" required></div>
+          </div>
+          <div class="form-row">
+            <div><label>Width</label><input type="number" id="editWidth" step="0.1" required></div>
+            <div><label>Height</label><input type="number" id="editHeight" step="0.1" required></div>
+          </div>
+          <div class="checkbox-group">
+            <input type="checkbox" id="editRequired">
+            <label for="editRequired">Required Field</label>
+          </div>
+          <button type="submit" class="primary" style="width: 100%;">Update Field</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Add New Signature</h3>
+        <form id="addSigForm">
+          <div class="form-group">
+            <label>Field Name</label>
+            <input type="text" id="sigName" placeholder="e.g. Signature1" required>
+          </div>
+          <div class="form-row">
+            <div><label>Width</label><input type="number" id="sigWidth" value="200" min="10"></div>
+            <div><label>Height</label><input type="number" id="sigHeight" value="60" min="10"></div>
+          </div>
+          <div class="checkbox-group">
+            <input type="checkbox" id="sigRequired">
+            <label for="sigRequired">Required Field</label>
+          </div>
+
+          <p class="placement-hint" id="placementHint">
+            Click <strong>Place on Document</strong>, then click anywhere on the PDF to drop the field. Drag it to reposition, or drag the green handle to resize.
+          </p>
+
+          <button type="button" id="btnPlaceField" disabled style="width: 100%; margin-bottom: 10px;">Place on Document</button>
+          <button type="submit" id="btnAddSig" class="primary" disabled style="width: 100%;">Add to Document</button>
+        </form>
+        <div id="actionStatus" class="status-text"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // State variables
+    let activeFile = null;
+    let pdfDoc = null;
+    let pageNum = 1;
+    let currentScale = 1.0;
+    let documentFields = [];
+    let currentViewport = null; // viewport of the currently rendered page
+
+    // New-field placement state
+    let isPlacing = false;        // true while waiting for the user's next click on the PDF
+    let pendingField = null;      // { x, y, width, height } in PDF space, for the field being placed
+    let pendingFieldPage = null;  // 0-indexed page the pending field belongs to
+
+    // Currently selected existing field (for the Edit panel + drag/resize)
+    let activeField = null;
+    let activeFieldDiv = null;
+    
+    const canvas = document.getElementById('pdf-canvas');
+    const ctx = canvas.getContext('2d');
+    const overlayLayer = document.getElementById('overlay-layer');
+    const pdfContainer = document.getElementById('pdfContainer');
+    const statusEl = document.getElementById('actionStatus');
+
+    // Utility to show status
+    const setStatus = (msg, type = 'loading') => {
+      statusEl.textContent = msg;
+      statusEl.className = `status-text ${type}`;
+      setTimeout(() => { if(statusEl.textContent === msg) statusEl.textContent = ''; }, 3000);
+    };
+
+    // Initialize document flow
+    document.getElementById('mainFileInput').addEventListener('change', (e) => {
+      if (e.target.files[0]) processNewFile(e.target.files[0]);
+    });
+
+    async function processNewFile(file) {
+      activeFile = file;
+      document.getElementById('loadingState').style.display = 'inline';
+      
+      // Enable global UI
+      document.getElementById('btnPlaceField').disabled = false;
+      document.getElementById('btnDownloadAs').disabled = false;
+      document.getElementById('btnCopyBase64').disabled = false;
+
+      // A brand new document means any previous pending placement/selection is stale
+      clearPendingField();
+      activeField = null;
+      activeFieldDiv = null;
+      
+      // Toggle Viewer Visibility
+      document.getElementById('emptyStateViewer').style.display = 'none';
+      document.getElementById('pdfContainer').style.display = 'inline-block';
+      
+      // Reset Edit Panel
+      document.getElementById('editPanel').style.opacity = '0.5';
+      document.getElementById('editPanel').style.pointerEvents = 'none';
+
+      try {
+        // 1. Fetch info/metadata
+        const formData = new FormData();
+        formData.append('pdfDocument', file);
+        const res = await fetch('/api/info', { method: 'POST', body: formData });
+        const data = await res.json();
+        documentFields = data.fields || [];
+
+        // 2. Render PDF
+        const arrayBuffer = await file.arrayBuffer();
+        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        document.getElementById('pageCount').textContent = pdfDoc.numPages;
+        pageNum = 1;
+        await renderPage(pageNum);
+
+      } catch (err) {
+        alert('Error processing PDF: ' + err.message);
+      } finally {
+        document.getElementById('loadingState').style.display = 'none';
+      }
+    }
+
+    async function renderPage(num) {
+      if (!pdfDoc) return;
+      const page = await pdfDoc.getPage(num);
+      const viewport = page.getViewport({ scale: currentScale });
+      
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+      currentViewport = viewport;
+      drawFieldOverlays(viewport);
+
+      // Re-draw the in-progress ghost box if it belongs to the page being shown
+      if (pendingField && pendingFieldPage === (pageNum - 1)) {
+        drawPendingOverlay();
+      }
+
+      document.getElementById('pageNum').textContent = num;
+      document.getElementById('btnPrev').disabled = num <= 1;
+      document.getElementById('btnNext').disabled = num >= pdfDoc.numPages;
+    }
+
+    function drawFieldOverlays(viewport) {
+      // Clear only existing-field overlays; the in-progress pending ghost is redrawn separately
+      overlayLayer.querySelectorAll('.field-overlay:not(.pending)').forEach(el => el.remove());
+      activeFieldDiv = null;
+      const fieldsOnThisPage = documentFields.filter(f => f.page === (pageNum - 1));
+
+      fieldsOnThisPage.forEach(field => {
+        if (!field.rect) return;
+
+        const div = document.createElement('div');
+        div.className = 'field-overlay';
+        div.title = field.name || 'Signature field';
+        div.textContent = field.type === 'Signature' ? '✍️' : '📝';
+        applyRectToOverlay(div, field.rect);
+
+        const label = document.createElement('div');
+        label.className = 'field-label';
+        label.textContent = field.name || 'Signature field';
+        div.appendChild(label);
+
+        const handle = document.createElement('div');
+        handle.className = 'resize-handle';
+        div.appendChild(handle);
+
+        // Click (no drag) selects the field and populates the Edit panel
+        div.addEventListener('click', () => selectFieldOverlay(div, field));
+
+        // Drag the body to reposition
+        div.addEventListener('mousedown', (e) => {
+          if (e.target === handle) return;
+          e.preventDefault();
+          selectFieldOverlay(div, field);
+
+          const startX = e.clientX, startY = e.clientY;
+          const startLeft = parseFloat(div.style.left);
+          const startTop = parseFloat(div.style.top);
+
+          function onMove(ev) {
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            let newLeft = startLeft + dx;
+            let newTop = startTop + dy;
+            newLeft = Math.max(0, Math.min(newLeft, canvas.width - div.offsetWidth));
+            newTop = Math.max(0, Math.min(newTop, canvas.height - div.offsetHeight));
+            div.style.left = `${newLeft}px`;
+            div.style.top = `${newTop}px`;
+          }
+          function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            commitOverlayToField(div, field);
+          }
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+
+        // Drag the handle to resize
+        handle.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          selectFieldOverlay(div, field);
+
+          const startX = e.clientX, startY = e.clientY;
+          const startWidth = parseFloat(div.style.width);
+          const startHeight = parseFloat(div.style.height);
+          const left = parseFloat(div.style.left);
+          const top = parseFloat(div.style.top);
+
+          function onMove(ev) {
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            let newWidth = Math.max(20, startWidth + dx);
+            let newHeight = Math.max(20, startHeight + dy);
+            newWidth = Math.min(newWidth, canvas.width - left);
+            newHeight = Math.min(newHeight, canvas.height - top);
+            div.style.width = `${newWidth}px`;
+            div.style.height = `${newHeight}px`;
+          }
+          function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            commitOverlayToField(div, field);
+          }
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+
+        if (activeField === field) {
+          div.classList.add('active');
+          activeFieldDiv = div;
+        }
+        overlayLayer.appendChild(div);
+      });
+    }
+
+    function selectFieldOverlay(div, field) {
+      overlayLayer.querySelectorAll('.field-overlay').forEach(el => el.classList.remove('active'));
+      div.classList.add('active');
+      activeField = field;
+      activeFieldDiv = div;
+      populateEditPanel(field);
+    }
+
+    // After a drag/resize finishes: write the new screen rect back into PDF space
+    // on the field object itself, and refresh the Edit panel's number inputs to match
+    function commitOverlayToField(div, field) {
+      const screenLeft = parseFloat(div.style.left);
+      const screenTop = parseFloat(div.style.top);
+      const screenWidth = parseFloat(div.style.width);
+      const screenHeight = parseFloat(div.style.height);
+      field.rect = screenRectToPdf(screenLeft, screenTop, screenWidth, screenHeight);
+      populateEditPanel(field);
+    }
+
+    function populateEditPanel(field) {
+      const panel = document.getElementById('editPanel');
+      panel.style.opacity = '1';
+      panel.style.pointerEvents = 'auto';
+
+      document.getElementById('editOriginalName').value = field.name;
+      document.getElementById('editName').value = field.name;
+      document.getElementById('editX').value = field.rect.x.toFixed(1);
+      document.getElementById('editY').value = field.rect.y.toFixed(1);
+      document.getElementById('editWidth').value = field.rect.width.toFixed(1);
+      document.getElementById('editHeight').value = field.rect.height.toFixed(1);
+      document.getElementById('editRequired').checked = field.required;
+    }
+
+    // Typing into the position/size fields moves or resizes the selected overlay live,
+    // keeping the numbers and the on-page box always in sync with each other
+    ['editX', 'editY', 'editWidth', 'editHeight'].forEach((id) => {
+      document.getElementById(id).addEventListener('input', () => {
+        if (!activeField || !activeFieldDiv || !currentViewport) return;
+        const x = parseFloat(document.getElementById('editX').value);
+        const y = parseFloat(document.getElementById('editY').value);
+        const width = parseFloat(document.getElementById('editWidth').value);
+        const height = parseFloat(document.getElementById('editHeight').value);
+        if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return;
+
+        activeField.rect = { x, y, width, height };
+        applyRectToOverlay(activeFieldDiv, activeField.rect);
+      });
+    });
+
+    // --- New Field Placement (click-to-drop, then drag/resize) ---
+
+    // Screen (canvas pixel) rect -> PDF-space rect, inverse of the transform in drawFieldOverlays
+    function screenRectToPdf(screenLeft, screenTop, screenWidth, screenHeight) {
+      const scale = currentViewport.scale;
+      const pdfPageHeight = currentViewport.viewBox[3];
+      const width = screenWidth / scale;
+      const height = screenHeight / scale;
+      const x = screenLeft / scale;
+      const y = pdfPageHeight - (screenTop / scale) - height;
+      return { x, y, width, height };
+    }
+
+    // PDF-space rect -> screen (canvas pixel) rect
+    function pdfRectToScreen(pdfRect) {
+      const scale = currentViewport.scale;
+      const pdfPageHeight = currentViewport.viewBox[3];
+      return {
+        left: pdfRect.x * scale,
+        top: (pdfPageHeight - pdfRect.y - pdfRect.height) * scale,
+        width: pdfRect.width * scale,
+        height: pdfRect.height * scale,
+      };
+    }
+
+    // Position/size an overlay div on screen from a PDF-space rect
+    function applyRectToOverlay(div, pdfRect) {
+      const screenRect = pdfRectToScreen(pdfRect);
+      div.style.left = `${screenRect.left}px`;
+      div.style.top = `${screenRect.top}px`;
+      div.style.width = `${screenRect.width}px`;
+      div.style.height = `${screenRect.height}px`;
+    }
+
+    document.getElementById('btnPlaceField').addEventListener('click', () => {
+      if (!pdfDoc) return;
+      isPlacing = true;
+      pdfContainer.classList.add('placing-mode');
+      setStatus('Click anywhere on the document to drop the field', 'loading');
+    });
+
+    pdfContainer.addEventListener('click', (e) => {
+      if (!isPlacing) return;
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      placeFieldAt(clickX, clickY);
+    });
+
+    function placeFieldAt(clickX, clickY) {
+      const widthPdf = parseFloat(document.getElementById('sigWidth').value) || 200;
+      const heightPdf = parseFloat(document.getElementById('sigHeight').value) || 60;
+      const scale = currentViewport.scale;
+
+      let screenW = widthPdf * scale;
+      let screenH = heightPdf * scale;
+      let screenLeft = clickX - screenW / 2;
+      let screenTop = clickY - screenH / 2;
+
+      // Keep the field fully inside the visible page
+      screenLeft = Math.max(0, Math.min(screenLeft, canvas.width - screenW));
+      screenTop = Math.max(0, Math.min(screenTop, canvas.height - screenH));
+
+      pendingField = screenRectToPdf(screenLeft, screenTop, screenW, screenH);
+      pendingFieldPage = pageNum - 1;
+
+      isPlacing = false;
+      pdfContainer.classList.remove('placing-mode');
+      document.getElementById('btnAddSig').disabled = false;
+      setStatus('Field placed — drag to reposition, resize, or click "Add to Document"', 'success');
+
+      drawPendingOverlay();
+    }
+
+    function drawPendingOverlay() {
+      // Remove any previous ghost before re-drawing
+      const existing = overlayLayer.querySelector('.field-overlay.pending');
+      if (existing) existing.remove();
+      if (!pendingField || !currentViewport) return;
+
+      const ghostName = document.getElementById('sigName').value.trim() || 'Signature field';
+      const ghost = document.createElement('div');
+      ghost.className = 'field-overlay pending';
+      ghost.title = ghostName;
+      ghost.textContent = '✍️';
+      applyRectToOverlay(ghost, pendingField);
+
+      const label = document.createElement('div');
+      label.className = 'field-label';
+      label.textContent = ghostName;
+      ghost.appendChild(label);
+
+      const removeBtn = document.createElement('div');
+      removeBtn.className = 'pending-remove';
+      removeBtn.textContent = '✕';
+      removeBtn.title = 'Remove';
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearPendingField();
+      });
+      ghost.appendChild(removeBtn);
+
+      const handle = document.createElement('div');
+      handle.className = 'resize-handle';
+      ghost.appendChild(handle);
+
+      // Drag to move
+      ghost.addEventListener('mousedown', (e) => {
+        if (e.target === handle || e.target === removeBtn) return;
+        e.preventDefault();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startLeft = parseFloat(ghost.style.left);
+        const startTop = parseFloat(ghost.style.top);
+
+        function onMove(ev) {
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let newLeft = startLeft + dx;
+          let newTop = startTop + dy;
+          newLeft = Math.max(0, Math.min(newLeft, canvas.width - ghost.offsetWidth));
+          newTop = Math.max(0, Math.min(newTop, canvas.height - ghost.offsetHeight));
+          ghost.style.left = `${newLeft}px`;
+          ghost.style.top = `${newTop}px`;
+        }
+        function onUp() {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          syncPendingFieldFromGhost(ghost);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+
+      // Drag handle to resize
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = parseFloat(ghost.style.width);
+        const startHeight = parseFloat(ghost.style.height);
+        const left = parseFloat(ghost.style.left);
+        const top = parseFloat(ghost.style.top);
+
+        function onMove(ev) {
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let newWidth = Math.max(20, startWidth + dx);
+          let newHeight = Math.max(20, startHeight + dy);
+          newWidth = Math.min(newWidth, canvas.width - left);
+          newHeight = Math.min(newHeight, canvas.height - top);
+          ghost.style.width = `${newWidth}px`;
+          ghost.style.height = `${newHeight}px`;
+        }
+        function onUp() {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          syncPendingFieldFromGhost(ghost);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+
+      overlayLayer.appendChild(ghost);
+    }
+
+    // Read the ghost's current screen rect back into PDF space, and keep the
+    // Width/Height inputs in sync so typed values and dragged values never disagree
+    function syncPendingFieldFromGhost(ghost) {
+      const screenLeft = parseFloat(ghost.style.left);
+      const screenTop = parseFloat(ghost.style.top);
+      const screenWidth = parseFloat(ghost.style.width);
+      const screenHeight = parseFloat(ghost.style.height);
+
+      pendingField = screenRectToPdf(screenLeft, screenTop, screenWidth, screenHeight);
+      document.getElementById('sigWidth').value = pendingField.width.toFixed(1);
+      document.getElementById('sigHeight').value = pendingField.height.toFixed(1);
+    }
+
+    // If the user types a new width/height while a field is pending, resize the ghost to match
+    function resizePendingFromInputs() {
+      if (!pendingField) return;
+      const widthPdf = parseFloat(document.getElementById('sigWidth').value);
+      const heightPdf = parseFloat(document.getElementById('sigHeight').value);
+      if (!Number.isFinite(widthPdf) || !Number.isFinite(heightPdf) || widthPdf <= 0 || heightPdf <= 0) return;
+
+      // Keep the top-left screen corner anchored while the box grows/shrinks
+      pendingField = { x: pendingField.x, y: pendingField.y + pendingField.height - heightPdf, width: widthPdf, height: heightPdf };
+      drawPendingOverlay();
+    }
+    document.getElementById('sigWidth').addEventListener('change', resizePendingFromInputs);
+    document.getElementById('sigHeight').addEventListener('change', resizePendingFromInputs);
+
+    function clearPendingField() {
+      pendingField = null;
+      pendingFieldPage = null;
+      isPlacing = false;
+      pdfContainer.classList.remove('placing-mode');
+      const existing = overlayLayer.querySelector('.field-overlay.pending');
+      if (existing) existing.remove();
+      document.getElementById('btnAddSig').disabled = true;
+    }
+
+    // Replace the current active file with the API response, then re-render
+    async function handleApiUpdate(endpoint, formData) {
+      setStatus('Processing document...', 'loading');
+      document.getElementById('loadingState').style.display = 'inline';
+
+      try {
+        const response = await fetch(endpoint, { method: 'POST', body: formData });
+        if (!response.ok) throw new Error(await response.text());
+
+        // Get updated PDF as a Blob and convert back to File object
+        const blob = await response.blob();
+        const updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
+        
+        await processNewFile(updatedFile);
+        setStatus('Update successful.', 'success');
+      } catch (err) {
+        setStatus(`Error: ${err.message}`, 'error');
+      }
+    }
+
+    // --- Form Submissions ---
+    document.getElementById('addSigForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!activeFile) return;
+      if (!pendingField) {
+        setStatus('Place the field on the document first', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('pdfDocument', activeFile);
+      formData.append('name', document.getElementById('sigName').value);
+      formData.append('page', pendingFieldPage);
+      formData.append('x', pendingField.x.toFixed(2));
+      formData.append('y', pendingField.y.toFixed(2));
+      formData.append('width', pendingField.width.toFixed(2));
+      formData.append('height', pendingField.height.toFixed(2));
+      formData.append('required', document.getElementById('sigRequired').checked);
+
+      await handleApiUpdate('/api/add-signature', formData);
+      clearPendingField();
+      e.target.reset(); // Clear add form
+      document.getElementById('sigWidth').value = 200;
+      document.getElementById('sigHeight').value = 60;
+    });
+
+    document.getElementById('editFieldForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!activeFile) return;
+
+      const formData = new FormData();
+      formData.append('pdfDocument', activeFile);
+      formData.append('originalName', document.getElementById('editOriginalName').value);
+      formData.append('name', document.getElementById('editName').value);
+      formData.append('x', document.getElementById('editX').value);
+      formData.append('y', document.getElementById('editY').value);
+      formData.append('width', document.getElementById('editWidth').value);
+      formData.append('height', document.getElementById('editHeight').value);
+      
+      // Kľúčová oprava: explicitné poslanie reťazca "true"/"false"
+      const isRequired = document.getElementById('editRequired').checked;
+      formData.append('required', isRequired ? 'true' : 'false');
+
+      await handleApiUpdate('/api/edit-field', formData);
+    });
+
+    // --- Export Actions ---
+    document.getElementById('btnDownloadAs').addEventListener('click', () => {
+      if (!activeFile) return;
+      const downloadUrl = window.URL.createObjectURL(activeFile);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `updated_${activeFile.name}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    });
+
+    document.getElementById('btnCopyBase64').addEventListener('click', async () => {
+      if (!activeFile) return;
+      
+      const btn = document.getElementById('btnCopyBase64');
+      const originalText = btn.textContent;
+      btn.textContent = 'Converting...';
+      btn.disabled = true;
+
+      try {
+        // 1. Wrap the asynchronous FileReader in a Promise
+        // This preserves the browser's "user activated" state across the await
+        const base64data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsDataURL(activeFile);
+        });
+
+        // 2. Try the modern, secure Clipboard API first
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(base64data);
+        } else {
+          // 3. Fallback for older browsers or non-HTTPS local environments (like 192.168.x.x)
+          const textArea = document.createElement("textarea");
+          textArea.value = base64data;
+          
+          // Hide the textarea entirely
+          textArea.style.position = "fixed";
+          textArea.style.left = "-999999px";
+          textArea.style.top = "-999999px";
+          document.body.appendChild(textArea);
+          
+          textArea.focus();
+          textArea.select();
+          
+          const successful = document.execCommand('copy');
+          textArea.remove(); // Clean up
+          
+          if (!successful) {
+            throw new Error("Your browser blocked the fallback copy action.");
+          }
+        }
+
+        btn.textContent = 'Copied!';
+      } catch (err) {
+        console.error(err);
+        alert('Failed to copy: ' + err.message);
+      } finally {
+        setTimeout(() => { 
+          btn.textContent = originalText;
+          btn.disabled = false; 
+        }, 2000);
+      }
+    });
+
+    // --- Viewer Controls ---
+    document.getElementById('btnPrev').addEventListener('click', () => {
+      if (pageNum <= 1) return;
+      pageNum--;
+      renderPage(pageNum);
+    });
+
+    document.getElementById('btnNext').addEventListener('click', () => {
+      if (pageNum >= pdfDoc.numPages) return;
+      pageNum++;
+      renderPage(pageNum);
+    });
+
+    function changeScale(delta) {
+      if (!pdfDoc) return;
+      currentScale = Math.max(0.5, Math.min(3.0, currentScale + delta));
+      document.getElementById('zoomLevel').textContent = `${Math.round(currentScale * 100)}%`;
+      renderPage(pageNum);
+    }
+  </script>
+</body>
+</html>
