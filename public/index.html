@@ -661,9 +661,10 @@
       const panel = document.getElementById('editPanel');
       panel.style.opacity = '1';
       panel.style.pointerEvents = 'auto';
-
+    
       document.getElementById('editOriginalName').value = field.name;
       document.getElementById('editName').value = field.name;
+      document.getElementById('editCreatorName').value = field.creatorName || '(not set)'; // add this
       document.getElementById('editX').value = field.rect.x.toFixed(1);
       document.getElementById('editY').value = field.rect.y.toFixed(1);
       document.getElementById('editWidth').value = field.rect.width.toFixed(1);
