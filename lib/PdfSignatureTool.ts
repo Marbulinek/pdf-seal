@@ -137,6 +137,7 @@ class PdfSignatureTool {
     });
     const widgetRef = context.register(widget.dict);
     acroSig.addWidget(widgetRef);
+    this._setFormFieldNameAnnotation(widget, name);
     page.node.addAnnot(widgetRef);
 
     // Tell viewers signature fields exist (AcroForm /SigFlags bit 1).
@@ -213,6 +214,9 @@ class PdfSignatureTool {
     }
     const field = this._requireField(name);
     field.acroField.setPartialName(newName);
+    field.acroField.getWidgets().forEach((widget: any) => {
+      this._setFormFieldNameAnnotation(widget, newName);
+    });
   }
 
   /** Toggle whether a field must be filled in before the document can be submitted/signed. */
@@ -399,6 +403,10 @@ class PdfSignatureTool {
     const field = form.getFieldMaybe(name);
     if (!field) throw new Error(`No form field named "${name}" was found.`);
     return field;
+  }
+
+  _setFormFieldNameAnnotation(widget: any, formFieldName: string) {
+    widget.dict.set(PDFName.of('formFieldName'), PDFString.of(formFieldName));
   }
 
   _getRawString(dict: any, key: string) {
