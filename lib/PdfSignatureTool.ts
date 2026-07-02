@@ -138,6 +138,7 @@ class PdfSignatureTool {
     const widgetRef = context.register(widget.dict);
     acroSig.addWidget(widgetRef);
     this._setCreatorNameAnnotation(widget, name);
+    this._setCreatorNameAnnotation(sigDict, name);
     page.node.addAnnot(widgetRef);
 
     // Tell viewers signature fields exist (AcroForm /SigFlags bit 1).
@@ -214,6 +215,7 @@ class PdfSignatureTool {
     }
     const field = this._requireField(name);
     field.acroField.setPartialName(newName);
+    this._setCreatorNameAnnotation(field.acroField.dict, newName); // keep field dict in sync
     field.acroField.getWidgets().forEach((widget: any) => {
       this._setCreatorNameAnnotation(widget, newName);
     });
@@ -405,8 +407,9 @@ class PdfSignatureTool {
     return field;
   }
 
-  _setCreatorNameAnnotation(widget: any, creatorName: string) {
-    widget.dict.set(PDFName.of('creatorName'), PDFString.of(creatorName));
+  _setCreatorNameAnnotation(target: any, creatorName: string) {
+    const dict = target && target.dict ? target.dict : target; // widget has .dict; sigDict is already a dict
+    dict.set(PDFName.of('creatorName'), PDFString.of(creatorName));
   }
 
   _getRawString(dict: any, key: string) {
