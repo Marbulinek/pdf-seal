@@ -30,10 +30,18 @@ import {
  * but it has no createSignature()/addToPage() helper, and its built-in
  * removeField() throws on unsigned fields (it assumes every widget has an
  * appearance stream). Both gaps are patched here.
+ *
+ * NOTE on "creatorName": confirmed by direct inspection of PDFs where
+ * Nutrient (PSPDFKit) correctly showed a WidgetAnnotation's creatorName --
+ * there is NO such key anywhere in the raw PDF. Nutrient synthesizes
+ * `annotation.creatorName` from `annotation.formFieldName` (i.e. /T) for
+ * signature widgets that have no explicit creator name of their own.
+ * There is nothing to write here beyond the field's normal /T name.
  */
 class PdfSignatureTool {
   private pdfDoc: any;
   private sourcePath: string | null;
+
   /**
    * Open a PDF file from disk.
    * @param {string} filePath
@@ -106,12 +114,10 @@ class PdfSignatureTool {
       throw new Error(`A form field named "${name}" already exists.`);
     }
 
-    // 1. Build the underlying /FT /Sig field dictionary.
+    // Build the underlying /FT /Sig field dictionary. pdf-lib has no
+    // PDFAcroSignature.create(), so we build the dict the same way
+    // PDFAcroText.create() does internally.
     const sigDict = context.obj({ FT: 'Sig', Kids: [] });
-    
-    // Set creatorName directly onto the raw field dictionary BEFORE registering it
-    sigDict.set(PDFName.of('creatorName'), PDFString.of(name));
-
     const sigRef = context.register(sigDict);
     const acroSig = PDFAcroSignature.fromDict(sigDict, sigRef);
     acroSig.setPartialName(name);
@@ -124,7 +130,7 @@ class PdfSignatureTool {
     // Register the field at the top level of the AcroForm.
     form.acroForm.addField(sigRef);
 
-    // 2. Create + attach the widget annotation (the visible box on the page).
+    // Create + attach the widget annotation (the visible box on the page).
     const pdfSignature = PDFSignature.of(acroSig, sigRef, pdfDoc);
     const widget = (pdfSignature as any).createWidget({
       x,
@@ -137,17 +143,8 @@ class PdfSignatureTool {
       rotate: degrees(0),
       page: page.ref,
     });
-    
-    // Set creatorName explicitly onto the underlying widget dictionary
-    // 1. Set /creatorName as a custom key
-    widget.dict.set(PDFName.of('NM'), PDFString.of(name));
-    widget.dict.set(PDFName.of('creatorName'), PDFString.of(name));
-
     const widgetRef = context.register(widget.dict);
     acroSig.addWidget(widgetRef);
-
-    this._setCreatorNameAnnotation(widget.dict, name);
-    this._setCreatorNameAnnotation(sigDict, name);
     page.node.addAnnot(widgetRef);
 
     // Tell viewers signature fields exist (AcroForm /SigFlags bit 1).
@@ -173,7 +170,7 @@ class PdfSignatureTool {
   listFields() {
     const form = this.pdfDoc.getForm();
     const pages = this.pdfDoc.getPages();
-  
+
     return form.getFields().map((field: any) => {
       const widgets = field.acroField.getWidgets();
       const widget = widgets[0];
@@ -188,14 +185,19 @@ class PdfSignatureTool {
           pageIndex = null;
         }
       }
-  
+
+      const name = field.getName();
+
       return {
-        name: field.getName(),
-        type: field.constructor.name.replace('PDF', ''),
+        name,
+        type: field.constructor.name.replace('PDF', ''), // Signature, TextField, CheckBox, ...
         required: typeof field.isRequired === 'function' ? field.isRequired() : false,
         readOnly: typeof field.isReadOnly === 'function' ? field.isReadOnly() : false,
         tooltip: this._getRawString(field.acroField.dict, 'TU'),
-        creatorName: widget ? this._getRawString(widget.dict, 'creatorName') : undefined, // add this
+        // Nutrient's `annotation.creatorName` is synthesized from the field's
+        // own name (formFieldName / /T) for signature widgets -- confirmed by
+        // direct inspection, there is no separate PDF key for it.
+        creatorName: name,
         page: pageIndex,
         rect,
       };
@@ -225,15 +227,6 @@ class PdfSignatureTool {
     }
     const field = this._requireField(name);
     field.acroField.setPartialName(newName);
-    
-    this._setCreatorNameAnnotation(field.acroField.dict, newName); // sync field dict
-    field.acroField.getWidgets().forEach((widget: any) => {
-      // Force update the underlying dictionary mapping for Nutrient's parser
-      if (widget && widget.dict) {
-        widget.dict.set(PDFName.of('NM'), PDFString.of(newName));
-      }
-      this._setCreatorNameAnnotation(widget, newName);
-    });
   }
 
   /** Toggle whether a field must be filled in before the document can be submitted/signed. */
@@ -422,19 +415,11 @@ class PdfSignatureTool {
     return field;
   }
 
-  _setCreatorNameAnnotation(target: any, creatorName: string) {
-    const dict = target && target.dict ? target.dict : target; 
-    if (dict && typeof dict.set === 'function') {
-      dict.set(PDFName.of('creatorName'), PDFString.of(creatorName));
-      dict.set(PDFName.of('NM'), PDFString.of(creatorName));
-    }
-  }
-
   _getRawString(dict: any, key: string) {
     if (!dict || !dict.has(PDFName.of(key))) return undefined;
     const value = dict.lookup(PDFName.of(key));
     if (!value) return undefined;
-    
+
     // Properly unwrap PDFString object formats without breaking literal brackets
     return typeof value.value === 'function' ? value.value() : value.toString().replace(/^\(|\)$/g, '');
   }
