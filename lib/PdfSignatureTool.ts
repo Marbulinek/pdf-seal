@@ -140,16 +140,14 @@ class PdfSignatureTool {
     
     // Set creatorName explicitly onto the underlying widget dictionary
     // 1. Set /creatorName as a custom key
+    widget.dict.set(PDFName.of('NM'), PDFString.of(name));
     widget.dict.set(PDFName.of('creatorName'), PDFString.of(name));
-    // 2. Set /T on the widget dict (Nutrient often maps /T to creatorName for markup/annotations)
-    widget.dict.set(PDFName.of('T'), PDFString.of(name));
 
     const widgetRef = context.register(widget.dict);
     acroSig.addWidget(widgetRef);
 
-    this._setCreatorNameAnnotation(sigDict, name);
     this._setCreatorNameAnnotation(widget.dict, name);
-    
+    this._setCreatorNameAnnotation(sigDict, name);
     page.node.addAnnot(widgetRef);
 
     // Tell viewers signature fields exist (AcroForm /SigFlags bit 1).
@@ -227,12 +225,13 @@ class PdfSignatureTool {
     const field = this._requireField(name);
     field.acroField.setPartialName(newName);
     
-    // Keep parent field dictionary in sync
-    this._setCreatorNameAnnotation(field.acroField.dict, newName); 
-    
-    // Explicitly update all associated widgets so Nutrient reflects the change
+    this._setCreatorNameAnnotation(field.acroField.dict, newName); // sync field dict
     field.acroField.getWidgets().forEach((widget: any) => {
-      this._setCreatorNameAnnotation(widget.dict, newName);
+      // Force update the underlying dictionary mapping for Nutrient's parser
+      if (widget && widget.dict) {
+        widget.dict.set(PDFName.of('NM'), PDFString.of(newName));
+      }
+      this._setCreatorNameAnnotation(widget, newName);
     });
   }
 
@@ -423,16 +422,10 @@ class PdfSignatureTool {
   }
 
   _setCreatorNameAnnotation(target: any, creatorName: string) {
-    if (!target) return;
-    
-    // Ensure we are interacting directly with the raw PDFDict object
-    const dict = target.dict ? target.dict : target;
-    
+    const dict = target && target.dict ? target.dict : target; 
     if (dict && typeof dict.set === 'function') {
-      // Direct property payload
       dict.set(PDFName.of('creatorName'), PDFString.of(creatorName));
-      // Nutrient backup mapping entry
-      dict.set(PDFName.of('T'), PDFString.of(creatorName));
+      dict.set(PDFName.of('NM'), PDFString.of(creatorName));
     }
   }
 
