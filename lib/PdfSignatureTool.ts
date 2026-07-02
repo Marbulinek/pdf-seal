@@ -173,7 +173,7 @@ class PdfSignatureTool {
   listFields() {
     const form = this.pdfDoc.getForm();
     const pages = this.pdfDoc.getPages();
-
+  
     return form.getFields().map((field: any) => {
       const widgets = field.acroField.getWidgets();
       const widget = widgets[0];
@@ -188,13 +188,14 @@ class PdfSignatureTool {
           pageIndex = null;
         }
       }
-
+  
       return {
         name: field.getName(),
-        type: field.constructor.name.replace('PDF', ''), // Signature, TextField, CheckBox, ...
+        type: field.constructor.name.replace('PDF', ''),
         required: typeof field.isRequired === 'function' ? field.isRequired() : false,
         readOnly: typeof field.isReadOnly === 'function' ? field.isReadOnly() : false,
         tooltip: this._getRawString(field.acroField.dict, 'TU'),
+        creatorName: widget ? this._getRawString(widget.dict, 'creatorName') : undefined, // add this
         page: pageIndex,
         rect,
       };
