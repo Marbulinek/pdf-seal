@@ -116,6 +116,9 @@ h1, h2, h3 { font-family: var(--font-display); }
 .btn-primary { background: var(--ocean); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--ocean-dark); }
 
+.btn-danger { background: var(--coral); color: #fff; border-color: var(--coral-dark); }
+.btn-danger:hover:not(:disabled) { background: var(--coral-dark); }
+
 .btn-ghost { background: #ffffff; color: var(--navy); }
 
 .btn-block { width: 100%; justify-content: center; margin-top: 10px; }

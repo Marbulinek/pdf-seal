@@ -143,7 +143,10 @@
             <input type="checkbox" id="editRequired">
             <label for="editRequired">Required Field</label>
           </div>
-          <button type="submit" class="btn btn-primary btn-block">Update Field</button>
+          <div class="edit-actions">
+            <button type="submit" class="btn btn-primary btn-block">Update Field</button>
+            <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" disabled>Remove Field</button>
+          </div>
         </form>
       </div>
 
@@ -204,6 +207,7 @@
     const emptyStateViewer = document.getElementById('emptyStateViewer');
     const statusEl = document.getElementById('actionStatus');
     const topbarFeedbackEl = document.getElementById('topbarFeedback');
+    const removeFieldBtn = document.getElementById('btnRemoveField');
 
     // Utility to show status (Add Signature panel)
     const setStatus = (msg, type = 'loading') => {
@@ -439,6 +443,7 @@
         });
       }
 
+      if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !activeField;
       if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument;
       if (addSigBtn) addSigBtn.disabled = !hasDocument || !pendingField;
     }
@@ -634,6 +639,7 @@
       const activeLabel = div.querySelector('.field-label');
       if (activeLabel) activeLabel.style.display = 'block';
       populateEditPanel(field);
+      updateViewerControlsState();
     }
 
     // After a drag/resize finishes: write the new screen rect back into PDF space
@@ -940,12 +946,29 @@
       formData.append('width', document.getElementById('editWidth').value);
       formData.append('height', document.getElementById('editHeight').value);
 
-      // Kľúčová oprava: explicitné poslanie reťazca "true"/"false"
       const isRequired = document.getElementById('editRequired').checked;
       formData.append('required', isRequired ? 'true' : 'false');
 
       await handleApiUpdate('/api/edit-field', formData);
     });
+
+    if (removeFieldBtn) {
+      removeFieldBtn.addEventListener('click', async () => {
+        if (!activeFile || !activeField) return;
+
+        const fieldName = activeField.name || document.getElementById('editOriginalName').value;
+        if (!fieldName) return;
+
+        const confirmed = window.confirm(`Remove the signature field "${fieldName}" from this document?`);
+        if (!confirmed) return;
+
+        const formData = new FormData();
+        formData.append('pdfDocument', activeFile);
+        formData.append('name', fieldName);
+
+        await handleApiUpdate('/api/remove-field', formData);
+      });
+    }
 
     // --- Export Actions ---
     document.getElementById('exportPdfBtn').addEventListener('click', () => {

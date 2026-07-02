@@ -124,6 +124,34 @@ app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, r
   }
 });
 
+// --- API Endpoint: Remove Existing Field ---
+app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  try {
+    const tool = await PdfSignatureTool.open(file.path);
+    const name = req.body.name || req.body.originalName;
+
+    if (!name) {
+      throw new Error("Field name is required.");
+    }
+
+    tool.removeField(name);
+
+    const outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
+    await tool.save(outputPath);
+
+    res.download(outputPath, "signed-document.pdf", (err) => {
+      fs.unlinkSync(file.path);
+      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    });
+  } catch (error: any) {
+    fs.unlinkSync(file.path);
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
