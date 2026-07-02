@@ -137,7 +137,7 @@ class PdfSignatureTool {
     });
     const widgetRef = context.register(widget.dict);
     acroSig.addWidget(widgetRef);
-    this._setFormFieldNameAnnotation(widget, name);
+    this._setCreatorNameAnnotation(widget, name);
     page.node.addAnnot(widgetRef);
 
     // Tell viewers signature fields exist (AcroForm /SigFlags bit 1).
@@ -215,7 +215,7 @@ class PdfSignatureTool {
     const field = this._requireField(name);
     field.acroField.setPartialName(newName);
     field.acroField.getWidgets().forEach((widget: any) => {
-      this._setFormFieldNameAnnotation(widget, newName);
+      this._setCreatorNameAnnotation(widget, newName);
     });
   }
 
@@ -405,8 +405,8 @@ class PdfSignatureTool {
     return field;
   }
 
-  _setFormFieldNameAnnotation(widget: any, formFieldName: string) {
-    widget.dict.set(PDFName.of('formFieldName'), PDFString.of(formFieldName));
+  _setCreatorNameAnnotation(widget: any, creatorName: string) {
+    widget.dict.set(PDFName.of('creatorName'), PDFString.of(creatorName));
   }
 
   _getRawString(dict: any, key: string) {
