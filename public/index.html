@@ -131,6 +131,10 @@
             <label>Field Name</label>
             <input type="text" id="editName" required>
           </div>
+          <div class="form-group">
+            <label>Creator Name</label>
+            <input type="text" id="editCreatorName" readonly>
+          </div>
           <div class="form-row">
             <div><label>X Position</label><input type="number" id="editX" step="0.1" required></div>
             <div><label>Y Position</label><input type="number" id="editY" step="0.1" required></div>
@@ -657,9 +661,10 @@
       const panel = document.getElementById('editPanel');
       panel.style.opacity = '1';
       panel.style.pointerEvents = 'auto';
-
+    
       document.getElementById('editOriginalName').value = field.name;
       document.getElementById('editName').value = field.name;
+      document.getElementById('editCreatorName').value = field.creatorName || '(not set)'; // add this
       document.getElementById('editX').value = field.rect.x.toFixed(1);
       document.getElementById('editY').value = field.rect.y.toFixed(1);
       document.getElementById('editWidth').value = field.rect.width.toFixed(1);
