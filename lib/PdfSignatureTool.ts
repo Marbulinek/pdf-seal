@@ -106,10 +106,12 @@ class PdfSignatureTool {
       throw new Error(`A form field named "${name}" already exists.`);
     }
 
-    // Build the underlying /FT /Sig field dictionary. pdf-lib has no
-    // PDFAcroSignature.create(), so we build the dict the same way
-    // PDFAcroText.create() does internally.
+    // 1. Build the underlying /FT /Sig field dictionary.
     const sigDict = context.obj({ FT: 'Sig', Kids: [] });
+    
+    // Set creatorName directly onto the raw field dictionary BEFORE registering it
+    sigDict.set(PDFName.of('creatorName'), PDFString.of(name));
+
     const sigRef = context.register(sigDict);
     const acroSig = PDFAcroSignature.fromDict(sigDict, sigRef);
     acroSig.setPartialName(name);
@@ -122,7 +124,7 @@ class PdfSignatureTool {
     // Register the field at the top level of the AcroForm.
     form.acroForm.addField(sigRef);
 
-    // Create + attach the widget annotation (the visible box on the page).
+    // 2. Create + attach the widget annotation (the visible box on the page).
     const pdfSignature = PDFSignature.of(acroSig, sigRef, pdfDoc);
     const widget = (pdfSignature as any).createWidget({
       x,
@@ -135,10 +137,13 @@ class PdfSignatureTool {
       rotate: degrees(0),
       page: page.ref,
     });
+    
+    // Set creatorName explicitly onto the underlying widget dictionary
+    widget.dict.set(PDFName.of('creatorName'), PDFString.of(name));
+
     const widgetRef = context.register(widget.dict);
     acroSig.addWidget(widgetRef);
-    this._setCreatorNameAnnotation(widget, name);
-    this._setCreatorNameAnnotation(sigDict, name);
+    
     page.node.addAnnot(widgetRef);
 
     // Tell viewers signature fields exist (AcroForm /SigFlags bit 1).
@@ -408,14 +413,21 @@ class PdfSignatureTool {
   }
 
   _setCreatorNameAnnotation(target: any, creatorName: string) {
-    const dict = target && target.dict ? target.dict : target; // widget has .dict; sigDict is already a dict
-    dict.set(PDFName.of('creatorName'), PDFString.of(creatorName));
+    if (!target) return;
+    // Extract dictionary regardless of whether it's a pdf-lib object wrapper or a raw PDFDict
+    const dict = target.dict ? target.dict : target;
+    if (typeof dict.set === 'function') {
+      dict.set(PDFName.of('creatorName'), PDFString.of(creatorName));
+    }
   }
 
   _getRawString(dict: any, key: string) {
-    if (!dict.has(PDFName.of(key))) return undefined;
+    if (!dict || !dict.has(PDFName.of(key))) return undefined;
     const value = dict.lookup(PDFName.of(key));
-    return value ? value.toString().replace(/^\(|\)$/g, '') : undefined;
+    if (!value) return undefined;
+    
+    // Properly unwrap PDFString object formats without breaking literal brackets
+    return typeof value.value === 'function' ? value.value() : value.toString().replace(/^\(|\)$/g, '');
   }
 }
 
