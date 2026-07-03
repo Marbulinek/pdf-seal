@@ -25,12 +25,8 @@ import {
  * STRUCTURE NOTE (important): signature fields are created as a single
  * MERGED Field+Widget object -- one PDF dictionary that is simultaneously
  * the AcroForm field (/FT, /T, /Ff) and the page annotation (/Subtype
- * /Widget, /Rect, /P). This matches how other tools (and Nutrient/PSPDFKit
- * itself) commonly produce single-widget signature fields, and it's the
- * reason Nutrient's `annotation.creatorName` (which it synthesizes from
- * `annotation.formFieldName`, i.e. /T) is populated correctly: /T is
- * present directly on the annotation object, not on a separate parent
- * field object the widget only points to via /Kids.
+ * /Widget, /Rect, /P). This matches how other tools 
+ * commonly produce single-widget signature fields
  *
  * pdf-lib's own built-in helpers (createTextField, PDFAcroSignature, etc.)
  * always build a SPLIT structure (parent field dict + separate child widget
@@ -194,10 +190,6 @@ class PdfSignatureTool {
         required: typeof field.isRequired === 'function' ? field.isRequired() : false,
         readOnly: typeof field.isReadOnly === 'function' ? field.isReadOnly() : false,
         tooltip: this._getRawString(field.acroField.dict, 'TU'),
-        // Nutrient's `annotation.creatorName` is synthesized from the
-        // annotation's own formFieldName (/T) for signature widgets --
-        // there is no separate PDF key for it, so this is just the name.
-        creatorName: name,
         page: pageIndex,
         rect,
         raw: this._getRawDictEntries(field.acroField.dict),
@@ -224,9 +216,7 @@ class PdfSignatureTool {
    * Rename a field (its /T partial name).
    *
    * For a merged field+widget (the shape this tool creates), /T lives
-   * directly on the widget/annotation object, so renaming it here is
-   * exactly what makes Nutrient's creatorName follow along too -- no
-   * extra property needs to be touched.
+   * directly on the widget/annotation object
    */
   renameField(name: string, newName: string) {
     const form = this.pdfDoc.getForm();
