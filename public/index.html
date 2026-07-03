@@ -74,6 +74,10 @@
         <button type="button" class="modal-close" id="closeBase64ModalBtn" aria-label="Close">✕</button>
       </div>
       <p class="modal-hint">Paste a Base64-encoded PDF below — with or without the <code>data:application/pdf;base64,</code> prefix.</p>
+      <div class="modal-textarea-toolbar">
+        <button type="button" class="icon-btn modal-nav-btn" id="base64JumpTopBtn" aria-label="Jump to top">↑</button>
+        <button type="button" class="icon-btn modal-nav-btn" id="base64JumpBottomBtn" aria-label="Jump to bottom">↓</button>
+      </div>
       <textarea class="modal-textarea" id="base64Input" placeholder="JVBERi0xLjQK..." spellcheck="false"></textarea>
       <div class="modal-status" id="base64ModalStatus"></div>
       <div class="modal-actions">
@@ -131,10 +135,6 @@
             <label>Field Name</label>
             <input type="text" id="editName" required>
           </div>
-          <div class="form-group">
-            <label>Creator Name</label>
-            <input type="text" id="editCreatorName" readonly>
-          </div>
           <div class="form-row">
             <div><label>X Position</label><input type="number" id="editX" step="0.1" required></div>
             <div><label>Y Position</label><input type="number" id="editY" step="0.1" required></div>
@@ -147,6 +147,23 @@
             <input type="checkbox" id="editRequired">
             <label for="editRequired">Required Field</label>
           </div>
+          <details class="field-details" id="fieldDetailsBlock">
+            <summary>Field Details (raw PDF properties)</summary>
+            <div class="field-details-body" id="fieldDetailsBody"></div>
+          </details>
+
+          <div class="modal-backdrop info-modal" id="fieldInfoModal">
+            <div class="field-info-overlay">
+              <div class="modal-box field-info-modal-box">
+                <div class="modal-header">
+                  <h3 id="fieldInfoTitle">Property details</h3>
+                  <button type="button" class="modal-close" id="closeFieldInfoModalBtn" aria-label="Close">✕</button>
+                </div>
+                <div class="field-info-body" id="fieldInfoBody"></div>
+              </div>
+            </div>
+          </div>
+
           <div class="edit-actions">
             <button type="submit" class="btn btn-primary btn-block">Update Field</button>
             <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" disabled>Remove Field</button>
@@ -350,6 +367,20 @@
       base64ModalStatus.className = `modal-status ${type}`;
     }
 
+    function formatBase64Text(rawValue) {
+      const trimmed = String(rawValue || '').trim();
+      if (!trimmed) return '';
+
+      const hasPrefix = /^data:application\/pdf;base64,/i.test(trimmed);
+      const prefix = hasPrefix ? 'data:application/pdf;base64,' : '';
+      const body = trimmed.replace(/^data:application\/pdf;base64,/i, '').replace(/\s+/g, '');
+
+      if (!body) return prefix;
+
+      const wrapped = body.match(/.{1,76}/g)?.join('\n') || body;
+      return `${prefix}${wrapped}`;
+    }
+
     function openBase64Modal() {
       base64Input.value = '';
       setBase64ModalStatus('');
@@ -378,6 +409,27 @@
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       return bytes;
     }
+
+    base64Input.addEventListener('paste', () => {
+      setTimeout(() => {
+        base64Input.value = formatBase64Text(base64Input.value);
+        const end = base64Input.value.length;
+        base64Input.setSelectionRange(end, end);
+      }, 0);
+    });
+
+    document.getElementById('base64JumpTopBtn').addEventListener('click', () => {
+      base64Input.focus();
+      base64Input.setSelectionRange(0, 0);
+      base64Input.scrollTop = 0;
+    });
+
+    document.getElementById('base64JumpBottomBtn').addEventListener('click', () => {
+      base64Input.focus();
+      const end = base64Input.value.length;
+      base64Input.setSelectionRange(end, end);
+      base64Input.scrollTop = base64Input.scrollHeight;
+    });
 
     document.getElementById('loadBase64Btn').addEventListener('click', () => {
       const raw = base64Input.value;
@@ -452,6 +504,44 @@
       if (addSigBtn) addSigBtn.disabled = !hasDocument || !pendingField;
     }
 
+    function resetPanelsForNewDocument() {
+      const editForm = document.getElementById('editFieldForm');
+      const addForm = document.getElementById('addSigForm');
+      const detailsBody = document.getElementById('fieldDetailsBody');
+      const detailsBlock = document.getElementById('fieldDetailsBlock');
+      const editPanel = document.getElementById('editPanel');
+      const editControls = editPanel ? editPanel.querySelectorAll('input, select, textarea, button') : [];
+      const addControls = addForm ? addForm.querySelectorAll('input, select, textarea, button') : [];
+
+      clearPendingField();
+      activeField = null;
+      activeFieldDiv = null;
+
+      editControls.forEach((el) => {
+        el.disabled = true;
+      });
+      addControls.forEach((el) => {
+        el.disabled = true;
+      });
+      if (removeFieldBtn) removeFieldBtn.disabled = true;
+
+      if (editForm) {
+        editForm.reset();
+        document.getElementById('editOriginalName').value = '';
+      }
+
+      if (addForm) {
+        addForm.reset();
+        document.getElementById('sigWidth').value = 200;
+        document.getElementById('sigHeight').value = 60;
+      }
+
+      if (detailsBody) detailsBody.innerHTML = '<p class="field-details-empty">No details available.</p>';
+      if (detailsBlock) detailsBlock.open = false;
+      if (statusEl) statusEl.textContent = '';
+      if (statusEl) statusEl.className = 'status-text';
+    }
+
     async function processNewFile(file, options = {}) {
       const preservePage = Boolean(options.preservePage);
       const targetPage = preservePage && Number.isInteger(pageNum) && pageNum > 0 ? pageNum : 1;
@@ -461,9 +551,7 @@
       updateViewerControlsState();
 
       // A brand new document means any previous pending placement/selection is stale
-      clearPendingField();
-      activeField = null;
-      activeFieldDiv = null;
+      resetPanelsForNewDocument();
 
       // Toggle Viewer Visibility
       document.getElementById('emptyStateViewer').style.display = 'none';
@@ -664,12 +752,13 @@
     
       document.getElementById('editOriginalName').value = field.name;
       document.getElementById('editName').value = field.name;
-      document.getElementById('editCreatorName').value = field.creatorName || '(not set)'; // add this
       document.getElementById('editX').value = field.rect.x.toFixed(1);
       document.getElementById('editY').value = field.rect.y.toFixed(1);
       document.getElementById('editWidth').value = field.rect.width.toFixed(1);
       document.getElementById('editHeight').value = field.rect.height.toFixed(1);
       document.getElementById('editRequired').checked = field.required;
+
+      renderFieldDetails(field);
     }
 
     // Typing into the position/size fields moves or resizes the selected overlay live,
@@ -1059,6 +1148,133 @@
       document.getElementById('zoomLevel').textContent = `${Math.round(currentScale * 100)}%`;
       renderPage(pageNum);
     }
+
+    // Friendly labels for well-known signature field / widget dictionary keys
+const FIELD_KEY_LABELS = {
+  Type: 'Object Type',
+  Subtype: 'Annotation Subtype',
+  FT: 'Field Type',
+  T: 'Field Name (/T)',
+  TU: 'Tooltip / Alternate Name (/TU)',
+  Rect: 'Position & Size (/Rect)',
+  P: 'Page Reference (/P)',
+  F: 'Annotation Flags (/F)',
+  Ff: 'Field Flags (/Ff)',
+  MK: 'Appearance Characteristics (/MK)',
+  BS: 'Border Style (/BS)',
+  AP: 'Appearance Streams (/AP)',
+  V: 'Field Value (/V)',
+  DA: 'Default Appearance (/DA)',
+  Parent: 'Parent Field (/Parent)',
+  Kids: 'Child Widgets (/Kids)',
+};
+
+const FIELD_KEY_DESCRIPTIONS = {
+  Type: '<h4>What it means</h4><p>This key identifies the PDF object type. In form workflows, it often tells the viewer that the object is an annotation or widget rather than a plain page content object.</p><p><strong>Example:</strong> a signature field may use <code>/Annot</code> to show that it is an annotation object.</p><ul><li>For signature fields, this is part of the structure that lets PDF viewers understand the object as an interactive form element.</li><li>It is usually one of the first properties inspectors look at when validating form integrity.</li></ul>',
+  Subtype: '<h4>What it means</h4><p>This key narrows the object type further. For widgets it usually identifies the annotation kind that the field uses.</p><p><strong>Example:</strong> a visible signature box is commonly stored as <code>/Widget</code>, which tells the viewer it is a form widget.</p><ul><li>In signature forms, this helps distinguish a widget annotation from other annotation types such as links, highlights, or stamps.</li><li>It is important when a PDF contains multiple annotation classes and the viewer must choose the appropriate behavior.</li></ul>',
+  FT: '<h4>What it means</h4><p>This is the form field type. It tells the PDF viewer what kind of form control this object represents.</p><p><strong>Example:</strong> a signature field is typically marked as <code>/Sig</code>, which tells the viewer it is a signature control.</p><ul><li>For signature fields, the value is typically <strong>Sig</strong>.</li><li>This is one of the core keys that makes the field behave as a signature field rather than as a regular text or checkbox field.</li></ul>',
+  T: '<h4>What it means</h4><p>This is the field name, also known as the partial field name. It is the human-readable identifier used by PDF form machinery.</p><p><strong>Example:</strong> a field named <code>Signature1</code> may appear as <code>/T</code> so the form system can refer to it reliably.</p><ul><li>It is commonly what appears in exported form data and can be used to reference the field programmatically.</li><li>In signature workflows, this name is often the field identifier that tools and viewers use internally.</li></ul>',
+  TU: '<h4>What it means</h4><p>This stores a tooltip or alternate name for the field. It is often shown by viewers when the user hovers over the field.</p><p><strong>Example:</strong> a field could use <code>/TU</code> with the text <code>Please sign here</code> so the user sees a helpful hint.</p><ul><li>It can improve usability by giving a friendly label even when the field name is technical or generated.</li><li>It does not change the actual field behavior, but it can make the interactive UI easier to understand.</li></ul>',
+  Rect: '<h4>What it means</h4><p>This defines the position and size of the field on the page. It uses a rectangle with coordinates for the left, bottom, right, and top edges.</p><p><strong>Example:</strong> a rectangle such as <code>[72 180 260 230]</code> places the signature box near the lower part of the page.</p><ul><li>It is the key that controls where the signature area appears visually in the document.</li><li>Changing it modifies the placement and canvas size of the field in the PDF viewer.</li></ul>',
+  P: '<h4>What it means</h4><p>This points to the page object that contains the widget annotation.</p><p><strong>Example:</strong> a field can point to page object <code>12 0 R</code>, meaning it belongs to page 12 of the document.</p><ul><li>It links the field to a specific page so the viewer knows where the control should be rendered.</li><li>When a field is moved to another page, this reference is updated accordingly.</li></ul>',
+  F: '<h4>What it means</h4><p>This contains annotation flags that control behavior such as visibility, printing, or whether the annotation is editable.</p><p><strong>Example:</strong> a value such as <code>4</code> can make the annotation behave as hidden from normal viewing in some contexts.</p><ul><li>These flags influence how the viewer handles the widget in different contexts.</li><li>They are part of the low-level PDF annotation behavior rather than the visible appearance.</li></ul>',
+  Ff: '<h4>What it means</h4><p>This contains field flags that affect form behavior such as required status, read-only state, or export behavior.</p><p><strong>Example:</strong> a field flag value of <code>2</code> often means the field is required before the form can be submitted.</p><ul><li>For example, the required flag causes the form to demand that the field be filled before submission.</li><li>It is one of the most important keys when working with form validation.</li></ul>',
+  MK: '<h4>What it means</h4><p>This holds appearance characteristics such as border and background colors for the widget.</p><p><strong>Example:</strong> it may describe a dark border and a light background so the signature box stands out clearly.</p><ul><li>It can make the field stand out visually in the viewer.</li><li>It is separate from the actual form logic and mainly affects presentation.</li></ul>',
+  BS: '<h4>What it means</h4><p>This describes border style for the annotation, including width and related visual formatting.</p><p><strong>Example:</strong> a thin or dashed border can be defined here to make the signature field easier to recognize.</p><ul><li>It helps control whether the field has a visible outline and how thick it looks.</li><li>It is part of the visual styling layer of the PDF annotation.</li></ul>',
+  AP: '<h4>What it means</h4><p>This contains appearance streams that define the widget’s visual rendering.</p><p><strong>Example:</strong> a PDF can use this to show a custom visual state such as a highlighted or pressed signature box.</p><ul><li>In some PDFs this is used for custom appearance states or visuals.</li><li>It is especially relevant when the field needs a specific look beyond the default annotation styling.</li></ul>',
+  V: '<h4>What it means</h4><p>This stores the field value. For form fields it may contain text or other data; for signature widgets, it can be a signature value or related metadata.</p><p><strong>Example:</strong> after signing, this value may hold the signature data or a reference to the signed content.</p><ul><li>It is the data that the form system would read or submit.</li><li>In digital signature workflows it can be crucial for understanding whether the field was populated or not.</li></ul>',
+  DA: '<h4>What it means</h4><p>This stores the default appearance string for the field, usually affecting text style and font settings.</p><p><strong>Example:</strong> a value such as <code>/Helv 12 Tf 0 g</code> tells the viewer to use a 12-point Helvetica font with black text.</p><ul><li>It is often used to define how text should look when the field is displayed.</li><li>It is more about presentation than the actual field semantics.</li></ul>',
+  Parent: '<h4>What it means</h4><p>This links the field to a parent field dictionary when the field is part of a hierarchy.</p><p><strong>Example:</strong> a complex form might place several widgets under one parent field so they share logical properties.</p><ul><li>It allows complex form structures where multiple widgets are grouped under a shared logical field.</li><li>It is often important in advanced or generated PDFs rather than simple one-field documents.</li></ul>',
+  Kids: '<h4>What it means</h4><p>This contains child widget dictionaries when a field uses multiple annotations or widgets.</p><p><strong>Example:</strong> one logical signature field can have several child widgets that appear in different places or states.</p><ul><li>It is common in forms that expose the same logical field through multiple visual widgets.</li><li>It helps the PDF structure represent one field with several associated appearances or positions.</li></ul>',
+};
+
+// ISO 32000-1 Table 165 -- annotation /F flag bit meanings
+const ANNOTATION_FLAG_BITS = {
+  1: 'Invisible', 2: 'Hidden', 3: 'Print', 4: 'NoZoom', 5: 'NoRotate',
+  6: 'NoView', 7: 'ReadOnly', 8: 'Locked', 9: 'ToggleNoView', 10: 'LockedContents',
+};
+
+// ISO 32000-1 Table 221 -- common /Ff field flag bit meanings (bits 1-3)
+const FIELD_FLAG_BITS = { 1: 'ReadOnly', 2: 'Required', 3: 'NoExport' };
+
+function decodeFlags(rawValue, bitMap) {
+  const num = parseInt(rawValue, 10);
+  if (!Number.isFinite(num) || num === 0) return ['None'];
+  const set = Object.entries(bitMap)
+    .filter(([bit]) => num & (1 << (Number(bit) - 1)))
+    .map(([, label]) => label);
+  return set.length ? set : [`Unknown (${num})`];
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = String(str);
+  return div.innerHTML;
+}
+
+function openFieldInfoModal(key) {
+  const title = document.getElementById('fieldInfoTitle');
+  const body = document.getElementById('fieldInfoBody');
+  const modal = document.getElementById('fieldInfoModal');
+  const label = FIELD_KEY_LABELS[key] || key;
+  const description = FIELD_KEY_DESCRIPTIONS[key] || 'No description is available for this PDF property yet.';
+
+  if (title) title.textContent = label;
+  if (body) body.innerHTML = description;
+  if (modal) modal.classList.add('is-open');
+}
+
+function closeFieldInfoModal() {
+  const modal = document.getElementById('fieldInfoModal');
+  if (modal) modal.classList.remove('is-open');
+}
+
+function renderFieldDetails(field) {
+  const body = document.getElementById('fieldDetailsBody');
+  if (!field || !field.raw) {
+    body.innerHTML = '<p class="field-details-empty">No details available.</p>';
+    return;
+  }
+
+  const rows = Object.entries(field.raw).map(([key, rawValue]) => {
+    const label = FIELD_KEY_LABELS[key] || key;
+    let displayValue;
+
+    if (key === 'F') {
+      const flags = decodeFlags(rawValue, ANNOTATION_FLAG_BITS);
+      displayValue = `${escapeHtml(rawValue)} <span class="flag-tags">${flags.map(f => `<span class="flag-tag">${escapeHtml(f)}</span>`).join('')}</span>`;
+    } else if (key === 'Ff') {
+      const flags = decodeFlags(rawValue, FIELD_FLAG_BITS);
+      displayValue = `${escapeHtml(rawValue)} <span class="flag-tags">${flags.map(f => `<span class="flag-tag">${escapeHtml(f)}</span>`).join('')}</span>`;
+    } else {
+      displayValue = escapeHtml(rawValue);
+    }
+
+    return `<tr><th><span class="field-details-label">${escapeHtml(label)}</span></th><td>${displayValue}</td><td class="field-details-help-cell"><button type="button" class="field-details-help" data-key="${escapeHtml(key)}" aria-label="Explain ${escapeHtml(label)}">?</button></td></tr>`;
+  }).join('');
+
+  body.innerHTML = `<table class="field-details-table">${rows}</table>`;
+
+  body.querySelectorAll('.field-details-help').forEach((btn) => {
+    btn.addEventListener('click', () => openFieldInfoModal(btn.getAttribute('data-key')));
+  });
+}
+
+const closeFieldInfoModalBtn = document.getElementById('closeFieldInfoModalBtn');
+if (closeFieldInfoModalBtn) {
+  closeFieldInfoModalBtn.addEventListener('click', closeFieldInfoModal);
+}
+
+const fieldInfoModal = document.getElementById('fieldInfoModal');
+if (fieldInfoModal) {
+  fieldInfoModal.addEventListener('click', (e) => {
+    if (e.target === fieldInfoModal) closeFieldInfoModal();
+  });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeFieldInfoModal();
+});
   </script>
 </body>
 </html>

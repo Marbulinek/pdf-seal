@@ -200,6 +200,7 @@ class PdfSignatureTool {
         creatorName: name,
         page: pageIndex,
         rect,
+        raw: this._getRawDictEntries(field.acroField.dict),
       };
     });
   }
@@ -430,6 +431,22 @@ class PdfSignatureTool {
 
     // Properly unwrap PDFString object formats without breaking literal brackets
     return typeof value.value === 'function' ? value.value() : value.toString().replace(/^\(|\)$/g, '');
+  }
+
+  _getRawDictEntries(dict: any) {
+    if (!dict) return {};
+
+    const out: Record<string, string> = {};
+    for (const [key, value] of dict.entries()) {
+      const keyName = key.toString().slice(1);
+      if (value && typeof value.toString === 'function') {
+        const text = value.toString();
+        out[keyName] = text.replace(/^\(|\)$/g, '');
+      } else {
+        out[keyName] = '';
+      }
+    }
+    return out;
   }
 }
 
