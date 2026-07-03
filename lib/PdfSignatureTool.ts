@@ -3,15 +3,11 @@
 import fs from 'fs';
 import {
   PDFDocument,
-  PDFAcroSignature,
-  PDFSignature,
-  AcroFieldFlags,
   PDFName,
   PDFString,
   PDFRef,
   PDFDict,
-  rgb,
-  degrees,
+  AcroFieldFlags,
 } from 'pdf-lib';
 
 /**
@@ -26,17 +22,21 @@ import {
  *      and per-field properties (name, required, read-only, page, rect,
  *      tooltip, and any other AcroForm field-dictionary entry).
  *
- * pdf-lib can already *read* signature fields (form.getSignature(name)),
- * but it has no createSignature()/addToPage() helper, and its built-in
- * removeField() throws on unsigned fields (it assumes every widget has an
- * appearance stream). Both gaps are patched here.
+ * STRUCTURE NOTE (important): signature fields are created as a single
+ * MERGED Field+Widget object -- one PDF dictionary that is simultaneously
+ * the AcroForm field (/FT, /T, /Ff) and the page annotation (/Subtype
+ * /Widget, /Rect, /P). This matches how other tools (and Nutrient/PSPDFKit
+ * itself) commonly produce single-widget signature fields, and it's the
+ * reason Nutrient's `annotation.creatorName` (which it synthesizes from
+ * `annotation.formFieldName`, i.e. /T) is populated correctly: /T is
+ * present directly on the annotation object, not on a separate parent
+ * field object the widget only points to via /Kids.
  *
- * NOTE on "creatorName": confirmed by direct inspection of PDFs where
- * Nutrient (PSPDFKit) correctly showed a WidgetAnnotation's creatorName --
- * there is NO such key anywhere in the raw PDF. Nutrient synthesizes
- * `annotation.creatorName` from `annotation.formFieldName` (i.e. /T) for
- * signature widgets that have no explicit creator name of their own.
- * There is nothing to write here beyond the field's normal /T name.
+ * pdf-lib's own built-in helpers (createTextField, PDFAcroSignature, etc.)
+ * always build a SPLIT structure (parent field dict + separate child widget
+ * dict via /Kids), which is why they are not used here for construction --
+ * only for reading/inspecting fields, where pdf-lib handles both shapes
+ * transparently.
  */
 class PdfSignatureTool {
   private pdfDoc: any;
@@ -72,7 +72,8 @@ class PdfSignatureTool {
   // ---------------------------------------------------------------------
 
   /**
-   * Add a new, empty signature field (widget) to a page.
+   * Add a new, empty signature field to a page, as a single merged
+   * Field+Widget object (see class-level note above).
    *
    * @param {number} pageIndex zero-based page index
    * @param {string} name fully qualified field name (must be unique)
@@ -114,38 +115,35 @@ class PdfSignatureTool {
       throw new Error(`A form field named "${name}" already exists.`);
     }
 
-    // Build the underlying /FT /Sig field dictionary. pdf-lib has no
-    // PDFAcroSignature.create(), so we build the dict the same way
-    // PDFAcroText.create() does internally.
-    const sigDict = context.obj({ FT: 'Sig', Kids: [] });
-    const sigRef = context.register(sigDict);
-    const acroSig = PDFAcroSignature.fromDict(sigDict, sigRef);
-    acroSig.setPartialName(name);
-    acroSig.setFlagTo(AcroFieldFlags.Required, !!required);
-    acroSig.setFlagTo(AcroFieldFlags.ReadOnly, !!readOnly);
+    // Compute the /Ff flags bitmask (Required = bit 2, ReadOnly = bit 1,
+    // per ISO 32000-1 Table 221 / pdf-lib's AcroFieldFlags).
+    let flags = 0;
+    if (required) flags |= AcroFieldFlags.Required;
+    if (readOnly) flags |= AcroFieldFlags.ReadOnly;
+
+    const dictEntries: Record<string, any> = {
+      Type: 'Annot',
+      Subtype: 'Widget',
+      FT: 'Sig',
+      T: PDFString.of(name),
+      Rect: [x, y, x + width, y + height],
+      P: page.ref,
+      F: 4, // Print flag -- visible when printed/rendered normally
+      Ff: flags,
+      MK: { BC: [0, 0, 0], BG: [1, 1, 1] },
+      BS: { W: borderWidth },
+    };
     if (tooltip) {
-      sigDict.set(PDFName.of('TU'), PDFString.of(tooltip));
+      dictEntries.TU = PDFString.of(tooltip);
     }
 
-    // Register the field at the top level of the AcroForm.
-    form.acroForm.addField(sigRef);
+    const mergedDict = context.obj(dictEntries);
+    const fieldRef = context.register(mergedDict);
 
-    // Create + attach the widget annotation (the visible box on the page).
-    const pdfSignature = PDFSignature.of(acroSig, sigRef, pdfDoc);
-    const widget = (pdfSignature as any).createWidget({
-      x,
-      y,
-      width,
-      height,
-      borderWidth,
-      borderColor: rgb(0, 0, 0),
-      backgroundColor: rgb(1, 1, 1),
-      rotate: degrees(0),
-      page: page.ref,
-    });
-    const widgetRef = context.register(widget.dict);
-    acroSig.addWidget(widgetRef);
-    page.node.addAnnot(widgetRef);
+    // Register as both a top-level AcroForm field and a page annotation --
+    // this single object plays both roles.
+    form.acroForm.addField(fieldRef);
+    page.node.addAnnot(fieldRef);
 
     // Tell viewers signature fields exist (AcroForm /SigFlags bit 1).
     const sigFlagsKey = PDFName.of('SigFlags');
@@ -158,13 +156,15 @@ class PdfSignatureTool {
       name,
       page: pageIndex,
       required: !!required,
-      rect: widget.getRectangle(),
+      rect: { x, y, width, height },
     };
   }
 
   /**
    * List every AcroForm field in the document with the metadata that
    * matters for signature workflows (type, required/readOnly, page, rect).
+   * Works transparently for both merged and split (Kids-based) fields --
+   * pdf-lib's own field/widget APIs handle both shapes when reading.
    * @returns {Array<object>}
    */
   listFields() {
@@ -194,9 +194,9 @@ class PdfSignatureTool {
         required: typeof field.isRequired === 'function' ? field.isRequired() : false,
         readOnly: typeof field.isReadOnly === 'function' ? field.isReadOnly() : false,
         tooltip: this._getRawString(field.acroField.dict, 'TU'),
-        // Nutrient's `annotation.creatorName` is synthesized from the field's
-        // own name (formFieldName / /T) for signature widgets -- confirmed by
-        // direct inspection, there is no separate PDF key for it.
+        // Nutrient's `annotation.creatorName` is synthesized from the
+        // annotation's own formFieldName (/T) for signature widgets --
+        // there is no separate PDF key for it, so this is just the name.
         creatorName: name,
         page: pageIndex,
         rect,
@@ -219,7 +219,14 @@ class PdfSignatureTool {
     return out;
   }
 
-  /** Rename a field (its /T partial name). */
+  /**
+   * Rename a field (its /T partial name).
+   *
+   * For a merged field+widget (the shape this tool creates), /T lives
+   * directly on the widget/annotation object, so renaming it here is
+   * exactly what makes Nutrient's creatorName follow along too -- no
+   * extra property needs to be touched.
+   */
   renameField(name: string, newName: string) {
     const form = this.pdfDoc.getForm();
     if (form.getFieldMaybe(newName)) {
@@ -292,7 +299,8 @@ class PdfSignatureTool {
    *
    * pdf-lib's own `form.removeField()` throws on unsigned signature
    * fields because it assumes every widget has a normal appearance
-   * stream (/AP /N). This version doesn't make that assumption.
+   * stream (/AP /N). This version doesn't make that assumption, and
+   * handles both merged and split field shapes.
    */
   removeField(name: string) {
     const pdfDoc = this.pdfDoc;
