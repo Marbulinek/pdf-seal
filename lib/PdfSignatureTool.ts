@@ -7,8 +7,87 @@ import {
   PDFString,
   PDFRef,
   PDFDict,
+  PDFArray,
+  PDFStream,
+  PDFNumber,
+  PDFBool,
+  PDFHexString,
+  PDFNull,
   AcroFieldFlags,
 } from 'pdf-lib';
+
+/**
+ * Recursively convert any pdf-lib object into plain, JSON-serializable
+ * data (strings, numbers, booleans, null, plain objects, arrays).
+ *
+ * This is intentionally generic and format-agnostic -- it doesn't know
+ * or care whether it's looking at a Catalog, a font, an image XObject,
+ * an embedded XMP metadata stream, or a custom producer-specific key.
+ * Whatever shape the PDF actually has, this mirrors it.
+ *
+ * Indirect references (PDFRef) are left as "<num> <gen> R" strings
+ * rather than being resolved/inlined -- this keeps the walk flat,
+ * immune to reference cycles (e.g. Pages <-> Kids <-> Parent), and
+ * lets the caller cross-reference them against the flat object table
+ * produced by getFullRawDump().
+ */
+function pdfValueToPlain(value: any, depth: number = 0): any {
+  if (depth > 25) return '[max nesting depth reached]';
+  if (value === undefined || value === null) return null;
+  if (value instanceof PDFRef) return `${value.objectNumber} ${value.generationNumber} R`;
+  if (value instanceof PDFName) {
+    try {
+      return value.decodeText();
+    } catch (_e) {
+      return value.toString().slice(1);
+    }
+  }
+  if (value instanceof PDFString || value instanceof PDFHexString) {
+    // These sometimes hold binary data (signature hashes, file IDs) rather
+    // than real text -- decodeText() still returns *something* printable,
+    // falling back to the raw hex/literal form only if it throws.
+    try {
+      return value.decodeText();
+    } catch (_e) {
+      return value.asString();
+    }
+  }
+  if (value instanceof PDFNumber) return value.asNumber();
+  if (value instanceof PDFBool) return value.asBoolean();
+  if (value === PDFNull) return null;
+
+  if (value instanceof PDFArray) {
+    const out: any[] = [];
+    for (let i = 0; i < value.size(); i++) out.push(pdfValueToPlain(value.get(i), depth + 1));
+    return out;
+  }
+
+  if (value instanceof PDFStream) {
+    const out: Record<string, any> = { '@type': 'Stream' };
+    for (const [key, entry] of value.dict.entries()) {
+      out[key.toString().slice(1)] = pdfValueToPlain(entry, depth + 1);
+    }
+    try {
+      const bytes = typeof value.getContents === 'function' ? value.getContents() : null;
+      if (bytes) out['@rawByteLength'] = bytes.length;
+    } catch (_e) {
+      // Some stream subclasses (e.g. still-encoded ones) may not expose raw
+      // bytes cheaply -- that's fine, the dict entries are the useful part.
+    }
+    return out;
+  }
+
+  if (value instanceof PDFDict) {
+    const out: Record<string, any> = {};
+    for (const [key, entry] of value.entries()) {
+      out[key.toString().slice(1)] = pdfValueToPlain(entry, depth + 1);
+    }
+    return out;
+  }
+
+  // Fallback for anything else pdf-lib might hand back.
+  return typeof value.toString === 'function' ? value.toString() : String(value);
+}
 
 /**
  * PdfSignatureTool
@@ -385,6 +464,62 @@ class PdfSignatureTool {
       context.trailerInfo.Info = context.register(info);
     }
     info.set(PDFName.of(key), PDFString.of(String(value)));
+  }
+
+  /**
+   * Walk the ENTIRE PDF object graph -- every single indirect object in
+   * the file, plus the trailer -- and return it as plain key/value data.
+   *
+   * Unlike getMetadata()/getRawInfoDict()/listFields(), this makes no
+   * assumption about what's "relevant": it dynamically enumerates
+   * whatever objects the file actually contains -- Catalog, Pages,
+   * individual page dicts, fonts, XObjects (images), the AcroForm,
+   * annotations, outlines, embedded XMP metadata streams, and any
+   * custom/producer-specific objects -- so it surfaces every possible
+   * piece of metadata, not just the ones this tool otherwise knows about.
+   *
+   * @returns {{trailer: object, objects: Record<string, any>}}
+   *   `objects` is keyed by "<objNum> <gen> R" (matching how those
+   *   objects are referenced elsewhere in the dump), each value being
+   *   the plain-data form of that object's dictionary/array/primitive.
+   */
+  getFullRawDump() {
+    const context = this.pdfDoc.context;
+    const objects: Record<string, any> = {};
+
+    for (const [ref, obj] of context.enumerateIndirectObjects()) {
+      const key = `${ref.objectNumber} ${ref.generationNumber} R`;
+      objects[key] = pdfValueToPlain(obj);
+    }
+
+    const trailer: Record<string, any> = {};
+    const trailerInfo = context.trailerInfo || {};
+    for (const [key, value] of Object.entries(trailerInfo)) {
+      if (value === undefined || value === null) continue;
+      trailer[key] = pdfValueToPlain(value);
+    }
+
+    return { trailer, objects };
+  }
+
+  /**
+   * Convenience bundle for a "Document Info" view: standard metadata,
+   * the raw Info dictionary (including any custom keys), every form
+   * field with its full raw dictionary entries, and -- for a truly
+   * complete picture -- the entire raw PDF object table via
+   * getFullRawDump(). Intended to be spread into whatever JSON an
+   * `/api/info`-style route already returns, e.g.
+   *
+   *   const info = tool.getDocumentInfoSummary();
+   *   res.json({ fields: info.fields, metadata: info.metadata, rawInfo: info.rawInfo, rawObjects: info.rawObjects });
+   */
+  getDocumentInfoSummary() {
+    return {
+      metadata: this.getMetadata(),
+      rawInfo: this.getRawInfoDict(),
+      fields: this.listFields(),
+      rawObjects: this.getFullRawDump(),
+    };
   }
 
   // ---------------------------------------------------------------------

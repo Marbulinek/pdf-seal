@@ -123,6 +123,17 @@
 
     <aside class="tools-panel">
 
+      <div class="tools-tabs" role="tablist">
+        <button type="button" class="tools-tab active" id="tabBtnFields" data-tab="fields" role="tab" aria-selected="true" aria-controls="tabFields">
+          ✍️ Signature Fields
+        </button>
+        <button type="button" class="tools-tab" id="tabBtnDocInfo" data-tab="docinfo" role="tab" aria-selected="false" aria-controls="tabDocInfo">
+          📄 Document Info
+        </button>
+      </div>
+
+      <div class="tab-content" id="tabFields" data-tab-content="fields">
+
       <div class="panel edit-panel" id="editPanel" style="opacity: 0.5; pointer-events: none;">
         <div class="panel-overlay" id="editPanelOverlay">
           <div class="panel-overlay-text">Upload a document first to edit fields</div>
@@ -199,8 +210,45 @@
         <div id="actionStatus" class="status-text"></div>
       </div>
 
+      </div>
+
+      <div class="tab-content" id="tabDocInfo" data-tab-content="docinfo" hidden>
+        <div class="panel docinfo-panel" id="docInfoPanel">
+          <div class="panel-overlay" id="docInfoPanelOverlay">
+            <div class="panel-overlay-text">Upload a document first to see its metadata</div>
+          </div>
+          <h3><span class="panel-dot dot-ocean"></span>Document Metadata</h3>
+
+          <div class="meta-search-wrap">
+            <span class="meta-search-icon" aria-hidden="true">🔍</span>
+            <input type="text" id="metaSearchInput" class="meta-search-input" placeholder="Find a key or value…" disabled>
+            <button type="button" class="meta-search-clear" id="metaSearchClearBtn" aria-label="Clear search" hidden>✕</button>
+          </div>
+
+          <div class="meta-tree-container" id="metaTreeContainer">
+            <p class="field-details-empty">No document loaded yet.</p>
+          </div>
+        </div>
+      </div>
+
     </aside>
   </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <span class="footer-copy">© 2026 PDF Seal</span>
+      <span class="footer-love">
+        Built with
+        <svg class="heart-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/>
+        </svg>
+      </span>
+      <a class="footer-link" href="https://github.com/marbulinek/pdf-seal/issues/new" target="_blank" rel="noopener noreferrer">
+        <span class="footer-link-icon" aria-hidden="true">💡</span>
+        <span class="footer-link-text">Got an idea or found a bug? Let us know on GitHub</span>
+      </a>
+    </div>
+  </footer>
 
   <script>
     // State variables
@@ -209,6 +257,9 @@
     let pageNum = 1;
     let currentScale = 1.0;
     let documentFields = [];
+    let documentMeta = null;       // standard Info dict fields (title, author, producer, ...), from /api/info
+    let documentRawInfo = null;    // raw/custom Info dictionary entries, from /api/info
+    let documentRawObjects = null; // { trailer, objects } -- the entire raw PDF object table, from /api/info
     let currentViewport = null; // viewport of the currently rendered page
 
     // New-field placement state
@@ -282,6 +333,28 @@
 
     const uploadDropdownCtl = setupDropdown('uploadDropdown', 'btnUploadToggle');
     const downloadDropdownCtl = setupDropdown('downloadDropdown', 'btnDownloadToggle');
+
+    // ---------------------------------------------------------------
+    // Tools panel tabs (Signature Fields / Document Info)
+    // ---------------------------------------------------------------
+    function setupToolsTabs() {
+      const tabButtons = document.querySelectorAll('.tools-tab');
+      tabButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const target = btn.getAttribute('data-tab');
+          tabButtons.forEach((b) => {
+            const isActive = b === btn;
+            b.classList.toggle('active', isActive);
+            b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+          });
+          document.querySelectorAll('.tab-content').forEach((panel) => {
+            panel.hidden = panel.getAttribute('data-tab-content') !== target;
+          });
+          if (target === 'docinfo') renderMetaTree();
+        });
+      });
+    }
+    setupToolsTabs();
 
     document.addEventListener('click', (e) => {
       document.querySelectorAll('.dropdown.is-open').forEach(d => {
@@ -501,6 +574,11 @@
       if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !activeField;
       if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument;
       if (addSigBtn) addSigBtn.disabled = !hasDocument || !pendingField;
+
+      const docInfoPanelOverlay = document.getElementById('docInfoPanelOverlay');
+      const metaSearchInput = document.getElementById('metaSearchInput');
+      if (docInfoPanelOverlay) docInfoPanelOverlay.classList.toggle('is-hidden', hasDocument);
+      if (metaSearchInput) metaSearchInput.disabled = !hasDocument;
     }
 
     function resetPanelsForNewDocument() {
@@ -539,6 +617,13 @@
       if (detailsBlock) detailsBlock.open = false;
       if (statusEl) statusEl.textContent = '';
       if (statusEl) statusEl.className = 'status-text';
+
+      documentMeta = null;
+      documentRawInfo = null;
+      documentRawObjects = null;
+      const metaSearchInput = document.getElementById('metaSearchInput');
+      if (metaSearchInput) metaSearchInput.value = '';
+      renderMetaTree();
     }
 
     async function processNewFile(file, options = {}) {
@@ -563,6 +648,10 @@
         const res = await fetch('/api/info', { method: 'POST', body: formData });
         const data = await res.json();
         documentFields = data.fields || [];
+        documentMeta = data.metadata || null;
+        documentRawInfo = data.rawInfo || null;
+        documentRawObjects = data.rawObjects || null;
+        renderMetaTree();
 
         // 2. Render PDF
         const arrayBuffer = await file.arrayBuffer();
@@ -575,6 +664,10 @@
 
       } catch (err) {
         pdfDoc = null;
+        documentMeta = null;
+        documentRawInfo = null;
+        documentRawObjects = null;
+        renderMetaTree();
         updateViewerControlsState();
         alert('Error processing PDF: ' + err.message);
       } finally {
@@ -1256,6 +1349,191 @@ function renderFieldDetails(field) {
 
   body.querySelectorAll('.field-details-help').forEach((btn) => {
     btn.addEventListener('click', () => openFieldInfoModal(btn.getAttribute('data-key')));
+  });
+}
+
+// ---------------------------------------------------------------
+// Document Info tab -- searchable tree of all document metadata
+// ---------------------------------------------------------------
+
+function formatMetaDate(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString();
+}
+
+function formatMetaValue(value) {
+  if (value === undefined || value === null || value === '') return '—';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+  return String(value);
+}
+
+// Assemble the full "Document" object -- everything the PDF exposes --
+// as a plain nested object: { branchName: { key: value, ... }, ... }
+function buildMetaTreeData() {
+  const tree = {};
+
+  if (documentMeta) {
+    tree['Document Metadata'] = {
+      Title: formatMetaValue(documentMeta.title),
+      Author: formatMetaValue(documentMeta.author),
+      Subject: formatMetaValue(documentMeta.subject),
+      Keywords: formatMetaValue(documentMeta.keywords),
+      Creator: formatMetaValue(documentMeta.creator),
+      Producer: formatMetaValue(documentMeta.producer),
+      'Creation Date': formatMetaDate(documentMeta.creationDate),
+      'Modification Date': formatMetaDate(documentMeta.modificationDate),
+      'Page Count': formatMetaValue(documentMeta.pageCount),
+    };
+  }
+
+  if (documentRawInfo && Object.keys(documentRawInfo).length) {
+    const rawNode = {};
+    Object.entries(documentRawInfo).forEach(([key, value]) => {
+      rawNode[key] = formatMetaValue(value);
+    });
+    tree['Info Dictionary (raw)'] = rawNode;
+  }
+
+  if (documentFields && documentFields.length) {
+    const fieldsNode = {};
+    documentFields.forEach((field, i) => {
+      const fieldName = field.name || `Field ${i + 1}`;
+      if (field.raw && Object.keys(field.raw).length) {
+        const rawEntries = {};
+        Object.entries(field.raw).forEach(([key, value]) => {
+          rawEntries[key] = formatMetaValue(value);
+        });
+        fieldsNode[fieldName] = rawEntries;
+      } else {
+        fieldsNode[fieldName] = { 'No raw properties': '—' };
+      }
+    });
+    tree['Form Fields'] = fieldsNode;
+  }
+
+  // The full raw PDF object table (trailer + every indirect object in the
+  // file: Catalog, Pages, fonts, XObjects, annotations, AcroForm, embedded
+  // metadata streams, custom producer keys -- literally everything).
+  // These come pre-structured as plain JS (objects/arrays/primitives), so
+  // they're used as-is rather than run through formatMetaValue().
+  if (documentRawObjects) {
+    if (documentRawObjects.trailer && Object.keys(documentRawObjects.trailer).length) {
+      tree['Trailer'] = documentRawObjects.trailer;
+    }
+    if (documentRawObjects.objects && Object.keys(documentRawObjects.objects).length) {
+      tree['All PDF Objects (raw)'] = documentRawObjects.objects;
+    }
+  }
+
+  return tree;
+}
+
+function highlightMetaTerm(text, term) {
+  const safe = escapeHtml(text);
+  if (!term) return safe;
+  const idx = safe.toLowerCase().indexOf(term.toLowerCase());
+  if (idx === -1) return safe;
+  return `${safe.slice(0, idx)}<mark class="meta-highlight">${safe.slice(idx, idx + term.length)}</mark>${safe.slice(idx + term.length)}`;
+}
+
+// Objects AND arrays both render as expandable tree branches
+function isExpandableMetaValue(value) {
+  return value !== null && typeof value === 'object';
+}
+
+function metaEntriesOf(node) {
+  return Array.isArray(node) ? node.map((v, i) => [`[${i}]`, v]) : Object.entries(node);
+}
+
+function renderMetaTreeNode(key, value, depth, term, forceOpen) {
+  const keyHtml = highlightMetaTerm(String(key), term);
+
+  if (isExpandableMetaValue(value)) {
+    const entries = metaEntriesOf(value);
+    const childrenHtml = entries.length
+      ? entries.map(([k, v]) => renderMetaTreeNode(k, v, depth + 1, term, forceOpen)).join('')
+      : '<div class="meta-leaf"><span class="meta-value">Empty</span></div>';
+    const shouldOpen = Boolean(forceOpen) || Boolean(term) || (depth === 0 && key === 'Document Metadata');
+    return `<details class="meta-branch" data-depth="${depth}"${shouldOpen ? ' open' : ''}>
+      <summary><span class="meta-key">${keyHtml}</span><span class="meta-count">${entries.length}</span></summary>
+      <div class="meta-branch-body">${childrenHtml}</div>
+    </details>`;
+  }
+
+  const displayValue = value === null || value === undefined || value === '' ? '—' : String(value);
+  const valueHtml = highlightMetaTerm(displayValue, term);
+  return `<div class="meta-leaf" data-depth="${depth}">
+    <span class="meta-key">${keyHtml}</span>
+    <span class="meta-value">${valueHtml}</span>
+  </div>`;
+}
+
+// Keep only the branches/leaves whose key or value matches the search term.
+// Works on both plain objects and arrays.
+function filterMetaTree(node, term) {
+  const isArrayNode = Array.isArray(node);
+  const result = isArrayNode ? [] : {};
+
+  metaEntriesOf(node).forEach(([key, value]) => {
+    const keyMatches = String(key).toLowerCase().includes(term);
+    const put = (v) => { if (isArrayNode) result.push(v); else result[key] = v; };
+
+    if (isExpandableMetaValue(value)) {
+      if (keyMatches) {
+        put(value);
+      } else {
+        const child = filterMetaTree(value, term);
+        const childCount = Array.isArray(child) ? child.length : Object.keys(child).length;
+        if (childCount) put(child);
+      }
+    } else if (keyMatches || String(value).toLowerCase().includes(term)) {
+      put(value);
+    }
+  });
+
+  return result;
+}
+
+function renderMetaTree() {
+  const container = document.getElementById('metaTreeContainer');
+  const clearBtn = document.getElementById('metaSearchClearBtn');
+  if (!container) return;
+
+  const rawTerm = (document.getElementById('metaSearchInput')?.value || '').trim();
+  const term = rawTerm.toLowerCase();
+  if (clearBtn) clearBtn.hidden = !rawTerm;
+
+  if (!pdfDoc) {
+    container.innerHTML = '<p class="field-details-empty">No document loaded yet.</p>';
+    return;
+  }
+
+  const treeData = buildMetaTreeData();
+  const filtered = term ? filterMetaTree(treeData, term) : treeData;
+
+  if (!Object.keys(filtered).length) {
+    container.innerHTML = `<p class="field-details-empty">${term ? 'No matches found.' : 'No metadata available for this document.'}</p>`;
+    return;
+  }
+
+  const html = Object.entries(filtered).map(([k, v]) => renderMetaTreeNode(k, v, 0, rawTerm)).join('');
+  container.innerHTML = `<div class="meta-tree">${html}</div>`;
+}
+
+const metaSearchInput = document.getElementById('metaSearchInput');
+if (metaSearchInput) {
+  metaSearchInput.addEventListener('input', renderMetaTree);
+}
+const metaSearchClearBtn = document.getElementById('metaSearchClearBtn');
+if (metaSearchClearBtn) {
+  metaSearchClearBtn.addEventListener('click', () => {
+    if (metaSearchInput) {
+      metaSearchInput.value = '';
+      metaSearchInput.focus();
+    }
+    renderMetaTree();
   });
 }
 

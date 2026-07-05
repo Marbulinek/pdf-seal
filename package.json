@@ -1,12 +1,17 @@
 {
   "name": "pdf-seal",
   "version": "1.0.0",
-  "description": "Browser-based PDF signature field editor",
+  "description": "PDF Seal :: Browser-based PDF signature field editor",
+  "license": "MIT",
+  "author": {
+    "name": "Lukas Caniga",
+    "email": "lukas.caniga@gmail.com",
+    "url": "https://github.com/Marbulinek/pdf-seal"
+  },
   "main": "lib/PdfSignatureTool.ts",
   "scripts": {
     "start": "ts-node server.ts"
   },
-  "license": "MIT",
   "dependencies": {
     "express": "^5.2.1",
     "multer": "^2.2.0",
