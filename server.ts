@@ -1,7 +1,7 @@
 "use strict";
 
-import express, { type Request, type Response } from "express";
-import multer from "multer";
+import express, { type Request, type Response, type NextFunction } from "express";
+import multer, { MulterError } from "multer";
 import path from "path";
 import fs from "fs";
 import PdfSignatureTool from "./lib/PdfSignatureTool";
@@ -9,8 +9,11 @@ import PdfSignatureTool from "./lib/PdfSignatureTool";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Set up Multer for handling file uploads (saves temporarily to an 'uploads' folder)
-const upload = multer({ dest: "uploads/" });
+// Set up Multer for handling file uploads (saves temporarily to an 'uploads' folder).
+// A file-size cap keeps a single (or a burst of concurrent) uploads from blowing up
+// process memory, since PdfSignatureTool.open() reads the whole file into a Buffer.
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
+const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES } });
 
 // Serve static files from the 'public' directory
 app.use(express.static("public"));
@@ -19,6 +22,22 @@ app.use(express.json());
 // Ensure the uploads directory exists
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
+}
+
+/**
+ * Best-effort delete of one or more temp files. Never throws -- cleanup must
+ * not be able to mask the real error (or, worse, crash an uncaught-exception
+ * path like the res.download() callback).
+ */
+function cleanupFiles(...paths: Array<string | null | undefined>) {
+  for (const p of paths) {
+    if (!p) continue;
+    try {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch (cleanupErr) {
+      console.error(`Failed to clean up temp file "${p}":`, cleanupErr);
+    }
+  }
 }
 
 // --- API Endpoint: Get PDF Info ---
@@ -33,13 +52,11 @@ app.post("/api/info", upload.single("pdfDocument"), async (req: Request, res: Re
       fields: tool.listFields(),
     };
 
-    // Clean up the uploaded file
-    fs.unlinkSync(file.path);
-
     res.json(result);
   } catch (error: any) {
-    fs.unlinkSync(file.path);
     res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  } finally {
+    cleanupFiles(file.path);
   }
 });
 
@@ -50,6 +67,8 @@ app.post(
   async (req: Request, res: Response) => {
     const file = req.file;
     if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    let outputPath: string | null = null;
 
     try {
       const tool = await PdfSignatureTool.open(file.path);
@@ -65,17 +84,16 @@ app.post(
 
       tool.addSignatureField(page, name, { x, y, width, height, required });
 
-      const outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
+      outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
       await tool.save(outputPath);
 
-      // Send the modified file back to the client
-      res.download(outputPath, "signed-document.pdf", (err) => {
-        // Clean up both the original upload and the modified output after sending
-        fs.unlinkSync(file.path);
-        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+      // Send the modified file back to the client, then clean up both temp files
+      // regardless of whether the download itself succeeded.
+      res.download(outputPath, "signed-document.pdf", () => {
+        cleanupFiles(file.path, outputPath);
       });
     } catch (error: any) {
-      fs.unlinkSync(file.path);
+      cleanupFiles(file.path, outputPath);
       res.status(500).json({ error: error?.message ?? "Unexpected error" });
     }
   },
@@ -85,6 +103,8 @@ app.post(
 app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, res: Response) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  let outputPath: string | null = null;
 
   try {
     const tool = await PdfSignatureTool.open(file.path);
@@ -111,15 +131,14 @@ app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, r
 
     tool.setFieldRequired(newName, required);
 
-    const outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
+    outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
     await tool.save(outputPath);
 
-    res.download(outputPath, "signed-document.pdf", (err) => {
-      fs.unlinkSync(file.path);
-      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    res.download(outputPath, "signed-document.pdf", () => {
+      cleanupFiles(file.path, outputPath);
     });
   } catch (error: any) {
-    fs.unlinkSync(file.path);
+    cleanupFiles(file.path, outputPath);
     res.status(500).json({ error: error?.message ?? "Unexpected error" });
   }
 });
@@ -128,6 +147,8 @@ app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, r
 app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request, res: Response) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  let outputPath: string | null = null;
 
   try {
     const tool = await PdfSignatureTool.open(file.path);
@@ -139,17 +160,33 @@ app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request,
 
     tool.removeField(name);
 
-    const outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
+    outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
     await tool.save(outputPath);
 
-    res.download(outputPath, "signed-document.pdf", (err) => {
-      fs.unlinkSync(file.path);
-      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    res.download(outputPath, "signed-document.pdf", () => {
+      cleanupFiles(file.path, outputPath);
     });
   } catch (error: any) {
-    fs.unlinkSync(file.path);
+    cleanupFiles(file.path, outputPath);
     res.status(500).json({ error: error?.message ?? "Unexpected error" });
   }
+});
+
+// Multer errors (e.g. file too large) land here instead of inside the route handlers.
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        error: `File too large. Maximum upload size is ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))}MB.`,
+      });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  if (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Unexpected error" });
+  }
+  next();
 });
 
 app.listen(PORT, () => {
