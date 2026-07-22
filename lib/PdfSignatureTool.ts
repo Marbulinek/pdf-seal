@@ -160,7 +160,6 @@ class PdfSignatureTool {
    * @param {boolean} [options.required=false] mark the field as required
    * @param {boolean} [options.readOnly=false]
    * @param {string}  [options.tooltip] alternate field name / tooltip (/TU)
-   * @param {number}  [options.borderWidth=1]
    * @returns {{name:string,page:number,required:boolean,rect:number[]}}
    */
   addSignatureField(pageIndex: number, name: string, options: any = {}) {
@@ -172,7 +171,6 @@ class PdfSignatureTool {
       required = false,
       readOnly = false,
       tooltip,
-      borderWidth = 1,
     } = options;
 
     const pdfDoc = this.pdfDoc;
@@ -205,8 +203,6 @@ class PdfSignatureTool {
       P: page.ref,
       F: 4, // Print flag -- visible when printed/rendered normally
       Ff: flags,
-      MK: { BC: [0, 0, 0], BG: [1, 1, 1] },
-      BS: { W: borderWidth },
     };
     if (tooltip) {
       dictEntries.TU = PDFString.of(tooltip);
