@@ -284,6 +284,7 @@
     // State variables
     let activeFile = null;
     let pdfDoc = null;
+    let currentRenderTask = null;
     let pageNum = 1;
     let currentScale = 1.0;
     let documentFields = [];
@@ -694,7 +695,15 @@
 
         // 2. Render PDF
         const arrayBuffer = await file.arrayBuffer();
-        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        // Release the previous document's worker + internal caches now that the
+        // new one has loaded successfully -- otherwise every reload (including
+        // the one that follows every field add/edit/remove) leaks a worker.
+        if (pdfDoc && pdfDoc !== nextPdfDoc) {
+          pdfDoc.destroy();
+        }
+        pdfDoc = nextPdfDoc;
 
         document.getElementById('pageCount').textContent = pdfDoc.numPages;
         pageNum = Math.min(Math.max(targetPage, 1), pdfDoc.numPages);
@@ -716,13 +725,35 @@
 
     async function renderPage(num) {
       if (!pdfDoc) return;
+
+      // If a previous render onto this same canvas is still in flight (e.g. from
+      // rapid zoom or page-nav clicks), cancel it first -- PDF.js refuses to run
+      // two render() calls against the same canvas at once.
+      if (currentRenderTask) {
+        currentRenderTask.cancel();
+        currentRenderTask = null;
+      }
+
       const page = await pdfDoc.getPage(num);
       const viewport = page.getViewport({ scale: currentScale });
 
       canvas.height = viewport.height;
       canvas.width = viewport.width;
 
-      await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+      const renderTask = page.render({ canvasContext: ctx, viewport: viewport });
+      currentRenderTask = renderTask;
+
+      try {
+        await renderTask.promise;
+      } catch (err) {
+        // A cancelled render throws a RenderingCancelledException -- that's
+        // expected when a newer render superseded this one, not a real error.
+        if (err && err.name === 'RenderingCancelledException') return;
+        throw err;
+      } finally {
+        if (currentRenderTask === renderTask) currentRenderTask = null;
+      }
+
       currentViewport = viewport;
       drawFieldOverlays(viewport);
 
