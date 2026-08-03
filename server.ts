@@ -191,4 +191,11 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
+  const mem = process.memoryUsage();
+  console.log({
+    rss: `${(mem.rss / 1024 / 1024).toFixed(1)} MB`,        // celková pamäť procesu
+    heapUsed: `${(mem.heapUsed / 1024 / 1024).toFixed(1)} MB`,
+    heapTotal: `${(mem.heapTotal / 1024 / 1024).toFixed(1)} MB`,
+    external: `${(mem.external / 1024 / 1024).toFixed(1)} MB`,
+  });
 });
