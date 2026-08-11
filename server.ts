@@ -1,10 +1,10 @@
 "use strict";
 
 import express, { type Request, type Response, type NextFunction } from "express";
-import http from "http";
+import http from "node:http";
 import multer, { MulterError } from "multer";
-import path from "path";
-import fs from "fs";
+import path from "node:path";
+import fs from "node:fs";
 import { WebSocket, WebSocketServer } from "ws";
 import PdfSignatureTool from "./lib/PdfSignatureTool";
 
@@ -41,7 +41,8 @@ const upload = multer({ dest: UPLOADS_DIR, limits: { fileSize: MAX_UPLOAD_BYTES 
 
 // Serve static files from the 'public' directory
 app.use(express.static(PUBLIC_DIR));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: false }));
 
 function configuredStunUrls(): string[] {
   const configured = process.env.WEBRTC_STUN_URLS
@@ -97,8 +98,6 @@ function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
-app.use("/api", rateLimitMiddleware);
-
 // A shared link is still the same client application; the browser starts the
 // receiver flow after it reads the session id from the location.
 app.get("/share/:sessionId", (req: Request, res: Response) => {
@@ -137,86 +136,91 @@ function logError(context: string, error: unknown, details?: Record<string, unkn
   console.error(`[error] ${context}`, details ?? {}, error);
 }
 
-// --- API Endpoint: Get PDF Info ---
-app.post("/api/info", upload.single("pdfDocument"), async (req: Request, res: Response) => {
+type UploadedPdfActionResult =
+  | { kind: "json"; payload: unknown }
+  | { kind: "download"; outputPath: string };
+
+function createDownloadResult(): UploadedPdfActionResult {
+  return {
+    kind: "download",
+    outputPath: path.resolve(UPLOADS_DIR, `modified_${Date.now()}.pdf`),
+  };
+}
+
+async function withUploadedPdf(
+  req: Request,
+  res: Response,
+  context: string,
+  action: (tool: PdfSignatureTool) => Promise<UploadedPdfActionResult>,
+) {
   const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-  try {
-    const safeFilePath = resolveSafePath(file.path);
-    const tool = await PdfSignatureTool.open(safeFilePath);
-    const result = {
-      metadata: tool.getMetadata(),
-      fields: tool.listFields(),
-    };
-
-    res.json(result);
-  } catch (error: any) {
-    logError("api-info", error, { filePath: file.path });
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  } finally {
-    cleanupFiles(file.path);
+  if (!file) {
+    res.status(400).json({ error: "No file uploaded" });
+    return;
   }
-});
-
-// --- API Endpoint: Add Signature Field ---
-app.post(
-  "/api/add-signature",
-  upload.single("pdfDocument"),
-  async (req: Request, res: Response) => {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-    let outputPath: string | null = null;
-
-    try {
-      const safeFilePath = resolveSafePath(file.path);
-      const tool = await PdfSignatureTool.open(safeFilePath);
-
-      // Parse incoming form data
-      const page = parseInt(req.body.page, 10) || 0;
-      const name = req.body.name || `SigField_${Date.now()}`;
-      const x = parseFloat(req.body.x) || 50;
-      const y = parseFloat(req.body.y) || 50;
-      const width = parseFloat(req.body.width) || 200;
-      const height = parseFloat(req.body.height) || 60;
-      const required = req.body.required === "true";
-
-      tool.addSignatureField(page, name, { x, y, width, height, required });
-
-      outputPath = path.resolve(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
-      await tool.save(outputPath);
-
-      // Send the modified file back to the client, then clean up both temp files
-      // regardless of whether the download itself succeeded.
-      res.download(outputPath, "signed-document.pdf", () => {
-        cleanupFiles(file.path, outputPath);
-      });
-    } catch (error: any) {
-      logError("api-add-signature", error, { filePath: file.path });
-      cleanupFiles(file.path, outputPath);
-      res.status(500).json({ error: error?.message ?? "Unexpected error" });
-    }
-  },
-);
-
-// --- API Endpoint: Edit Existing Field ---
-app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   let outputPath: string | null = null;
 
   try {
     const safeFilePath = resolveSafePath(file.path);
     const tool = await PdfSignatureTool.open(safeFilePath);
+    const result = await action(tool);
 
+    if (result.kind === "download") {
+      outputPath = result.outputPath;
+      await tool.save(outputPath);
+      res.download(outputPath, "signed-document.pdf", () => {
+        cleanupFiles(file.path, outputPath);
+      });
+      return;
+    }
+
+    res.json(result.payload);
+    cleanupFiles(file.path);
+  } catch (error: unknown) {
+    logError(context, error, { filePath: file.path });
+    cleanupFiles(file.path, outputPath);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Unexpected error" });
+  }
+}
+
+// --- API Endpoint: Get PDF Info ---
+app.post("/api/info", rateLimitMiddleware, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  return withUploadedPdf(req, res, "api-info", async (tool) => ({
+    kind: "json",
+    payload: {
+      metadata: tool.getMetadata(),
+      fields: tool.listFields(),
+    },
+  }));
+});
+
+// --- API Endpoint: Add Signature Field ---
+app.post("/api/add-signature", rateLimitMiddleware, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  return withUploadedPdf(req, res, "api-add-signature", async (tool) => {
+    const page = Number.parseInt(req.body.page, 10) || 0;
+    const name = req.body.name || `SigField_${Date.now()}`;
+    const x = Number.parseFloat(req.body.x) || 50;
+    const y = Number.parseFloat(req.body.y) || 50;
+    const width = Number.parseFloat(req.body.width) || 200;
+    const height = Number.parseFloat(req.body.height) || 60;
+    const required = req.body.required === "true";
+
+    tool.addSignatureField(page, name, { x, y, width, height, required });
+
+    return createDownloadResult();
+  });
+});
+
+// --- API Endpoint: Edit Existing Field ---
+app.post("/api/edit-field", rateLimitMiddleware, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  return withUploadedPdf(req, res, "api-edit-field", async (tool) => {
     const originalName = req.body.originalName || req.body.name;
     const newName = req.body.name || originalName;
-    const x = parseFloat(req.body.x);
-    const y = parseFloat(req.body.y);
-    const width = parseFloat(req.body.width);
-    const height = parseFloat(req.body.height);
+    const x = Number.parseFloat(req.body.x);
+    const y = Number.parseFloat(req.body.y);
+    const width = Number.parseFloat(req.body.width);
+    const height = Number.parseFloat(req.body.height);
     const required = String(req.body.required).toLowerCase() === "true";
 
     if (!originalName) {
@@ -233,29 +237,13 @@ app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, r
 
     tool.setFieldRequired(newName, required);
 
-    outputPath = path.resolve(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
-    await tool.save(outputPath);
-
-    res.download(outputPath, "signed-document.pdf", () => {
-      cleanupFiles(file.path, outputPath);
-    });
-  } catch (error: any) {
-    logError("api-edit-field", error, { filePath: file.path });
-    cleanupFiles(file.path, outputPath);
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  }
+    return createDownloadResult();
+  });
 });
 
 // --- API Endpoint: Remove Existing Field ---
-app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-  let outputPath: string | null = null;
-
-  try {
-    const safeFilePath = resolveSafePath(file.path);
-    const tool = await PdfSignatureTool.open(safeFilePath);
+app.post("/api/remove-field", rateLimitMiddleware, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  return withUploadedPdf(req, res, "api-remove-field", async (tool) => {
     const name = req.body.name || req.body.originalName;
 
     if (!name) {
@@ -264,17 +252,8 @@ app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request,
 
     tool.removeField(name);
 
-    outputPath = path.resolve(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
-    await tool.save(outputPath);
-
-    res.download(outputPath, "signed-document.pdf", () => {
-      cleanupFiles(file.path, outputPath);
-    });
-  } catch (error: any) {
-    logError("api-remove-field", error, { filePath: file.path });
-    cleanupFiles(file.path, outputPath);
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  }
+    return createDownloadResult();
+  });
 });
 
 // Multer errors (e.g. file too large) land here instead of inside the route handlers.
