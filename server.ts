@@ -37,12 +37,21 @@ const shareSessions = new Map<string, ShareSession>();
 // A file-size cap keeps a single (or a burst of concurrent) uploads from blowing up
 // process memory, since PdfSignatureTool.open() reads the whole file into a Buffer.
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
-const upload = multer({ dest: UPLOADS_DIR, limits: { fileSize: MAX_UPLOAD_BYTES } });
+const MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024; // 10MB
+const upload = multer({
+  dest: UPLOADS_DIR,
+  limits: {
+    fileSize: MAX_UPLOAD_BYTES,
+    fieldSize: 64 * 1024,
+    files: 1,
+    parts: 2,
+  },
+});
 
 // Serve static files from the 'public' directory
 app.use(express.static(PUBLIC_DIR));
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ limit: "10mb", extended: false }));
+app.use(express.json({ limit: `${MAX_REQUEST_BODY_BYTES}` }));
+app.use(express.urlencoded({ limit: `${MAX_REQUEST_BODY_BYTES}`, extended: false }));
 
 function configuredStunUrls(): string[] {
   const configured = process.env.WEBRTC_STUN_URLS
