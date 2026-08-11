@@ -25,6 +25,20 @@ The app opens as a web workspace with two main areas:
 
 pdf-seal does not apply a cryptographic signature. Instead, it prepares the PDF by adding empty signature form fields that PDF viewers and e-signature tools can recognize. These fields appear as interactive boxes in the document so a signer can later use them in a signing workflow.
 
+## Direct PDF sharing
+
+With a document open, select **Share** to create a `/share/:sessionId` link. When the recipient opens it, the two browsers establish a WebRTC data channel and the PDF is transferred in small binary chunks with backpressure. The sharing service only relays WebRTC offer/answer/ICE messages; it never receives, stores, or Base64-encodes the PDF. The recipient verifies the received bytes with SHA-256 before opening the file.
+
+Share sessions exist only in server memory and expire after 15 minutes. This initial version intentionally has no TURN fallback, so a direct connection may be unavailable on restrictive networks.
+
+### STUN configuration
+
+Set `WEBRTC_STUN_URLS` on Railway (or locally) to a comma-separated list of STUN URLs. If unset, the app uses `stun:stun.l.google.com:19302`.
+
+```text
+WEBRTC_STUN_URLS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+```
+
 ## Run the app
 
 Install dependencies:

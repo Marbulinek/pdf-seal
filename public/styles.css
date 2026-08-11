@@ -109,6 +109,7 @@ h1, h2, h3 { font-family: var(--font-display); }
   gap: 6px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.15s ease;
 }
+.btn[hidden] { display: none !important; }
 .btn:hover:not(:disabled) { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--navy); background: var(--cream); }
 .btn:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--navy); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -264,6 +265,57 @@ h1, h2, h3 { font-family: var(--font-display); }
 .modal-backdrop.is-open .modal-box {
   transform: translateY(0);
 }
+
+/* ---------- Direct share ---------- */
+.share-modal-box { width: min(760px, 100%); display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+.share-modal-box.is-receiver { width: min(720px, 100%); }
+.share-modal-hero-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+.share-hero-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.share-hero {
+  width: 54px; height: 54px; border-radius: 18px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--ice); color: var(--navy); border: 2px solid var(--navy);
+  box-shadow: 3px 3px 0 var(--navy); font-size: 1.7rem; margin: 4px 0 2px;
+  flex-shrink: 0;
+}
+.share-modal-hero-panel .modal-hint {
+  margin: 0;
+  flex: 1;
+}
+.share-link-row { display: flex; gap: 10px; align-items: center; margin: 0; }
+.share-link-row[hidden], .share-progress-wrap[hidden] { display: none !important; }
+.modal-text-input.share-link-input { flex: 1; min-width: 0; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.76rem; background: #e8edf0; border-color: #b7c2cc; color: var(--ocean-dark); }
+.copy-share-wrap { position: relative; flex: 0 0 auto; }
+.copy-share-tooltip { position: absolute; right: 0; bottom: calc(100% + 9px); z-index: 1; padding: 6px 10px; border: 2px solid var(--navy); border-radius: 9px; background: var(--navy); color: #fff; box-shadow: 2px 2px 0 var(--ice); font-size: 0.72rem; font-weight: 700; opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease; }
+.copy-share-tooltip::after { content: ''; position: absolute; right: 15px; top: 100%; border: 5px solid transparent; border-top-color: var(--navy); }
+.copy-share-tooltip.is-visible { opacity: 1; visibility: visible; transform: translateY(0); }
+.share-link-row .btn { white-space: nowrap; }
+.share-progress-wrap { margin: 0; }
+.share-progress-label { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 7px; color: var(--ocean-dark); font-size: 0.78rem; font-weight: 700; }
+.share-progress-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-progress-track { height: 12px; overflow: hidden; border: 2px solid var(--navy); border-radius: 999px; background: var(--cream); }
+.share-progress-track span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--coral); transition: width 0.15s linear; }
+.share-progress-track span.is-complete { background: #249c63; }
+.share-status { min-height: 22px; margin: 0; color: var(--ocean-dark); font-size: 0.84rem; font-weight: 600; }
+.share-status.success { color: #18734a; }
+.share-status.error { color: var(--coral-dark); }
+.share-status.waiting { color: var(--ocean-dark); }
+.share-security-note { border: 1.5px dashed var(--ice); border-radius: 12px; background: var(--cream); color: var(--ocean-dark); padding: 10px 12px; font-size: 0.72rem; line-height: 1.45; }
+.share-recipient-note { margin: 0; color: var(--ocean-dark); font-size: 0.73rem; line-height: 1.45; }
+.share-modal-box.is-receiver .share-hero { background: var(--cream); color: var(--ocean); }
+.share-modal-box.is-receiver .share-recipient-note { color: var(--navy); font-weight: 600; }
+.share-modal-box .modal-actions { margin-top: 4px; }
+
+
 
 .modal-header {
   display: flex;
@@ -741,6 +793,7 @@ canvas { display: block; }
   .form-row { flex-direction: column; gap: 16px; }
   .panel { padding: 20px; }
   .modal-box { padding: 20px; }
+  .share-link-row { align-items: stretch; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {
