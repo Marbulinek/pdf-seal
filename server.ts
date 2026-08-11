@@ -12,6 +12,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const SHARE_SESSION_TTL_MS = 15 * 60 * 1000;
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8,32}$/;
+const PROJECT_ROOT = process.cwd();
+const PUBLIC_DIR = path.resolve(PROJECT_ROOT, "public");
+const UPLOADS_DIR = path.resolve(PROJECT_ROOT, "uploads");
+const API_RATE_LIMIT_WINDOW_MS = 60_000;
+const API_RATE_LIMIT_MAX_REQUESTS = 60;
+const rateLimitState = new Map<string, { count: number; resetAt: number }>();
 
 type ShareRole = "sender" | "receiver";
 type SignalingMessage =
@@ -31,10 +37,10 @@ const shareSessions = new Map<string, ShareSession>();
 // A file-size cap keeps a single (or a burst of concurrent) uploads from blowing up
 // process memory, since PdfSignatureTool.open() reads the whole file into a Buffer.
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
-const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES } });
+const upload = multer({ dest: UPLOADS_DIR, limits: { fileSize: MAX_UPLOAD_BYTES } });
 
 // Serve static files from the 'public' directory
-app.use(express.static("public"));
+app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
 
 function configuredStunUrls(): string[] {
@@ -43,6 +49,15 @@ function configuredStunUrls(): string[] {
     .map((url) => url.trim())
     .filter(Boolean);
   return configured?.length ? configured : ["stun:stun.l.google.com:19302"];
+}
+
+function resolveSafePath(candidatePath: string): string {
+  const resolved = path.resolve(candidatePath);
+  const relative = path.relative(UPLOADS_DIR, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Invalid upload path.");
+  }
+  return resolved;
 }
 
 function isWebRtcSignalPayload(payload: unknown): payload is Record<string, unknown> {
@@ -65,17 +80,36 @@ app.get("/api/share-config", (_req: Request, res: Response) => {
   res.json({ stunUrls: configuredStunUrls(), sessionTtlSeconds: SHARE_SESSION_TTL_MS / 1000 });
 });
 
+function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
+  const clientKey = req.ip || req.socket.remoteAddress || "unknown";
+  const now = Date.now();
+  const existing = rateLimitState.get(clientKey);
+
+  if (existing && existing.resetAt > now) {
+    if (existing.count >= API_RATE_LIMIT_MAX_REQUESTS) {
+      return res.status(429).json({ error: "Too many requests. Please try again shortly." });
+    }
+    existing.count += 1;
+    return next();
+  }
+
+  rateLimitState.set(clientKey, { count: 1, resetAt: now + API_RATE_LIMIT_WINDOW_MS });
+  return next();
+}
+
+app.use("/api", rateLimitMiddleware);
+
 // A shared link is still the same client application; the browser starts the
 // receiver flow after it reads the session id from the location.
 app.get("/share/:sessionId", (req: Request, res: Response) => {
   const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
   if (!SESSION_ID_PATTERN.test(sessionId)) return res.status(404).send("Share session not found.");
-  res.sendFile(path.resolve("public/index.html"));
+  res.sendFile(path.resolve(PUBLIC_DIR, "index.html"));
 });
 
 // Ensure the uploads directory exists
-if (!fs.existsSync("uploads")) {
-  fs.mkdirSync("uploads");
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
 /**
@@ -87,7 +121,8 @@ function cleanupFiles(...paths: Array<string | null | undefined>) {
   for (const p of paths) {
     if (!p) continue;
     try {
-      if (fs.existsSync(p)) fs.unlinkSync(p);
+      const safePath = resolveSafePath(p);
+      if (fs.existsSync(safePath)) fs.unlinkSync(safePath);
     } catch (cleanupErr) {
       logError("cleanup-files", cleanupErr, { path: p });
     }
@@ -108,7 +143,8 @@ app.post("/api/info", upload.single("pdfDocument"), async (req: Request, res: Re
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   try {
-    const tool = await PdfSignatureTool.open(file.path);
+    const safeFilePath = resolveSafePath(file.path);
+    const tool = await PdfSignatureTool.open(safeFilePath);
     const result = {
       metadata: tool.getMetadata(),
       fields: tool.listFields(),
@@ -134,7 +170,8 @@ app.post(
     let outputPath: string | null = null;
 
     try {
-      const tool = await PdfSignatureTool.open(file.path);
+      const safeFilePath = resolveSafePath(file.path);
+      const tool = await PdfSignatureTool.open(safeFilePath);
 
       // Parse incoming form data
       const page = parseInt(req.body.page, 10) || 0;
@@ -147,7 +184,7 @@ app.post(
 
       tool.addSignatureField(page, name, { x, y, width, height, required });
 
-      outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
+      outputPath = path.resolve(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
       await tool.save(outputPath);
 
       // Send the modified file back to the client, then clean up both temp files
@@ -171,7 +208,8 @@ app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, r
   let outputPath: string | null = null;
 
   try {
-    const tool = await PdfSignatureTool.open(file.path);
+    const safeFilePath = resolveSafePath(file.path);
+    const tool = await PdfSignatureTool.open(safeFilePath);
 
     const originalName = req.body.originalName || req.body.name;
     const newName = req.body.name || originalName;
@@ -195,7 +233,7 @@ app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, r
 
     tool.setFieldRequired(newName, required);
 
-    outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
+    outputPath = path.resolve(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath);
 
     res.download(outputPath, "signed-document.pdf", () => {
@@ -216,7 +254,8 @@ app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request,
   let outputPath: string | null = null;
 
   try {
-    const tool = await PdfSignatureTool.open(file.path);
+    const safeFilePath = resolveSafePath(file.path);
+    const tool = await PdfSignatureTool.open(safeFilePath);
     const name = req.body.name || req.body.originalName;
 
     if (!name) {
@@ -225,7 +264,7 @@ app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request,
 
     tool.removeField(name);
 
-    outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
+    outputPath = path.resolve(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath);
 
     res.download(outputPath, "signed-document.pdf", () => {

@@ -1,6 +1,7 @@
 'use strict';
 
 import fs from 'fs';
+import path from 'path';
 import {
   PDFDocument,
   PDFName,
@@ -113,6 +114,18 @@ function pdfValueToPlain(value: any, depth: number = 0): any {
  * only for reading/inspecting fields, where pdf-lib handles both shapes
  * transparently.
  */
+const PROJECT_ROOT = process.cwd();
+const UPLOADS_DIR = path.resolve(PROJECT_ROOT, 'uploads');
+
+function resolveSafePath(candidatePath: string): string {
+  const resolved = path.resolve(candidatePath);
+  const relative = path.relative(UPLOADS_DIR, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+   throw new Error('Invalid upload path.');
+  }
+  return resolved;
+}
+
 class PdfSignatureTool {
   private pdfDoc: any;
   private sourcePath: string | null;
@@ -123,10 +136,11 @@ class PdfSignatureTool {
    * @returns {Promise<PdfSignatureTool>}
    */
   static async open(filePath: string) {
-    const bytes = fs.readFileSync(filePath);
+    const safeFilePath = resolveSafePath(filePath);
+    const bytes = fs.readFileSync(safeFilePath);
     try {
       const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
-      return new PdfSignatureTool(pdfDoc, filePath);
+      return new PdfSignatureTool(pdfDoc, safeFilePath);
     } catch (error: any) {
       if (/encrypt|password/i.test(error?.message || "")) {
         throw new Error(
