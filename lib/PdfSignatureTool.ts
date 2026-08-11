@@ -124,8 +124,17 @@ class PdfSignatureTool {
    */
   static async open(filePath: string) {
     const bytes = fs.readFileSync(filePath);
-    const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
-    return new PdfSignatureTool(pdfDoc, filePath);
+    try {
+      const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
+      return new PdfSignatureTool(pdfDoc, filePath);
+    } catch (error: any) {
+      if (/encrypt|password/i.test(error?.message || "")) {
+        throw new Error(
+          "This PDF is password-protected or has editing restrictions. Remove its password/protection in a PDF editor, then upload the unlocked copy.",
+        );
+      }
+      throw error;
+    }
   }
 
   /**
