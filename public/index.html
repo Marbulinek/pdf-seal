@@ -274,6 +274,27 @@
         <h3 id="shareModalTitle">Share PDF directly</h3>
         <button type="button" class="modal-close" id="closeShareModalBtn" aria-label="Close">✕</button>
       </div>
+      <ol class="share-steps" id="shareSteps" aria-hidden="true">
+        <li class="share-step" data-step="1">
+          <span class="share-step-badge">1</span>
+          <span class="share-step-label">Create link</span>
+        </li>
+        <li class="share-step-connector"></li>
+        <li class="share-step" data-step="2">
+          <span class="share-step-badge">2</span>
+          <span class="share-step-label">Share link</span>
+        </li>
+        <li class="share-step-connector"></li>
+        <li class="share-step" data-step="3">
+          <span class="share-step-badge">3</span>
+          <span class="share-step-label">They open it</span>
+        </li>
+        <li class="share-step-connector"></li>
+        <li class="share-step" data-step="4">
+          <span class="share-step-badge">4</span>
+          <span class="share-step-label">Document shared</span>
+        </li>
+      </ol>
       <div class="share-modal-hero-panel">
         <div class="share-hero-row">
           <div class="share-hero" aria-hidden="true">⇄</div>
@@ -293,6 +314,7 @@
         <div class="share-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="shareProgressBar"></span></div>
       </div>
       <div class="share-status" id="shareStatus" aria-live="polite"></div>
+      <p class="share-recipient-note share-keep-open-note" id="shareKeepOpenNote">⚠️ Keep this window open for the whole transfer — the PDF is sent directly from your browser, so closing the tab or letting the device sleep will cancel it.</p>
       <p class="share-recipient-note" id="shareRecipientNote">This link is available to one recipient at a time. Create a new link for another transfer.</p>
       <div class="modal-actions" id="shareActions">
         <button type="button" class="btn btn-ghost" id="cancelShareBtn">Cancel</button>
@@ -1783,6 +1805,22 @@ function resetShareProgress() {
   shareProgressBar.parentElement.setAttribute('aria-valuenow', '0');
 }
 
+// Drives the 1-2-3-4 step indicator in the sender view. `step` is the step
+// currently in progress (1-4); pass 5 once the whole flow is finished, which
+// marks step 4 done with nothing left active.
+function setShareStep(step) {
+  document.querySelectorAll('.share-step').forEach((li) => {
+    const n = Number(li.dataset.step);
+    const done = n < step;
+    li.classList.toggle('is-done', done);
+    li.classList.toggle('is-active', n === step);
+    li.querySelector('.share-step-badge').textContent = done ? '✓' : String(n);
+  });
+  document.querySelectorAll('.share-step-connector').forEach((connector, index) => {
+    connector.classList.toggle('is-done', index + 1 < step);
+  });
+}
+
 // A share link represents one immutable PDF snapshot. Once the editor creates
 // a new file after an add/edit/remove operation, discard any older session so
 // the next link can only transfer the version currently on screen.
@@ -1801,6 +1839,7 @@ function resetShareForChangedDocument() {
   document.getElementById('shareLinkRow').hidden = true;
   document.getElementById('startShareBtn').hidden = false;
   resetShareProgress();
+  setShareStep(1);
   setShareStatus('The document changed. Create a new link to share this version.', 'waiting');
 }
 
@@ -1816,6 +1855,7 @@ function openShareModal() {
     document.getElementById('shareRecipientNote').hidden = false;
     document.getElementById('startShareBtn').hidden = false;
     document.getElementById('cancelShareBtn').textContent = 'Cancel';
+    setShareStep(1);
   }
 }
 
@@ -1824,10 +1864,17 @@ function closeShareModal() {
   shareModal.setAttribute('aria-hidden', 'true');
 }
 
+// Crockford's Base32 alphabet: digits + uppercase letters, minus 0/O, 1/I/L,
+// and U -- characters that are easy to mis-hear or mis-type when a link is
+// read aloud or copied by hand. 256 (byte range) divides evenly by 32, so
+// `byte % 32` introduces no bias across the alphabet.
+const SHARE_ID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const SHARE_ID_LENGTH = 6; // 32^6 ≈ 1.07 billion combinations -- plenty for a 15-minute-lived code
+
 function createSessionId() {
-  const bytes = new Uint8Array(12);
+  const bytes = new Uint8Array(SHARE_ID_LENGTH);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(bytes, b => SHARE_ID_ALPHABET[b % SHARE_ID_ALPHABET.length]).join('');
 }
 
 function websocketUrl() {
@@ -1880,6 +1927,14 @@ async function createPeerConnection() {
 function connectToShareSession() {
   shareSocket = new WebSocket(websocketUrl());
   shareSocket.onopen = () => shareSocket.send(JSON.stringify({ type: 'join', sessionId: shareSessionId, role: shareRole }));
+  shareSocket.onclose = (event) => {
+    // Once the WebRTC data channel is open the two browsers talk directly and
+    // no longer need the signaling socket, so a close here is harmless. If it
+    // closes before that point, the direct connection could never be set up.
+    if (shareChannel?.readyState === 'open') return;
+    if (event.code === 1000) return; // normal closure (e.g. session expired, handled elsewhere)
+    setShareStatus('Lost connection to the sharing service. Please create a new link.', 'error');
+  };
   shareSocket.onmessage = async (event) => {
     let message;
     try { message = JSON.parse(event.data); } catch { return; }
@@ -1889,6 +1944,7 @@ function connectToShareSession() {
     }
     if (message.type === 'peer-ready' && shareRole === 'sender' && !shareStarted) {
       shareStarted = true;
+      setShareStep(3);
       try {
         shareChannel = sharePeer.createDataChannel('pdf-seal-transfer', { ordered: true });
         setupDataChannel(shareChannel);
@@ -1955,6 +2011,7 @@ async function sendSharedFile() {
     shareChannel.send(JSON.stringify({ type: 'file-complete' }));
     setShareProgress(data.byteLength, data.byteLength, 'Transfer complete');
     setShareStatus('PDF sent directly and verified by the recipient.', 'success');
+    setShareStep(5);
   } catch (error) { setShareStatus(error.message || 'Could not send this PDF.', 'error'); }
 }
 
@@ -2007,6 +2064,7 @@ async function startSendingShare() {
   shareSessionId = createSessionId();
   document.getElementById('startShareBtn').hidden = true;
   document.getElementById('shareLinkRow').hidden = false;
+  setShareStep(2);
   const url = `${location.origin}/share/${shareSessionId}`;
   document.getElementById('shareLink').value = url;
   setShareStatus('Creating private share link…', 'waiting');
@@ -2047,8 +2105,8 @@ document.getElementById('copyShareLinkBtn').addEventListener('click', async () =
 });
 shareModal.addEventListener('click', (event) => { if (event.target === shareModal) closeShareModal(); });
 
-const sharedSessionFromUrl = location.pathname.match(/^\/share\/([a-zA-Z0-9_-]{8,32})$/)?.[1];
-if (sharedSessionFromUrl) startReceivingShare(sharedSessionFromUrl);
+const sharedSessionFromUrl = location.pathname.match(/^\/share\/([a-zA-Z0-9_-]{6,32})$/)?.[1];
+if (sharedSessionFromUrl) startReceivingShare(sharedSessionFromUrl.toUpperCase());
   </script>
 </body>
 </html>

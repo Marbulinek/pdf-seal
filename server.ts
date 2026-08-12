@@ -11,7 +11,7 @@ import PdfSignatureTool from "./lib/PdfSignatureTool";
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SHARE_SESSION_TTL_MS = 15 * 60 * 1000;
-const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8,32}$/;
+const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{6,32}$/;
 
 type ShareRole = "sender" | "receiver";
 type SignalingMessage =
@@ -68,7 +68,8 @@ app.get("/api/share-config", (_req: Request, res: Response) => {
 // A shared link is still the same client application; the browser starts the
 // receiver flow after it reads the session id from the location.
 app.get("/share/:sessionId", (req: Request, res: Response) => {
-  const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
+  const raw = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
+  const sessionId = raw.toUpperCase();
   if (!SESSION_ID_PATTERN.test(sessionId)) return res.status(404).send("Share session not found.");
   res.sendFile(path.resolve("public/index.html"));
 });
@@ -258,6 +259,19 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 const server = http.createServer(app);
 const signalingServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
+// Railway's (and most reverse proxies') edge network silently drops WebSocket
+// connections that stay idle for a while -- there's no traffic to keep the
+// TCP path/NAT mapping alive. Without a heartbeat, a socket can look "OPEN"
+// to us (readyState) while actually being dead on the wire, so a signal sent
+// to it just vanishes instead of erroring -- which is exactly what causes a
+// share link to silently fail to connect if the recipient opens it a minute
+// or two after the sender created it. Pinging periodically keeps the
+// connection alive across proxies, and lets us detect + clean up truly dead
+// sockets quickly instead of leaving a peer waiting on a stale connection.
+const HEARTBEAT_INTERVAL_MS = 25_000;
+
+type HeartbeatSocket = WebSocket & { isAlive?: boolean };
+
 function send(socket: WebSocket, message: Record<string, unknown>) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
@@ -283,10 +297,15 @@ function removePeer(socket: WebSocket) {
   }
 }
 
-signalingServer.on("connection", (socket) => {
+signalingServer.on("connection", (socket: HeartbeatSocket) => {
   let joinedSessionId: string | null = null;
   let joinedRole: ShareRole | null = null;
   logShare("ws-connected");
+
+  socket.isAlive = true;
+  socket.on("pong", () => {
+    socket.isAlive = true;
+  });
 
   socket.on("message", (raw) => {
     let message: SignalingMessage;
@@ -295,6 +314,12 @@ signalingServer.on("connection", (socket) => {
     } catch (error) {
       logError("signaling-parse", error);
       return send(socket, { type: "error", code: "invalid-message", message: "Invalid signaling message." });
+    }
+
+    // Normalize case once, up front, so a session id retyped by hand (e.g.
+    // lowercase instead of the generated uppercase) still matches.
+    if (message && typeof message.sessionId === "string") {
+      message.sessionId = message.sessionId.toUpperCase();
     }
 
     if (!message || !SESSION_ID_PATTERN.test(message.sessionId)) {
@@ -361,6 +386,26 @@ signalingServer.on("connection", (socket) => {
     removePeer(socket);
   });
 });
+
+// Every ~25s: ping sockets that answered the previous ping, terminate the
+// ones that didn't. `ws.ping()` is a native WebSocket control frame -- the
+// browser answers it automatically with a pong, no client-side JS needed.
+// This traffic is also what keeps proxies/NATs from treating the connection
+// as idle and dropping it.
+const heartbeatInterval = setInterval(() => {
+  for (const socket of signalingServer.clients) {
+    const ws = socket as HeartbeatSocket;
+    if (ws.isAlive === false) {
+      logShare("heartbeat-timeout");
+      ws.terminate(); // fires "close" -> removePeer() -> notifies the other peer
+      continue;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}, HEARTBEAT_INTERVAL_MS);
+heartbeatInterval.unref();
+signalingServer.on("close", () => clearInterval(heartbeatInterval));
 
 server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
