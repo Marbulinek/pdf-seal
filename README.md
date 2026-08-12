@@ -20,6 +20,7 @@ The app opens as a web workspace with two main areas:
 5. Drag a field to reposition it, or drag the green resize handle to change its size.
 6. Edit a selected field's name, position, width, height, and whether it is required.
 7. Save the modified PDF, or copy the document as Base64 for further processing.
+8. Share it directly with another user via WebRTC connection
 
 ## How it works
 
@@ -27,17 +28,9 @@ pdf-seal does not apply a cryptographic signature. Instead, it prepares the PDF 
 
 ## Direct PDF sharing
 
-With a document open, select **Share** to create a `/share/:sessionId` link. When the recipient opens it, the two browsers establish a WebRTC data channel and the PDF is transferred in small binary chunks with backpressure. The sharing service only relays WebRTC offer/answer/ICE messages; it never receives, stores, or Base64-encodes the PDF. The recipient verifies the received bytes with SHA-256 before opening the file.
+With a document open, select **Share** to create a `/share/:sessionId` link. When the recipient opens it, the two browsers establish a WebRTC data channel and the PDF is transferred in small binary chunks with backpressure. The recipient verifies the received bytes with SHA-256 before opening the file.
+Share sessions exist only in server memory and expire after 15 minutes.
 
-Share sessions exist only in server memory and expire after 15 minutes. This initial version intentionally has no TURN fallback, so a direct connection may be unavailable on restrictive networks.
-
-### STUN configuration
-
-Set `WEBRTC_STUN_URLS` on Railway (or locally) to a comma-separated list of STUN URLs. If unset, the app uses `stun:stun.l.google.com:19302`.
-
-```text
-WEBRTC_STUN_URLS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
-```
 
 ## Run the app
 
