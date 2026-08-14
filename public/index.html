@@ -1768,6 +1768,7 @@ let shareCryptoKey = null;
 let shareEncryptedData = null;
 let shareMeta = null;
 let shareStarted = false;
+let shareTransferStarted = false;
 let shareSocketReconnectTimer = null;
 let shareSocketReconnectAttempt = 0;
 let shareClosedByUser = false;
@@ -1811,6 +1812,15 @@ function setShareProgress(current, total, label) {
 function resetShareProgress() {
   shareProgressWrap.hidden = true;
   shareProgressText.textContent = 'Preparing secure transfer…';
+  shareProgressPercent.textContent = '0%';
+  shareProgressBar.style.width = '0%';
+  shareProgressBar.classList.remove('is-complete');
+  shareProgressBar.parentElement.setAttribute('aria-valuenow', '0');
+}
+
+function showIdleShareProgress(label = 'Waiting for receiver…') {
+  shareProgressWrap.hidden = false;
+  shareProgressText.textContent = label;
   shareProgressPercent.textContent = '0%';
   shareProgressBar.style.width = '0%';
   shareProgressBar.classList.remove('is-complete');
@@ -1950,6 +1960,7 @@ function teardownShareSession(statusMessage) {
   shareMeta = null;
   receiverId = null;
   shareStarted = false;
+  shareTransferStarted = false;
   shareSocketReconnectAttempt = 0;
   sharePeerStarted.clear();
   sharePeerFailed.clear();
@@ -2030,9 +2041,6 @@ function connectToShareSession() {
         }
       } else {
         setConnectedUserCount(message.receiverCount || 0);
-        if (shareEncryptedData && shareMeta && shareSocket?.readyState === WebSocket.OPEN) {
-          shareSocket.send(JSON.stringify({ type: 'file-meta', ...shareMeta }));
-        }
       }
       return;
     }
@@ -2053,6 +2061,11 @@ function connectToShareSession() {
 
     if (message.type === 'receiver-joined' && shareRole === 'sender') {
       setConnectedUserCount(message.receiverCount || 0);
+      if (!shareTransferStarted && shareEncryptedData && shareMeta && shareSocket?.readyState === WebSocket.OPEN) {
+        shareTransferStarted = true;
+        showIdleShareProgress('Receiver connected. Preparing transfer…');
+        shareSocket.send(JSON.stringify({ type: 'file-meta', ...shareMeta }));
+      }
       createPeerConnectionForReceiver(message.receiverId);
       setShareStatus(`Encrypted share is ready. ${message.receiverCount || 0} recipient(s) connected.`, 'success');
       return;
@@ -2396,11 +2409,12 @@ async function startSendingShare() {
   if (!activeFile || !crypto.subtle || !window.RTCPeerConnection) {
     return setShareStatus('This browser does not support the secure sharing features required by PDF Seal.', 'error');
   }
-  resetShareProgress();
+  showIdleShareProgress();
   shareClosedByUser = false;
   shareRole = 'sender';
   shareSessionId = createSessionId();
   shareStarted = true;
+  shareTransferStarted = false;
   try {
     setShareStatus('Encrypting the PDF in your browser…', 'waiting');
     const shareToken = createCompactShareToken();
