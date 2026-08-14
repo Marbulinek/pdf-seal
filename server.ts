@@ -11,21 +11,9 @@ import PdfSignatureTool from "./lib/PdfSignatureTool";
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SHARE_SESSION_TTL_MS = 15 * 60 * 1000;
-const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{6,32}$/;
+const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8,32}$/;
 
 type ShareRole = "sender" | "receiver";
-type SignalingMessage =
-  | { type: "join"; sessionId: string; role: ShareRole }
-  | { type: "signal"; sessionId: string; payload: Record<string, unknown> };
-
-interface ShareSession {
-  createdAt: number;
-  peers: Partial<Record<ShareRole, WebSocket>>;
-}
-
-// This map deliberately contains connection metadata only. PDF bytes are never
-// accepted, buffered, or persisted by the signaling server.
-const shareSessions = new Map<string, ShareSession>();
 
 // Set up Multer for handling file uploads (saves temporarily to an 'uploads' folder).
 // A file-size cap keeps a single (or a burst of concurrent) uploads from blowing up
@@ -37,39 +25,8 @@ const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES }
 app.use(express.static("public"));
 app.use(express.json());
 
-function configuredStunUrls(): string[] {
-  const configured = process.env.WEBRTC_STUN_URLS
-    ?.split(",")
-    .map((url) => url.trim())
-    .filter(Boolean);
-  return configured?.length ? configured : ["stun:stun.l.google.com:19302"];
-}
-
-function isWebRtcSignalPayload(payload: unknown): payload is Record<string, unknown> {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
-  const value = payload as Record<string, unknown>;
-  if (value.description && typeof value.description === "object") {
-    const description = value.description as Record<string, unknown>;
-    return (description.type === "offer" || description.type === "answer")
-      && typeof description.sdp === "string"
-      && description.sdp.length <= 48_000;
-  }
-  if (value.candidate && typeof value.candidate === "object") {
-    const candidate = value.candidate as Record<string, unknown>;
-    return typeof candidate.candidate === "string" && candidate.candidate.length <= 2_048;
-  }
-  return false;
-}
-
-app.get("/api/share-config", (_req: Request, res: Response) => {
-  res.json({ stunUrls: configuredStunUrls(), sessionTtlSeconds: SHARE_SESSION_TTL_MS / 1000 });
-});
-
-// A shared link is still the same client application; the browser starts the
-// receiver flow after it reads the session id from the location.
 app.get("/share/:sessionId", (req: Request, res: Response) => {
-  const raw = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
-  const sessionId = raw.toUpperCase();
+  const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
   if (!SESSION_ID_PATTERN.test(sessionId)) return res.status(404).send("Share session not found.");
   res.sendFile(path.resolve("public/index.html"));
 });
@@ -257,175 +214,385 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 const server = http.createServer(app);
-const signalingServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
-// Railway's (and most reverse proxies') edge network silently drops WebSocket
-// connections that stay idle for a while -- there's no traffic to keep the
-// TCP path/NAT mapping alive. Without a heartbeat, a socket can look "OPEN"
-// to us (readyState) while actually being dead on the wire, so a signal sent
-// to it just vanishes instead of erroring -- which is exactly what causes a
-// share link to silently fail to connect if the recipient opens it a minute
-// or two after the sender created it. Pinging periodically keeps the
-// connection alive across proxies, and lets us detect + clean up truly dead
-// sockets quickly instead of leaving a peer waiting on a stale connection.
-const HEARTBEAT_INTERVAL_MS = 25_000;
+const MAX_SHARE_BYTES = 25 * 1024 * 1024;
+const SHARE_CHUNK_BYTES = 64 * 1024;
+const WS_HIGH_WATER_MARK = 512 * 1024;
+const SHARE_MAX_SESSIONS_MEMORY_BYTES = 200 * 1024 * 1024;
+let shareMemoryBytes = 0;
 
-type HeartbeatSocket = WebSocket & { isAlive?: boolean };
+function configuredStunUrls(): string[] {
+  const configured = process.env.WEBRTC_STUN_URLS
+    ?.split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+  return configured?.length ? configured : ['stun:stun.l.google.com:19302'];
+}
 
-function send(socket: WebSocket, message: Record<string, unknown>) {
+interface IceServerConfig {
+  urls: string[];
+  username?: string;
+  credential?: string;
+}
+
+function configuredTurnServers(): IceServerConfig[] {
+  const urls = process.env.WEBRTC_TURN_URLS
+    ?.split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+  if (!urls?.length) return [];
+  const username = process.env.WEBRTC_TURN_USERNAME;
+  const credential = process.env.WEBRTC_TURN_CREDENTIAL;
+  if (!username || !credential) {
+    logError('turn-config', undefined, { reason: 'WEBRTC_TURN_URLS set without username/credential' });
+    return [];
+  }
+  return [{ urls, username, credential }];
+}
+
+app.get('/api/share-config', (_req: Request, res: Response) => {
+  const iceServers: IceServerConfig[] = [
+    { urls: configuredStunUrls() },
+    ...configuredTurnServers(),
+  ];
+  res.json({ iceServers, stunUrls: configuredStunUrls(), sessionTtlSeconds: SHARE_SESSION_TTL_MS / 1000 });
+});
+
+const shareWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
+
+interface ShareMeta {
+  sessionId: string;
+  name: string;
+  size: number;
+  encryptedSize: number;
+  sha256: string;
+  iv: string;
+  fields: unknown[];
+  algorithm: 'AES-GCM';
+}
+
+interface ShareFile {
+  meta: ShareMeta;
+  data: Buffer;
+  receivedBytes: number;
+}
+
+interface ShareSession {
+  createdAt: number;
+  sender: WebSocket | null;
+  receivers: Map<string, WebSocket>;
+  file: ShareFile | null;
+  senderUploadComplete: boolean;
+}
+
+interface SocketMembership {
+  sessionId: string;
+  role: ShareRole;
+  receiverId?: string;
+}
+
+const shareSessions = new Map<string, ShareSession>();
+const socketSessions = new Map<WebSocket, SocketMembership>();
+const receiverIds = new WeakMap<WebSocket, string>();
+let nextReceiverId = 1;
+
+function sendJson(socket: WebSocket, message: Record<string, unknown>) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
-function removePeer(socket: WebSocket) {
-  for (const [sessionId, session] of shareSessions) {
-    for (const role of ["sender", "receiver"] as const) {
-      if (session.peers[role] === socket) {
-        delete session.peers[role];
-        const otherRole: ShareRole = role === "sender" ? "receiver" : "sender";
-        const other = session.peers[otherRole];
-        if (other) {
-          send(other, { type: "peer-left" });
-          logShare("peer-left", { sessionId, role, otherRole });
-        }
-        if (!session.peers.sender && !session.peers.receiver) {
-          shareSessions.delete(sessionId);
-          logShare("session-removed", { sessionId });
-        }
-        return;
-      }
-    }
+function nextReceiverIdFor(socket: WebSocket): string {
+  const existing = receiverIds.get(socket);
+  if (existing) return existing;
+  const id = `r${Date.now().toString(36)}-${(nextReceiverId++).toString(36)}`;
+  receiverIds.set(socket, id);
+  return id;
+}
+
+function addShareMemory(bytes: number): boolean {
+  if (shareMemoryBytes + bytes > SHARE_MAX_SESSIONS_MEMORY_BYTES) return false;
+  shareMemoryBytes += bytes;
+  return true;
+}
+
+function releaseShareFile(file: ShareFile | null) {
+  if (!file) return;
+  shareMemoryBytes = Math.max(0, shareMemoryBytes - file.data.length);
+}
+
+async function waitForSocketCapacity(socket: WebSocket) {
+  while (socket.readyState === WebSocket.OPEN && socket.bufferedAmount > WS_HIGH_WATER_MARK) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
 }
 
-signalingServer.on("connection", (socket: HeartbeatSocket) => {
-  let joinedSessionId: string | null = null;
-  let joinedRole: ShareRole | null = null;
-  logShare("ws-connected");
+async function sendRelayFile(session: ShareSession, socket: WebSocket, offset = 0) {
+  const file = session.file;
+  if (!file || socket.readyState !== WebSocket.OPEN) return;
+  const start = Math.max(0, Math.min(offset, file.data.length));
+  sendJson(socket, { type: 'relay-meta', ...file.meta, offset: start });
 
-  socket.isAlive = true;
-  socket.on("pong", () => {
-    socket.isAlive = true;
-  });
+  for (let cursor = start; cursor < file.data.length; cursor += SHARE_CHUNK_BYTES) {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    await waitForSocketCapacity(socket);
+    if (socket.readyState !== WebSocket.OPEN) return;
+    socket.send(file.data.subarray(cursor, Math.min(cursor + SHARE_CHUNK_BYTES, file.data.length)));
+  }
+  sendJson(socket, { type: 'relay-complete' });
+  logShare('relay-delivered', { sessionId: file.meta.sessionId, receiverOffset: start, encryptedBytes: file.data.length });
+}
 
-  socket.on("message", (raw) => {
-    let message: SignalingMessage;
-    try {
-      message = JSON.parse(raw.toString()) as SignalingMessage;
-    } catch (error) {
-      logError("signaling-parse", error);
-      return send(socket, { type: "error", code: "invalid-message", message: "Invalid signaling message." });
+function createShareSession(sessionId: string): ShareSession {
+  const session: ShareSession = {
+    createdAt: Date.now(),
+    sender: null,
+    receivers: new Map(),
+    file: null,
+    senderUploadComplete: false,
+  };
+  shareSessions.set(sessionId, session);
+  logShare('session-created', { sessionId });
+  return session;
+}
+
+function cleanupSocket(socket: WebSocket) {
+  const membership = socketSessions.get(socket);
+  if (!membership) return;
+  socketSessions.delete(socket);
+
+  const session = shareSessions.get(membership.sessionId);
+  if (!session) return;
+
+  if (membership.role === 'sender' && session.sender === socket) {
+    session.sender = null;
+    logShare('sender-left', { sessionId: membership.sessionId });
+    if (!session.file || !session.senderUploadComplete) {
+      for (const receiver of session.receivers.values()) {
+        sendJson(receiver, {
+          type: 'sender-left',
+          message: 'The sender disconnected before the encrypted PDF was fully uploaded.',
+        });
+      }
+    }
+  } else if (membership.receiverId) {
+    session.receivers.delete(membership.receiverId);
+  }
+
+  if (!session.sender && session.receivers.size === 0 && !session.file) {
+    shareSessions.delete(membership.sessionId);
+    logShare('session-removed', { sessionId: membership.sessionId });
+  }
+}
+
+shareWebSocketServer.on('connection', (socket) => {
+  socket.on('message', async (raw, isBinary) => {
+    const membership = socketSessions.get(socket);
+
+    if (isBinary) {
+      if (!membership || membership.role !== 'sender') {
+        return sendJson(socket, { type: 'error', code: 'not-sender', message: 'Only the sender can upload encrypted PDF data.' });
+      }
+      const session = shareSessions.get(membership.sessionId);
+      if (!session?.file || session.sender !== socket || session.senderUploadComplete) {
+        return sendJson(socket, { type: 'error', code: 'file-not-expected', message: 'Send encrypted file metadata before sending data.' });
+      }
+      const chunk = Buffer.from(raw as Buffer);
+      const nextSize = session.file.receivedBytes + chunk.length;
+      if (nextSize > session.file.meta.encryptedSize) {
+        return sendJson(socket, { type: 'error', code: 'file-too-large', message: 'The encrypted PDF exceeds the allowed share size.' });
+      }
+      chunk.copy(session.file.data, session.file.receivedBytes);
+      session.file.receivedBytes = nextSize;
+      return;
     }
 
-    // Normalize case once, up front, so a session id retyped by hand (e.g.
-    // lowercase instead of the generated uppercase) still matches.
-    if (message && typeof message.sessionId === "string") {
-      message.sessionId = message.sessionId.toUpperCase();
+    let message: any;
+    try {
+      message = JSON.parse(raw.toString());
+    } catch (error) {
+      logError('share-parse', error);
+      return sendJson(socket, { type: 'error', code: 'invalid-message', message: 'Invalid share message.' });
     }
 
     if (!message || !SESSION_ID_PATTERN.test(message.sessionId)) {
-      logError("signaling-invalid-session", undefined, { sessionId: message?.sessionId ?? "unknown" });
-      return send(socket, { type: "error", code: "invalid-session", message: "Invalid share session." });
+      return sendJson(socket, { type: 'error', code: 'invalid-session', message: 'Invalid share session.' });
     }
 
-    if (message.type === "join") {
-      if (message.role !== "sender" && message.role !== "receiver") {
-        logError("signaling-invalid-role", undefined, { sessionId: message.sessionId, role: message.role });
-        return send(socket, { type: "error", code: "invalid-role", message: "Invalid share role." });
-      }
-      let session = shareSessions.get(message.sessionId);
-      if (!session && message.role === "sender") {
-        session = { createdAt: Date.now(), peers: {} };
-        shareSessions.set(message.sessionId, session);
-        logShare("session-created", { sessionId: message.sessionId });
-      }
-      if (!session) {
-        logError("signaling-session-not-found", undefined, { sessionId: message.sessionId, role: message.role });
-        return send(socket, { type: "error", code: "not-found", message: "This share link has expired or is unavailable." });
-      }
-      if (session.peers[message.role] && session.peers[message.role] !== socket) {
-        logError("signaling-role-taken", undefined, { sessionId: message.sessionId, role: message.role });
-        return send(socket, { type: "error", code: "role-taken", message: "This link is already open in another browser." });
+    if (message.type === 'join') {
+      if (message.role !== 'sender' && message.role !== 'receiver') {
+        return sendJson(socket, { type: 'error', code: 'invalid-role', message: 'Invalid share role.' });
       }
 
-      joinedSessionId = message.sessionId;
-      joinedRole = message.role;
-      session.peers[message.role] = socket;
-      logShare("join", { sessionId: message.sessionId, role: message.role });
-      send(socket, { type: "joined", role: message.role });
-      const peer = session.peers[message.role === "sender" ? "receiver" : "sender"];
-      if (peer) {
-        logShare("peer-ready", { sessionId: message.sessionId, role: message.role });
-        send(socket, { type: "peer-ready" });
-        send(peer, { type: "peer-ready" });
+      let session = shareSessions.get(message.sessionId);
+      if (!session && message.role === 'sender') session = createShareSession(message.sessionId);
+      if (!session) {
+        return sendJson(socket, { type: 'error', code: 'not-found', message: 'This share link has expired or is unavailable.' });
+      }
+
+      if (message.role === 'sender') {
+        if (session.sender && session.sender !== socket) {
+          return sendJson(socket, { type: 'error', code: 'sender-taken', message: 'This share is already owned by another sender.' });
+        }
+        session.sender = socket;
+        socketSessions.set(socket, { sessionId: message.sessionId, role: 'sender' });
+      } else {
+        const receiverId = typeof message.receiverId === 'string' && message.receiverId.length <= 64
+          ? message.receiverId
+          : nextReceiverIdFor(socket);
+        const previousSocket = session.receivers.get(receiverId);
+        if (previousSocket && previousSocket !== socket) {
+          socketSessions.delete(previousSocket);
+          try { previousSocket.close(1000, 'Receiver reconnected'); } catch (_) {}
+        }
+        session.receivers.set(receiverId, socket);
+        socketSessions.set(socket, { sessionId: message.sessionId, role: 'receiver', receiverId });
+      }
+
+      const receiverId = socketSessions.get(socket)?.receiverId;
+      sendJson(socket, {
+        type: 'joined',
+        role: message.role,
+        receiverId,
+        fileReady: Boolean(session.file && session.senderUploadComplete),
+        relayReceivedBytes: message.role === 'sender' ? session.file?.receivedBytes ?? 0 : 0,
+        fileMeta: session.file?.meta ?? null,
+      });
+
+      if (message.role === 'receiver') {
+        if (session.sender) {
+          sendJson(session.sender, {
+            type: 'receiver-joined',
+            receiverId,
+            receiverCount: session.receivers.size,
+          });
+        } else if (session.file && session.senderUploadComplete) {
+          sendJson(socket, { type: 'relay-available' });
+        } else {
+          sendJson(socket, { type: 'waiting-for-sender' });
+        }
       }
       return;
     }
 
-    if (message.type === "signal" && joinedSessionId === message.sessionId && joinedRole) {
-      if (!isWebRtcSignalPayload(message.payload)) {
-        logError("signaling-invalid-payload", undefined, { sessionId: message.sessionId, role: joinedRole });
-        return send(socket, { type: "error", code: "invalid-signal", message: "Only WebRTC offer, answer, and ICE messages are allowed." });
-      }
-      const session = shareSessions.get(message.sessionId);
-      const peer = session?.peers[joinedRole === "sender" ? "receiver" : "sender"];
-      if (!peer) {
-        logError("signaling-peer-unavailable", undefined, { sessionId: message.sessionId, role: joinedRole });
-        return send(socket, { type: "error", code: "peer-unavailable", message: "Waiting for the other person to open the link." });
-      }
-      logShare("signal-relayed", { sessionId: message.sessionId, role: joinedRole });
-      // Relay SDP / ICE verbatim without interpreting or retaining it.
-      return send(peer, { type: "signal", payload: message.payload });
+    if (!membership || membership.sessionId !== message.sessionId) {
+      return sendJson(socket, { type: 'error', code: 'not-joined', message: 'Join the share session first.' });
     }
-    logError("signaling-not-joined", undefined, { sessionId: message?.sessionId ?? "unknown", role: joinedRole ?? "unknown" });
-    send(socket, { type: "error", code: "not-joined", message: "Join the share session first." });
+
+    const session = shareSessions.get(message.sessionId);
+    if (!session) return sendJson(socket, { type: 'error', code: 'session-unavailable', message: 'Share session is unavailable.' });
+
+    if (message.type === 'file-meta' && membership.role === 'sender') {
+      if (typeof message.name !== 'string' || typeof message.sha256 !== 'string' || !Array.isArray(message.fields)) {
+        return sendJson(socket, { type: 'error', code: 'invalid-file-meta', message: 'Invalid encrypted PDF metadata.' });
+      }
+      if (message.algorithm !== 'AES-GCM' || typeof message.iv !== 'string') {
+        return sendJson(socket, { type: 'error', code: 'invalid-file-meta', message: 'Unsupported encryption metadata.' });
+      }
+      if (!Number.isInteger(message.encryptedSize) || message.encryptedSize <= 0 || message.encryptedSize > MAX_SHARE_BYTES + 32) {
+        return sendJson(socket, { type: 'error', code: 'invalid-file-meta', message: 'Invalid encrypted PDF size.' });
+      }
+
+      if (session.file) {
+        const sameFile = session.file.meta.encryptedSize === message.encryptedSize
+          && session.file.meta.sha256 === message.sha256
+          && session.file.meta.iv === message.iv;
+        if (!sameFile) return sendJson(socket, { type: 'error', code: 'file-already-exists', message: 'A different PDF is already stored for this share link.' });
+        session.senderUploadComplete = session.file.receivedBytes === session.file.meta.encryptedSize;
+        return sendJson(socket, { type: 'file-upload-started', size: session.file.meta.encryptedSize, receivedBytes: session.file.receivedBytes });
+      }
+
+      if (!addShareMemory(message.encryptedSize)) {
+        return sendJson(socket, { type: 'server-busy', message: 'Temporary sharing storage is currently full. Please try again later.' });
+      }
+
+      session.file = {
+        meta: {
+          sessionId: message.sessionId,
+          name: message.name.slice(0, 255),
+          size: message.size,
+          encryptedSize: message.encryptedSize,
+          sha256: message.sha256,
+          iv: message.iv,
+          fields: message.fields,
+          algorithm: 'AES-GCM',
+        },
+        data: Buffer.alloc(message.encryptedSize),
+        receivedBytes: 0,
+      };
+      session.senderUploadComplete = false;
+      sendJson(socket, { type: 'file-upload-started', size: message.encryptedSize, receivedBytes: 0 });
+      return;
+    }
+
+    if (message.type === 'file-complete' && membership.role === 'sender') {
+      if (!session.file || session.file.receivedBytes !== session.file.meta.encryptedSize) {
+        return sendJson(socket, { type: 'error', code: 'incomplete-file', message: 'The encrypted PDF upload is incomplete.' });
+      }
+      session.senderUploadComplete = true;
+      sendJson(socket, { type: 'file-stored', size: session.file.meta.encryptedSize, receiverCount: session.receivers.size });
+      logShare('encrypted-file-stored', { sessionId: message.sessionId, encryptedBytes: session.file.meta.encryptedSize });
+      return;
+    }
+
+    if (message.type === 'download' && membership.role === 'receiver') {
+      if (!session.file || !session.senderUploadComplete) {
+        return sendJson(socket, { type: 'waiting-for-file', message: 'The encrypted PDF is not ready yet.' });
+      }
+      const offset = Number.isInteger(message.offset) ? message.offset : 0;
+      if (offset < 0 || offset > session.file.meta.encryptedSize) {
+        return sendJson(socket, { type: 'error', code: 'invalid-offset', message: 'Invalid resume offset.' });
+      }
+      void sendRelayFile(session, socket, offset).catch((error) => {
+        logError('share-delivery', error, { sessionId: message.sessionId });
+        sendJson(socket, { type: 'error', code: 'delivery-failed', message: 'Could not deliver the encrypted PDF.' });
+      });
+      return;
+    }
+
+    if (message.type === 'signal' && membership.role === 'receiver') {
+      if (!membership.receiverId || !session.sender) return sendJson(socket, { type: 'error', code: 'peer-unavailable', message: 'The sender is not connected.' });
+      sendJson(session.sender, { type: 'signal', receiverId: membership.receiverId, payload: message.payload });
+      return;
+    }
+
+    if (message.type === 'signal' && membership.role === 'sender') {
+      if (typeof message.receiverId !== 'string') return sendJson(socket, { type: 'error', code: 'invalid-receiver', message: 'Receiver id is required.' });
+      const receiver = session.receivers.get(message.receiverId);
+      if (!receiver) return sendJson(socket, { type: 'error', code: 'peer-unavailable', message: 'Receiver is no longer connected.' });
+      sendJson(receiver, { type: 'signal', payload: message.payload });
+      return;
+    }
+
+    sendJson(socket, { type: 'error', code: 'unsupported-message', message: 'Unsupported share message.' });
   });
 
-  socket.on("close", () => removePeer(socket));
-  socket.on("error", (error) => {
-    logError("ws-socket-error", error);
-    removePeer(socket);
+  socket.on('close', () => cleanupSocket(socket));
+  socket.on('error', (error) => {
+    logError('share-socket-error', error);
+    cleanupSocket(socket);
   });
 });
 
-// Every ~25s: ping sockets that answered the previous ping, terminate the
-// ones that didn't. `ws.ping()` is a native WebSocket control frame -- the
-// browser answers it automatically with a pong, no client-side JS needed.
-// This traffic is also what keeps proxies/NATs from treating the connection
-// as idle and dropping it.
-const heartbeatInterval = setInterval(() => {
-  for (const socket of signalingServer.clients) {
-    const ws = socket as HeartbeatSocket;
-    if (ws.isAlive === false) {
-      logShare("heartbeat-timeout");
-      ws.terminate(); // fires "close" -> removePeer() -> notifies the other peer
-      continue;
-    }
-    ws.isAlive = false;
-    ws.ping();
-  }
-}, HEARTBEAT_INTERVAL_MS);
-heartbeatInterval.unref();
-signalingServer.on("close", () => clearInterval(heartbeatInterval));
-
-server.on("upgrade", (request, socket, head) => {
-  const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
-  if (url.pathname !== "/signal") {
-    logError("ws-upgrade-invalid-path", undefined, { pathname: url.pathname });
-    return socket.destroy();
-  }
-  logShare("ws-upgrade", { pathname: url.pathname });
-  signalingServer.handleUpgrade(request, socket, head, (webSocket) => signalingServer.emit("connection", webSocket, request));
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  if (url.pathname !== '/signal') return socket.destroy();
+  shareWebSocketServer.handleUpgrade(request, socket, head, (webSocket) =>
+    shareWebSocketServer.emit('connection', webSocket, request),
+  );
 });
 
 const sessionCleanup = setInterval(() => {
   const now = Date.now();
   for (const [sessionId, session] of shareSessions) {
     if (now - session.createdAt >= SHARE_SESSION_TTL_MS) {
-      logShare("session-expired", { sessionId });
-      for (const peer of Object.values(session.peers)) {
-        if (peer) send(peer, { type: "expired", message: "This 15-minute share session has expired." });
-        peer?.close(1000, "Share session expired");
+      logShare('session-expired', { sessionId });
+      for (const peer of [session.sender, ...session.receivers.values()]) {
+        if (peer) sendJson(peer, { type: 'expired', message: 'This 15-minute share session has expired.' });
+        peer?.close(1000, 'Share session expired');
+        if (peer) socketSessions.delete(peer);
       }
+      releaseShareFile(session.file);
+      session.receivers.clear();
+      session.sender = null;
       shareSessions.delete(sessionId);
     }
   }
@@ -434,11 +601,5 @@ sessionCleanup.unref();
 
 server.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
-  const mem = process.memoryUsage();
-  console.log({
-    rss: `${(mem.rss / 1024 / 1024).toFixed(1)} MB`,
-    heapUsed: `${(mem.heapUsed / 1024 / 1024).toFixed(1)} MB`,
-    heapTotal: `${(mem.heapTotal / 1024 / 1024).toFixed(1)} MB`,
-    external: `${(mem.external / 1024 / 1024).toFixed(1)} MB`,
-  });
+  console.log({ maxShareBytes: MAX_SHARE_BYTES, maxShareSessionsMemoryBytes: SHARE_MAX_SESSIONS_MEMORY_BYTES });
 });
