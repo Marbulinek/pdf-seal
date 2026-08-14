@@ -96,6 +96,7 @@
         <button type="button" class="modal-close" id="closeSaveAsModalBtn" aria-label="Close">✕</button>
       </div>
       <p class="modal-hint">Choose a name for the downloaded PDF file.</p>
+      <label for="saveAsFileName" class="modal-label">File name</label>
       <div class="save-as-input-group">
         <input type="text" class="modal-text-input" id="saveAsFileName" spellcheck="false" autocomplete="off">
         <span class="save-as-ext">.pdf</span>
@@ -175,16 +176,16 @@
         <form id="editFieldForm">
           <input type="hidden" id="editOriginalName">
           <div class="form-group">
-            <label>Field Name</label>
+            <label for="editName">Field Name</label>
             <input type="text" id="editName" required>
           </div>
           <div class="form-row">
-            <div><label>X Position</label><input type="number" id="editX" step="0.1" required></div>
-            <div><label>Y Position</label><input type="number" id="editY" step="0.1" required></div>
+            <div><label for="editX">X Position</label><input type="number" id="editX" step="0.1" required></div>
+            <div><label for="editY">Y Position</label><input type="number" id="editY" step="0.1" required></div>
           </div>
           <div class="form-row">
-            <div><label>Width</label><input type="number" id="editWidth" step="0.1" required></div>
-            <div><label>Height</label><input type="number" id="editHeight" step="0.1" required></div>
+            <div><label for="editWidth">Width</label><input type="number" id="editWidth" step="0.1" required></div>
+            <div><label for="editHeight">Height</label><input type="number" id="editHeight" step="0.1" required></div>
           </div>
           <div class="checkbox-group">
             <input type="checkbox" id="editRequired">
@@ -221,12 +222,12 @@
         <h3><span class="panel-dot dot-coral"></span>Add New Signature</h3>
         <form id="addSigForm">
           <div class="form-group">
-            <label>Field Name</label>
+            <label for="sigName">Field Name</label>
             <input type="text" id="sigName" placeholder="e.g. Signature1" required>
           </div>
           <div class="form-row">
-            <div><label>Width</label><input type="number" id="sigWidth" value="200" min="10" step="0.1"></div>
-            <div><label>Height</label><input type="number" id="sigHeight" value="60" min="10" step="0.1"></div>
+            <div><label for="sigWidth">Width</label><input type="number" id="sigWidth" value="200" min="10" step="0.1"></div>
+            <div><label for="sigHeight">Height</label><input type="number" id="sigHeight" value="60" min="10" step="0.1"></div>
           </div>
           <div class="checkbox-group">
             <input type="checkbox" id="sigRequired">
@@ -254,6 +255,7 @@
 
           <div class="meta-search-wrap">
             <span class="meta-search-icon" aria-hidden="true">🔍</span>
+            <label for="metaSearchInput" class="sr-only">Search document metadata</label>
             <input type="text" id="metaSearchInput" class="meta-search-input" placeholder="Find a key or value…" disabled>
             <button type="button" class="meta-search-clear" id="metaSearchClearBtn" aria-label="Clear search" hidden>✕</button>
           </div>
@@ -267,40 +269,19 @@
     </aside>
   </main>
 
-  <!-- P2P share modal. The file stays in the two browsers; this only displays connection state. -->
+  <!-- Hybrid share modal. PDF is always encrypted in the browser; WebRTC is preferred and encrypted WebSocket relay is the resilient fallback. -->
   <div class="modal-backdrop" id="shareModal" aria-hidden="true">
     <div class="modal-box share-modal-box" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
       <div class="modal-header">
-        <h3 id="shareModalTitle">Share PDF directly</h3>
+        <h3 id="shareModalTitle">Share PDF</h3>
         <button type="button" class="modal-close" id="closeShareModalBtn" aria-label="Close">✕</button>
       </div>
-      <ol class="share-steps" id="shareSteps" aria-hidden="true">
-        <li class="share-step" data-step="1">
-          <span class="share-step-badge">1</span>
-          <span class="share-step-label">Create link</span>
-        </li>
-        <li class="share-step-connector"></li>
-        <li class="share-step" data-step="2">
-          <span class="share-step-badge">2</span>
-          <span class="share-step-label">Share link</span>
-        </li>
-        <li class="share-step-connector"></li>
-        <li class="share-step" data-step="3">
-          <span class="share-step-badge">3</span>
-          <span class="share-step-label">They open it</span>
-        </li>
-        <li class="share-step-connector"></li>
-        <li class="share-step" data-step="4">
-          <span class="share-step-badge">4</span>
-          <span class="share-step-label">Document shared</span>
-        </li>
-      </ol>
       <div class="share-modal-hero-panel">
         <div class="share-hero-row">
           <div class="share-hero" aria-hidden="true">⇄</div>
-          <p class="modal-hint" id="shareDescription">Create a private link to send this PDF directly from your browser. The link expires in 15 minutes.</p>
+          <p class="modal-hint" id="shareDescription">Create a private link. The PDF is uploaded to the sharing server once and every person who opens the link can receive their own local copy. WebRTC direct transfer with an encrypted WebSocket fallback. The share session expires in 15 minutes.</p>
         </div>
-        <div class="share-security-note" id="shareSecurityNote">🔒 Browser-to-browser transfer · SHA-256 verification · no PDF stored by this sharing service</div>
+        <div class="share-security-note" id="shareSecurityNote">🔒 AES-256-GCM end-to-end encryption · the server stores only encrypted share data · 15-minute session</div>
       </div>
       <div class="share-link-row" id="shareLinkRow" hidden>
         <input class="modal-text-input share-link-input" id="shareLink" readonly aria-label="Share link">
@@ -314,8 +295,8 @@
         <div class="share-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="shareProgressBar"></span></div>
       </div>
       <div class="share-status" id="shareStatus" aria-live="polite"></div>
-      <p class="share-recipient-note share-keep-open-note" id="shareKeepOpenNote">⚠️ Keep this window open for the whole transfer — the PDF is sent directly from your browser, so closing the tab or letting the device sleep will cancel it.</p>
-      <p class="share-recipient-note" id="shareRecipientNote">This link is available to one recipient at a time. Create a new link for another transfer.</p>
+      <div class="share-connected-users" id="shareConnectedUsersWrap" hidden>Connected users: <strong id="shareConnectedUsers">0</strong></div>
+      <p class="share-recipient-note" id="shareRecipientNote">Anyone with the complete link can receive the PDF until the 15-minute session expires. The decryption key remains in the URL fragment and is never sent to the server.</p>
       <div class="modal-actions" id="shareActions">
         <button type="button" class="btn btn-ghost" id="cancelShareBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="startShareBtn">Create share link</button>
@@ -1757,23 +1738,19 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------------------------------------------------------------
-// P2P PDF sharing (WebRTC data channel; signaling carries no file bytes)
+// Hybrid PDF sharing:
+// - WebRTC is the preferred direct transport.
+// - The PDF is encrypted in the browser with AES-GCM before ANY transport.
+// - The WebSocket service stores/relays only ciphertext as a resilient fallback.
+// - If VPN/network changes break WebRTC, we reconnect signaling, restart ICE,
+//   then fall back to the encrypted WebSocket relay without losing the share.
 // ---------------------------------------------------------------
-const SHARE_CHUNK_BYTES = 16 * 1024;
+const SHARE_CHUNK_BYTES = 64 * 1024;
 const SHARE_HIGH_WATER_MARK = 512 * 1024;
 const SHARE_LOW_WATER_MARK = 256 * 1024;
-let shareSocket = null;
-let sharePeer = null;
-let shareChannel = null;
-let shareRole = null;
-let shareSessionId = null;
-let shareStarted = false;
-let pendingIceCandidates = [];
-let receiveMeta = null;
-let receiveChunks = [];
-let receiveBytes = 0;
-let copyTooltipTimer = null;
-
+const ICE_RESTART_DELAY_MS = 2500;
+const WEBRTC_CONNECT_TIMEOUT_MS = 12000;
+const WS_RECONNECT_MAX_MS = 8000;
 const shareModal = document.getElementById('shareModal');
 const shareStatus = document.getElementById('shareStatus');
 const shareProgressWrap = document.getElementById('shareProgressWrap');
@@ -1781,9 +1758,45 @@ const shareProgressText = document.getElementById('shareProgressText');
 const shareProgressPercent = document.getElementById('shareProgressPercent');
 const shareProgressBar = document.getElementById('shareProgressBar');
 
+let shareSocket = null;
+let sharePeerConnections = new Map();
+let shareChannels = new Map();
+let shareRole = null;
+let shareSessionId = null;
+let shareKeyBytes = null;
+let shareCryptoKey = null;
+let shareEncryptedData = null;
+let shareMeta = null;
+let shareStarted = false;
+let shareTransferStarted = false;
+let shareSocketReconnectTimer = null;
+let shareSocketReconnectAttempt = 0;
+let shareClosedByUser = false;
+let shareWebRtcTimers = new Map();
+let sharePeerStarted = new Set();
+let sharePeerFailed = new Set();
+let receiveMeta = null;
+let receiveChunks = [];
+let receiveBytes = 0;
+let receiveCiphertext = null;
+let receiveUsingRelay = false;
+let receiveCompleted = false;
+let receiveSessionKey = null;
+let receiverId = null;
+let copyTooltipTimer = null;
+
 function setShareStatus(message, type = '') {
   shareStatus.textContent = message;
   shareStatus.className = `share-status ${type}`;
+}
+
+function setConnectedUserCount(count) {
+  const normalized = Math.max(0, Number.isFinite(Number(count)) ? Number(count) : 0);
+  const wrap = document.getElementById('shareConnectedUsersWrap');
+  const value = document.getElementById('shareConnectedUsers');
+  if (!wrap || !value) return;
+  value.textContent = String(normalized);
+  wrap.hidden = shareRole !== 'sender';
 }
 
 function setShareProgress(current, total, label) {
@@ -1798,194 +1811,80 @@ function setShareProgress(current, total, label) {
 
 function resetShareProgress() {
   shareProgressWrap.hidden = true;
-  shareProgressText.textContent = 'Preparing transfer…';
+  shareProgressText.textContent = 'Preparing secure transfer…';
   shareProgressPercent.textContent = '0%';
   shareProgressBar.style.width = '0%';
   shareProgressBar.classList.remove('is-complete');
   shareProgressBar.parentElement.setAttribute('aria-valuenow', '0');
 }
 
-// Drives the 1-2-3-4 step indicator in the sender view. `step` is the step
-// currently in progress (1-4); pass 5 once the whole flow is finished, which
-// marks step 4 done with nothing left active.
-function setShareStep(step) {
-  document.querySelectorAll('.share-step').forEach((li) => {
-    const n = Number(li.dataset.step);
-    const done = n < step;
-    li.classList.toggle('is-done', done);
-    li.classList.toggle('is-active', n === step);
-    li.querySelector('.share-step-badge').textContent = done ? '✓' : String(n);
-  });
-  document.querySelectorAll('.share-step-connector').forEach((connector, index) => {
-    connector.classList.toggle('is-done', index + 1 < step);
-  });
+function showIdleShareProgress(label = 'Waiting for receiver…') {
+  shareProgressWrap.hidden = false;
+  shareProgressText.textContent = label;
+  shareProgressPercent.textContent = '0%';
+  shareProgressBar.style.width = '0%';
+  shareProgressBar.classList.remove('is-complete');
+  shareProgressBar.parentElement.setAttribute('aria-valuenow', '0');
 }
 
-// A share link represents one immutable PDF snapshot. Once the editor creates
-// a new file after an add/edit/remove operation, discard any older session so
-// the next link can only transfer the version currently on screen.
-function resetShareForChangedDocument() {
-  if (shareRole !== 'sender') return;
-  try { shareChannel?.close(); } catch (_) {}
-  try { sharePeer?.close(); } catch (_) {}
-  try { shareSocket?.close(); } catch (_) {}
-  shareChannel = null;
-  sharePeer = null;
-  shareSocket = null;
-  shareRole = null;
-  shareSessionId = null;
-  shareStarted = false;
-  pendingIceCandidates = [];
-  document.getElementById('shareLinkRow').hidden = true;
-  document.getElementById('startShareBtn').hidden = false;
-  resetShareProgress();
-  setShareStep(1);
-  setShareStatus('The document changed. Create a new link to share this version.', 'waiting');
+function hideShareProgress() {
+  shareProgressWrap.hidden = true;
+  shareProgressText.textContent = 'Preparing secure transfer…';
+  shareProgressPercent.textContent = '0%';
+  shareProgressBar.style.width = '0%';
+  shareProgressBar.classList.remove('is-complete');
+  shareProgressBar.parentElement.setAttribute('aria-valuenow', '0');
 }
-
-function openShareModal() {
-  shareModal.classList.add('is-open');
-  shareModal.setAttribute('aria-hidden', 'false');
-  if (!shareRole) {
-    shareModal.querySelector('.share-modal-box').classList.remove('is-receiver');
-    document.getElementById('shareModalTitle').textContent = 'Share PDF directly';
-    document.getElementById('shareDescription').textContent = 'Create a private link to send this PDF directly from your browser. The link expires in 15 minutes.';
-    document.getElementById('shareSecurityNote').textContent = '🔒 Browser-to-browser transfer · SHA-256 verification · no PDF stored by this sharing service';
-    document.getElementById('shareRecipientNote').textContent = 'This link is available to one recipient at a time. Create a new link for another transfer.';
-    document.getElementById('shareRecipientNote').hidden = false;
-    document.getElementById('startShareBtn').hidden = false;
-    document.getElementById('cancelShareBtn').textContent = 'Cancel';
-    setShareStep(1);
-  }
-}
-
-function closeShareModal() {
-  shareModal.classList.remove('is-open');
-  shareModal.setAttribute('aria-hidden', 'true');
-}
-
-// Crockford's Base32 alphabet: digits + uppercase letters, minus 0/O, 1/I/L,
-// and U -- characters that are easy to mis-hear or mis-type when a link is
-// read aloud or copied by hand. 256 (byte range) divides evenly by 32, so
-// `byte % 32` introduces no bias across the alphabet.
-const SHARE_ID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-const SHARE_ID_LENGTH = 6; // 32^6 ≈ 1.07 billion combinations -- plenty for a 15-minute-lived code
 
 function createSessionId() {
-  const bytes = new Uint8Array(SHARE_ID_LENGTH);
+  const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, b => SHARE_ID_ALPHABET[b % SHARE_ID_ALPHABET.length]).join('');
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function bytesToBase64Url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlToBytes(value) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+
+function createCompactShareToken() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(3);
+  crypto.getRandomValues(bytes);
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) | BigInt(byte);
+  let token = '';
+  for (let i = 0; i < 6; i += 1) {
+    token = alphabet[Number(value % BigInt(alphabet.length))] + token;
+    value = value / BigInt(alphabet.length);
+  }
+  return token;
+}
+
+async function deriveShareKeyBytes(token) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token.toUpperCase()));
+  return new Uint8Array(digest.slice(0, 16));
+}
+
+function getShareKeyFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const queryKey = params.get('k') || params.get('key');
+  if (queryKey) return queryKey;
+
+  const hashParams = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : location.hash);
+  return hashParams.get('k') || hashParams.get('key') || null;
 }
 
 function websocketUrl() {
   return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/signal`;
-}
-
-function sendSignal(payload) {
-  if (shareSocket?.readyState === WebSocket.OPEN) {
-    shareSocket.send(JSON.stringify({ type: 'signal', sessionId: shareSessionId, payload }));
-  }
-}
-
-async function flushPendingIceCandidates() {
-  const candidates = pendingIceCandidates;
-  pendingIceCandidates = [];
-  for (const candidate of candidates) await sharePeer.addIceCandidate(candidate);
-}
-
-function setupDataChannel(channel) {
-  shareChannel = channel;
-  shareChannel.binaryType = 'arraybuffer';
-  shareChannel.bufferedAmountLowThreshold = SHARE_LOW_WATER_MARK;
-  shareChannel.onopen = () => {
-    if (shareRole === 'sender') sendSharedFile();
-    else setShareStatus('Secure connection ready. Waiting for the PDF…', 'waiting');
-  };
-  shareChannel.onclose = () => {
-    if (!receiveMeta || receiveBytes < (receiveMeta?.size || 0)) setShareStatus('Connection closed.', 'error');
-  };
-  shareChannel.onerror = () => setShareStatus('The direct connection encountered an error.', 'error');
-  shareChannel.onmessage = receiveShareData;
-}
-
-async function createPeerConnection() {
-  const response = await fetch('/api/share-config');
-  if (!response.ok) throw new Error('Unable to load WebRTC configuration.');
-  const { stunUrls } = await response.json();
-  sharePeer = new RTCPeerConnection({ iceServers: [{ urls: stunUrls }] });
-  sharePeer.onicecandidate = (event) => {
-    if (event.candidate) sendSignal({ candidate: event.candidate.toJSON() });
-  };
-  sharePeer.onconnectionstatechange = () => {
-    const state = sharePeer.connectionState;
-    if (state === 'failed') setShareStatus('Could not create a direct connection. Try another network or link.', 'error');
-    if (state === 'disconnected') setShareStatus('Connection interrupted. Waiting to reconnect…', 'waiting');
-  };
-  if (shareRole === 'receiver') sharePeer.ondatachannel = (event) => setupDataChannel(event.channel);
-}
-
-function connectToShareSession() {
-  shareSocket = new WebSocket(websocketUrl());
-  shareSocket.onopen = () => shareSocket.send(JSON.stringify({ type: 'join', sessionId: shareSessionId, role: shareRole }));
-  shareSocket.onclose = (event) => {
-    // Once the WebRTC data channel is open the two browsers talk directly and
-    // no longer need the signaling socket, so a close here is harmless. If it
-    // closes before that point, the direct connection could never be set up.
-    if (shareChannel?.readyState === 'open') return;
-    if (event.code === 1000) return; // normal closure (e.g. session expired, handled elsewhere)
-    setShareStatus('Lost connection to the sharing service. Please create a new link.', 'error');
-  };
-  shareSocket.onmessage = async (event) => {
-    let message;
-    try { message = JSON.parse(event.data); } catch { return; }
-    if (message.type === 'joined') {
-      setShareStatus(shareRole === 'sender' ? 'Link is ready. Waiting for someone to open it…' : 'Link found. Connecting to the sender…', 'waiting');
-      return;
-    }
-    if (message.type === 'peer-ready' && shareRole === 'sender' && !shareStarted) {
-      shareStarted = true;
-      setShareStep(3);
-      try {
-        shareChannel = sharePeer.createDataChannel('pdf-seal-transfer', { ordered: true });
-        setupDataChannel(shareChannel);
-        const offer = await sharePeer.createOffer();
-        await sharePeer.setLocalDescription(offer);
-        sendSignal({ description: sharePeer.localDescription });
-        setShareStatus('Recipient joined. Establishing a direct connection…', 'waiting');
-      } catch (error) { setShareStatus(error.message || 'Could not start sharing.', 'error'); }
-      return;
-    }
-    if (message.type === 'signal') {
-      try {
-        const { description, candidate } = message.payload || {};
-        if (description) {
-          await sharePeer.setRemoteDescription(description);
-          await flushPendingIceCandidates();
-          if (description.type === 'offer') {
-            const answer = await sharePeer.createAnswer();
-            await sharePeer.setLocalDescription(answer);
-            sendSignal({ description: sharePeer.localDescription });
-          }
-        } else if (candidate) {
-          if (sharePeer.remoteDescription) await sharePeer.addIceCandidate(candidate);
-          else pendingIceCandidates.push(candidate);
-        }
-      } catch (error) { setShareStatus(error.message || 'Could not negotiate the direct connection.', 'error'); }
-      return;
-    }
-    if (message.type === 'expired') setShareStatus(message.message, 'error');
-    if (message.type === 'peer-left') setShareStatus('The other person left. This link remains active until it expires.', 'waiting');
-    if (message.type === 'error') setShareStatus(message.message || 'Sharing error.', 'error');
-  };
-  shareSocket.onerror = () => setShareStatus('Cannot reach the signaling service.', 'error');
-}
-
-function waitForBufferSpace() {
-  if (shareChannel.bufferedAmount <= SHARE_HIGH_WATER_MARK) return Promise.resolve();
-  return new Promise(resolve => {
-    const onLow = () => { shareChannel.removeEventListener('bufferedamountlow', onLow); resolve(); };
-    shareChannel.addEventListener('bufferedamountlow', onLow);
-  });
 }
 
 async function sha256Hex(data) {
@@ -1993,100 +1892,568 @@ async function sha256Hex(data) {
   return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function sendSharedFile() {
-  try {
-    const data = await activeFile.arrayBuffer();
-    const sha256 = await sha256Hex(data);
-    // The receiver deliberately does not call /api/info with the received PDF.
-    // Send only the lightweight field overlay data alongside the direct file
-    // transfer so the same signature fields render in its local viewer.
-    const fields = documentFields.map(({ name, type, required, readOnly, tooltip, page, rect }) => ({ name, type, required, readOnly, tooltip, page, rect }));
-    shareChannel.send(JSON.stringify({ type: 'file-meta', name: activeFile.name || 'shared-document.pdf', size: data.byteLength, sha256, fields }));
-    setShareStatus('Sending directly to recipient…', 'success');
-    for (let offset = 0; offset < data.byteLength; offset += SHARE_CHUNK_BYTES) {
-      await waitForBufferSpace();
-      shareChannel.send(data.slice(offset, Math.min(offset + SHARE_CHUNK_BYTES, data.byteLength)));
-      setShareProgress(Math.min(offset + SHARE_CHUNK_BYTES, data.byteLength), data.byteLength, 'Sending encrypted chunks…');
-    }
-    shareChannel.send(JSON.stringify({ type: 'file-complete' }));
-    setShareProgress(data.byteLength, data.byteLength, 'Transfer complete');
-    setShareStatus('PDF sent directly and verified by the recipient.', 'success');
-    setShareStep(5);
-  } catch (error) { setShareStatus(error.message || 'Could not send this PDF.', 'error'); }
+async function encryptShareFile(file, keyBytes) {
+  const plaintext = await file.arrayBuffer();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  shareCryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+  shareKeyBytes = new Uint8Array(keyBytes);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, shareCryptoKey, plaintext);
+  return {
+    ciphertext,
+    meta: {
+      sessionId: shareSessionId,
+      name: file.name || 'shared-document.pdf',
+      size: plaintext.byteLength,
+      encryptedSize: ciphertext.byteLength,
+      sha256: await sha256Hex(plaintext),
+      iv: bytesToBase64Url(iv),
+      fields: documentFields.map(({ name, type, required, readOnly, tooltip, page, rect }) => ({ name, type, required, readOnly, tooltip, page, rect })),
+      algorithm: 'AES-GCM',
+    },
+  };
 }
 
-async function receiveShareData(event) {
-  if (typeof event.data === 'string') {
-    let message;
-    try { message = JSON.parse(event.data); } catch { return; }
-    if (message.type === 'file-meta') {
-      receiveMeta = message;
-      receiveChunks = [];
-      receiveBytes = 0;
-      setShareProgress(0, message.size, `Receiving ${message.name}…`);
-      setShareStatus('Receiving PDF directly from the sender…', 'waiting');
-    } else if (message.type === 'file-complete') await finishReceivedFile();
-    return;
-  }
-  if (!receiveMeta) return;
-  const chunk = event.data instanceof ArrayBuffer ? event.data : await event.data.arrayBuffer();
-  receiveChunks.push(chunk);
-  receiveBytes += chunk.byteLength;
-  if (receiveBytes > receiveMeta.size) return setShareStatus('Transfer contained more data than expected.', 'error');
-  setShareProgress(receiveBytes, receiveMeta.size, `Receiving ${receiveMeta.name}…`);
+async function importReceiveKey() {
+  const rawKey = getShareKeyFromUrl();
+  if (!rawKey) throw new Error('This share link is missing its encryption key. Ask the sender for a new link.');
+
+  const keyBytes = /^[A-Z0-9]{4,8}$/i.test(rawKey)
+    ? await deriveShareKeyBytes(rawKey)
+    : base64UrlToBytes(rawKey);
+
+  receiveSessionKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
 }
 
-async function finishReceivedFile() {
-  if (!receiveMeta || receiveBytes !== receiveMeta.size) return setShareStatus('Transfer ended before the whole PDF arrived.', 'error');
-  try {
-    const blob = new Blob(receiveChunks, { type: 'application/pdf' });
-    const data = await blob.arrayBuffer();
-    const actualHash = await sha256Hex(data);
-    if (actualHash !== receiveMeta.sha256) throw new Error('Integrity check failed — the PDF was not opened.');
-    setShareProgress(receiveMeta.size, receiveMeta.size, 'SHA-256 verified');
-    setShareStatus('PDF received securely and verified. Opening it locally…', 'success');
-    await processNewFile(new File([data], receiveMeta.name, { type: 'application/pdf' }), {
-      skipServerInfo: true,
-      transferredFields: receiveMeta.fields,
-    });
-    setShareStatus('PDF received and verified. You can close this window to see the document.', 'success');
-    history.replaceState({}, '', '/');
-  } catch (error) { setShareStatus(error.message || 'Could not verify the received PDF.', 'error'); }
+async function decryptReceivedFile(ciphertext, meta) {
+  const iv = base64UrlToBytes(meta.iv);
+  return crypto.subtle.decrypt({ name: 'AES-GCM', iv }, receiveSessionKey, ciphertext);
 }
 
-async function startSendingShare() {
-  if (!activeFile || !window.RTCPeerConnection || !crypto.subtle) return setShareStatus('This browser does not support secure WebRTC sharing.', 'error');
-  resetShareProgress();
+function resetShareForChangedDocument() {
+  if (shareRole === 'sender') teardownShareSession('The document changed. Create a new share link for the new version.');
+}
+
+function closePeerConnection(peerId) {
+  const timer = shareWebRtcTimers.get(peerId);
+  if (timer) clearTimeout(timer);
+  shareWebRtcTimers.delete(peerId);
+  const channel = shareChannels.get(peerId);
+  try { channel?.close(); } catch (_) {}
+  shareChannels.delete(peerId);
+  const peer = sharePeerConnections.get(peerId);
+  try { peer?.close(); } catch (_) {}
+  sharePeerConnections.delete(peerId);
+}
+
+function teardownShareSession(statusMessage) {
+  shareClosedByUser = true;
+  if (shareSocketReconnectTimer) clearTimeout(shareSocketReconnectTimer);
+  shareSocketReconnectTimer = null;
+  for (const peerId of Array.from(sharePeerConnections.keys())) closePeerConnection(peerId);
+  try { shareSocket?.close(); } catch (_) {}
+  shareSocket = null;
+  shareRole = null;
+  shareSessionId = null;
+  shareKeyBytes = null;
+  shareCryptoKey = null;
+  shareEncryptedData = null;
+  shareMeta = null;
+  receiverId = null;
+  shareStarted = false;
+  shareTransferStarted = false;
+  shareSocketReconnectAttempt = 0;
+  sharePeerStarted.clear();
+  sharePeerFailed.clear();
   receiveMeta = null;
   receiveChunks = [];
   receiveBytes = 0;
+  receiveCiphertext = null;
+  receiveUsingRelay = false;
+  receiveCompleted = false;
+  receiveSessionKey = null;
+  document.getElementById('startShareBtn').hidden = false;
+  document.getElementById('shareLinkRow').hidden = true;
+  setConnectedUserCount(0);
+  resetShareProgress();
+  if (statusMessage) setShareStatus(statusMessage, 'waiting');
+}
+
+function openShareModal() {
+  shareModal.classList.add('is-open');
+  shareModal.setAttribute('aria-hidden', 'false');
+  if (!shareRole) {
+    shareModal.querySelector('.share-modal-box').classList.remove('is-receiver');
+    document.getElementById('shareModalTitle').textContent = 'Share PDF securely';
+    document.getElementById('shareDescription').textContent = 'Create an end-to-end encrypted link. WebRTC tries a direct browser-to-browser transfer first; an encrypted WebSocket relay automatically takes over when VPNs, firewalls or network changes block it.';
+    document.getElementById('shareSecurityNote').textContent = '🔒 AES-256-GCM end-to-end encryption · the server stores only encrypted PDF data · 15-minute session';
+    document.getElementById('shareRecipientNote').textContent = 'Anyone with the complete link can receive the PDF while the share session is active. The decryption key stays in the link fragment and is never sent to the server.';
+    document.getElementById('shareRecipientNote').hidden = false;
+    document.getElementById('startShareBtn').hidden = false;
+    document.getElementById('cancelShareBtn').textContent = 'Cancel';
+    setShareStatus('', '');
+  }
+}
+
+function closeShareModal() {
+  shareModal.classList.remove('is-open');
+  shareModal.setAttribute('aria-hidden', 'true');
+  if (shareRole) teardownShareSession();
+}
+
+async function waitForSocketSpace() {
+  if (!shareSocket || shareSocket.readyState !== WebSocket.OPEN || shareSocket.bufferedAmount <= SHARE_HIGH_WATER_MARK) return;
+  await new Promise(resolve => {
+    const poll = () => {
+      if (!shareSocket || shareSocket.readyState !== WebSocket.OPEN || shareSocket.bufferedAmount <= SHARE_LOW_WATER_MARK) return resolve();
+      setTimeout(poll, 10);
+    };
+    poll();
+  });
+}
+
+function connectToShareSession() {
+  if (shareClosedByUser || !shareSessionId || !shareRole) return;
+  if (shareSocket?.readyState === WebSocket.OPEN || shareSocket?.readyState === WebSocket.CONNECTING) return;
+
+  shareSocket = new WebSocket(websocketUrl());
+  shareSocket.binaryType = 'arraybuffer';
+
+  shareSocket.onopen = () => {
+    shareSocketReconnectAttempt = 0;
+    shareSocket.send(JSON.stringify({ type: 'join', sessionId: shareSessionId, role: shareRole, receiverId }));
+    setShareStatus(shareRole === 'sender' ? 'Secure share session connected.' : 'Connected to the share session. Trying direct transfer…', 'waiting');
+  };
+
+  shareSocket.onmessage = async (event) => {
+    if (typeof event.data !== 'string') return receiveRelayChunk(event.data);
+    let message;
+    try { message = JSON.parse(event.data); } catch { return; }
+
+    if (message.type === 'joined') {
+      if (shareRole === 'receiver') {
+        receiverId = message.receiverId || receiverId;
+        if (message.fileReady) {
+          receiveMeta = message.fileMeta;
+          setShareStatus('Encrypted PDF is available. Trying WebRTC direct transfer…', 'waiting');
+          startReceiverFallbackTimer();
+        } else if (!message.fileReady && message.role === 'receiver') {
+          setShareStatus('Waiting for the sender to finish preparing the encrypted PDF…', 'waiting');
+        }
+      } else {
+        setConnectedUserCount(message.receiverCount || 0);
+      }
+      return;
+    }
+
+    if (message.type === 'file-upload-started' && shareRole === 'sender') {
+      await continueRelayUpload(Number(message.receivedBytes) || 0);
+      return;
+    }
+
+    if (message.type === 'file-stored' && shareRole === 'sender') {
+      // The encrypted snapshot is only prepared on the server at this point;
+      // no recipient is receiving it yet, so do not show a completed progress bar.
+      hideShareProgress();
+      setConnectedUserCount(message.receiverCount || 0);
+      setShareStatus(`Encrypted share is ready. ${message.receiverCount || 0} recipient(s) connected.`, 'success');
+      return;
+    }
+
+    if (message.type === 'receiver-joined' && shareRole === 'sender') {
+      setConnectedUserCount(message.receiverCount || 0);
+      if (!shareTransferStarted && shareEncryptedData && shareMeta && shareSocket?.readyState === WebSocket.OPEN) {
+        shareTransferStarted = true;
+        showIdleShareProgress('Receiver connected. Preparing transfer…');
+        shareSocket.send(JSON.stringify({ type: 'file-meta', ...shareMeta }));
+      }
+      createPeerConnectionForReceiver(message.receiverId);
+      setShareStatus(`Encrypted share is ready. ${message.receiverCount || 0} recipient(s) connected.`, 'success');
+      return;
+    }
+
+    if (message.type === 'receiver-left' && shareRole === 'sender') {
+      setConnectedUserCount(message.receiverCount || 0);
+      setShareStatus(`Encrypted share is ready. ${message.receiverCount || 0} recipient(s) connected.`, 'success');
+      return;
+    }
+
+    if (message.type === 'signal' && shareRole === 'receiver') {
+      await handleReceiverSignal(message.payload);
+      return;
+    }
+
+    if (message.type === 'signal' && shareRole === 'sender') {
+      await handleSenderSignal(message.receiverId, message.payload);
+      return;
+    }
+
+    if (message.type === 'relay-meta' || message.type === 'relay-complete') {
+      return receiveRelayControl(message);
+    }
+
+    if (message.type === 'relay-available' && shareRole === 'receiver') {
+      startEncryptedRelayDownload(receiveBytes);
+      return;
+    }
+
+    if (message.type === 'sender-left' && shareRole === 'receiver') {
+      setShareStatus('The sender disconnected. The encrypted relay will continue automatically.', 'waiting');
+      startEncryptedRelayDownload(receiveBytes);
+      return;
+    }
+
+    if (message.type === 'waiting-for-file') {
+      setShareStatus('The encrypted PDF is not ready yet. Waiting for the sender…', 'waiting');
+      return;
+    }
+
+    if (message.type === 'expired') {
+      setShareStatus(message.message, 'error');
+      return;
+    }
+
+    if (message.type === 'error') {
+      setShareStatus(message.message || 'Sharing error.', 'error');
+    }
+  };
+
+  shareSocket.onerror = () => {
+    if (!shareClosedByUser) setShareStatus('Network connection interrupted. Reconnecting…', 'waiting');
+  };
+
+  shareSocket.onclose = () => {
+    shareSocket = null;
+    if (shareClosedByUser) return;
+    scheduleShareSocketReconnect();
+    if (shareRole === 'receiver' && !receiveCompleted) startEncryptedRelayDownload(receiveBytes);
+  };
+}
+
+function scheduleShareSocketReconnect() {
+  if (shareClosedByUser || shareSocketReconnectTimer) return;
+  const delay = Math.min(WS_RECONNECT_MAX_MS, 500 * (2 ** Math.min(shareSocketReconnectAttempt, 4)));
+  const jitter = Math.floor(Math.random() * 350);
+  shareSocketReconnectTimer = setTimeout(() => {
+    shareSocketReconnectTimer = null;
+    shareSocketReconnectAttempt += 1;
+    connectToShareSession();
+  }, delay + jitter);
+}
+
+async function continueRelayUpload(offset) {
+  if (shareRole !== 'sender' || !shareEncryptedData || !shareMeta || !shareSocket || shareSocket.readyState !== WebSocket.OPEN) return;
+  const safeOffset = Math.max(0, Math.min(offset, shareEncryptedData.byteLength));
+  setShareProgress(safeOffset, shareEncryptedData.byteLength, 'Uploading encrypted share…');
+  for (let cursor = safeOffset; cursor < shareEncryptedData.byteLength; cursor += SHARE_CHUNK_BYTES) {
+    await waitForSocketSpace();
+    if (!shareSocket || shareSocket.readyState !== WebSocket.OPEN) return;
+    const end = Math.min(cursor + SHARE_CHUNK_BYTES, shareEncryptedData.byteLength);
+    shareSocket.send(shareEncryptedData.slice(cursor, end));
+    setShareProgress(end, shareEncryptedData.byteLength, 'Uploading encrypted share…');
+  }
+  if (shareSocket?.readyState === WebSocket.OPEN) shareSocket.send(JSON.stringify({ type: 'file-complete', sessionId: shareSessionId }));
+}
+
+async function receiveRelayControl(message) {
+  if (message.type === 'relay-meta') {
+    const offset = Number(message.offset) || 0;
+    if (offset === 0) receiveChunks = [];
+    receiveMeta = message;
+    receiveBytes = offset;
+    setShareProgress(receiveBytes, message.encryptedSize, `Receiving encrypted PDF…`);
+    setShareStatus('Using encrypted WebSocket fallback. The server can only relay ciphertext.', 'waiting');
+    return;
+  }
+  if (message.type === 'relay-complete') await finishReceivedFile();
+}
+
+async function receiveRelayChunk(data) {
+  if (!receiveMeta || receiveCompleted) return;
+  const chunk = data instanceof ArrayBuffer ? data : await data.arrayBuffer();
+  receiveChunks.push(chunk);
+  receiveBytes += chunk.byteLength;
+  if (receiveBytes > receiveMeta.encryptedSize) return setShareStatus('The encrypted transfer exceeded the expected size.', 'error');
+  setShareProgress(receiveBytes, receiveMeta.encryptedSize, 'Receiving encrypted PDF…');
+}
+
+async function finishReceivedFile() {
+  if (!receiveMeta || receiveBytes !== receiveMeta.encryptedSize) {
+    return setShareStatus('The encrypted transfer ended before the whole PDF arrived. Reconnecting…', 'waiting');
+  }
+  try {
+    const ciphertext = concatChunks(receiveChunks);
+    receiveCiphertext = ciphertext;
+    const plaintext = await decryptReceivedFile(ciphertext, receiveMeta);
+    const actualHash = await sha256Hex(plaintext);
+    if (actualHash !== receiveMeta.sha256) throw new Error('Integrity verification failed. The PDF was not opened.');
+    receiveCompleted = true;
+    setShareProgress(receiveMeta.encryptedSize, receiveMeta.encryptedSize, 'Decrypted and verified');
+    setShareStatus('PDF received securely, verified and opened locally.', 'success');
+    await processNewFile(new File([plaintext], receiveMeta.name, { type: 'application/pdf' }), {
+      skipServerInfo: true,
+      transferredFields: receiveMeta.fields,
+    });
+    history.replaceState({}, '', location.pathname);
+  } catch (error) {
+    setShareStatus(error.message || 'Could not decrypt the received PDF.', 'error');
+  }
+}
+
+function concatChunks(chunks) {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(new Uint8Array(chunk), offset);
+    offset += chunk.byteLength;
+  }
+  return result.buffer;
+}
+
+function startEncryptedRelayDownload(offset = 0) {
+  if (shareRole !== 'receiver' || !shareSocket || shareSocket.readyState !== WebSocket.OPEN || receiveCompleted) return;
+  receiveUsingRelay = true;
+  shareSocket.send(JSON.stringify({ type: 'download', sessionId: shareSessionId, offset }));
+}
+
+function startReceiverFallbackTimer() {
+  setTimeout(() => {
+    if (shareRole !== 'receiver' || receiveCompleted || receiveUsingRelay) return;
+    if (!sharePeerConnections.size) startEncryptedRelayDownload(receiveBytes);
+  }, WEBRTC_CONNECT_TIMEOUT_MS);
+}
+
+async function createPeerConnectionForReceiver(peerId) {
+  if (shareRole !== 'sender' || !peerId || sharePeerConnections.has(peerId)) return;
+  const response = await fetch('/api/share-config');
+  const config = await response.json();
+  const peer = new RTCPeerConnection({ iceServers: config.iceServers || [] });
+  sharePeerConnections.set(peerId, peer);
+  peer.onicecandidate = event => {
+    if (event.candidate) sendSignal({ receiverId: peerId, payload: { candidate: event.candidate.toJSON() } });
+  };
+  peer.onconnectionstatechange = () => {
+    const state = peer.connectionState;
+    if (state === 'connected') {
+      const timer = shareWebRtcTimers.get(peerId);
+      if (timer) clearTimeout(timer);
+      shareWebRtcTimers.delete(peerId);
+      setShareStatus('Direct encrypted browser-to-browser transfer is active.', 'success');
+    } else if (state === 'failed') {
+      restartOrFallbackPeer(peerId);
+    }
+  };
+  const channel = peer.createDataChannel('pdf-seal-transfer', { ordered: true });
+  setupSenderDataChannel(peerId, channel);
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  sendSignal({ receiverId: peerId, payload: { description: peer.localDescription } });
+  sharePeerStarted.add(peerId);
+  shareWebRtcTimers.set(peerId, setTimeout(() => restartOrFallbackPeer(peerId), WEBRTC_CONNECT_TIMEOUT_MS));
+}
+
+function setupSenderDataChannel(peerId, channel) {
+  channel.binaryType = 'arraybuffer';
+  channel.bufferedAmountLowThreshold = SHARE_LOW_WATER_MARK;
+  shareChannels.set(peerId, channel);
+  channel.onopen = async () => {
+    if (!shareEncryptedData || !shareMeta) return;
+    setShareProgress(0, shareEncryptedData.byteLength, 'Sending encrypted PDF directly…');
+    setShareStatus('Direct encrypted transfer connected. Sending PDF…', 'success');
+    channel.send(JSON.stringify({ type: 'file-meta', ...shareMeta }));
+    for (let offset = 0; offset < shareEncryptedData.byteLength; offset += SHARE_CHUNK_BYTES) {
+      await waitForDataChannelSpace(channel);
+      if (channel.readyState !== 'open') return restartOrFallbackPeer(peerId);
+      const end = Math.min(offset + SHARE_CHUNK_BYTES, shareEncryptedData.byteLength);
+      channel.send(shareEncryptedData.slice(offset, end));
+      setShareProgress(end, shareEncryptedData.byteLength, 'Sending encrypted PDF directly…');
+    }
+    if (channel.readyState === 'open') {
+      channel.send(JSON.stringify({ type: 'file-complete' }));
+      setShareProgress(shareEncryptedData.byteLength, shareEncryptedData.byteLength, 'Transfer complete');
+    }
+  };
+  channel.onerror = () => restartOrFallbackPeer(peerId);
+  channel.onclose = () => {
+    if (!receiveCompleted) restartOrFallbackPeer(peerId);
+  };
+}
+
+function waitForDataChannelSpace(channel) {
+  if (channel.bufferedAmount <= SHARE_HIGH_WATER_MARK) return Promise.resolve();
+  return new Promise(resolve => {
+    const onLow = () => { channel.removeEventListener('bufferedamountlow', onLow); resolve(); };
+    channel.addEventListener('bufferedamountlow', onLow);
+  });
+}
+
+async function restartOrFallbackPeer(peerId) {
+  if (sharePeerFailed.has(peerId)) return;
+  sharePeerFailed.add(peerId);
+  const peer = sharePeerConnections.get(peerId);
+  if (!peer) return;
+  try {
+    peer.restartIce();
+    const offer = await peer.createOffer({ iceRestart: true });
+    await peer.setLocalDescription(offer);
+    sendSignal({ receiverId: peerId, payload: { description: peer.localDescription } });
+    setShareStatus('Network changed. Retrying the direct connection…', 'waiting');
+    setTimeout(() => {
+      if (peer.connectionState !== 'connected') setShareStatus('Direct connection unavailable. The encrypted WebSocket fallback is ready for this recipient.', 'waiting');
+      sharePeerFailed.delete(peerId);
+    }, ICE_RESTART_DELAY_MS);
+  } catch (_) {
+    setShareStatus('Direct connection unavailable. The encrypted WebSocket fallback is ready for this recipient.', 'waiting');
+  }
+}
+
+async function handleSenderSignal(peerId, payload) {
+  const peer = sharePeerConnections.get(peerId);
+  if (!peer) return;
+  try {
+    if (payload.description) {
+      await peer.setRemoteDescription(payload.description);
+      if (payload.description.type === 'answer') return;
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      sendSignal({ receiverId: peerId, payload: { description: peer.localDescription } });
+    } else if (payload.candidate) {
+      await peer.addIceCandidate(payload.candidate);
+    }
+  } catch (_) {
+    restartOrFallbackPeer(peerId);
+  }
+}
+
+async function createReceiverPeer() {
+  const response = await fetch('/api/share-config');
+  const config = await response.json();
+  const peer = new RTCPeerConnection({ iceServers: config.iceServers || [] });
+  sharePeerConnections.set('sender', peer);
+  peer.onicecandidate = event => {
+    if (event.candidate) sendSignal({ payload: { candidate: event.candidate.toJSON() } });
+  };
+  peer.ondatachannel = event => setupReceiverDataChannel(event.channel);
+  peer.onconnectionstatechange = () => {
+    if (['failed', 'disconnected'].includes(peer.connectionState) && !receiveCompleted) {
+      try { peer.restartIce(); } catch (_) {}
+      setShareStatus('VPN/network change detected. Switching to the encrypted relay if direct transfer cannot recover…', 'waiting');
+      setTimeout(() => {
+        if (peer.connectionState !== 'connected' && !receiveCompleted) startEncryptedRelayDownload(receiveBytes);
+      }, ICE_RESTART_DELAY_MS);
+    }
+  };
+}
+
+async function handleReceiverSignal(payload) {
+  if (!sharePeerConnections.has('sender')) await createReceiverPeer();
+  const peer = sharePeerConnections.get('sender');
+  try {
+    if (payload.description) {
+      await peer.setRemoteDescription(payload.description);
+      if (payload.description.type === 'offer') {
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        sendSignal({ payload: { description: peer.localDescription } });
+      }
+    } else if (payload.candidate) {
+      await peer.addIceCandidate(payload.candidate);
+    }
+  } catch (_) {
+    startEncryptedRelayDownload(receiveBytes);
+  }
+}
+
+function setupReceiverDataChannel(channel) {
+  channel.binaryType = 'arraybuffer';
+  channel.onopen = () => {
+    if (receiveBytes > 0 || receiveUsingRelay || receiveCompleted) {
+      try { channel.close(); } catch (_) {}
+      if (!receiveCompleted) startEncryptedRelayDownload(receiveBytes);
+      return;
+    }
+    receiveUsingRelay = false;
+    setShareStatus('Direct encrypted browser-to-browser transfer is active.', 'success');
+  };
+  channel.onmessage = async event => {
+    if (receiveUsingRelay || receiveCompleted) return;
+    if (typeof event.data === 'string') {
+      let message;
+      try { message = JSON.parse(event.data); } catch { return; }
+      if (message.type === 'file-meta') {
+        if (receiveBytes > 0 || receiveUsingRelay || receiveCompleted) return;
+        receiveMeta = message;
+        receiveChunks = [];
+        receiveBytes = 0;
+        setShareProgress(0, message.encryptedSize, 'Receiving encrypted PDF directly…');
+      } else if (message.type === 'file-complete') {
+        await finishReceivedFile();
+      }
+      return;
+    }
+    await receiveRelayChunk(event.data);
+  };
+  channel.onerror = () => startEncryptedRelayDownload(receiveBytes);
+  channel.onclose = () => {
+    if (!receiveCompleted) startEncryptedRelayDownload(receiveBytes);
+  };
+}
+
+function sendSignal({ receiverId: targetReceiverId, payload }) {
+  if (shareSocket?.readyState === WebSocket.OPEN) {
+    shareSocket.send(JSON.stringify({ type: 'signal', sessionId: shareSessionId, receiverId: targetReceiverId, payload }));
+  }
+}
+
+async function startSendingShare() {
+  if (!activeFile || !crypto.subtle || !window.RTCPeerConnection) {
+    return setShareStatus('This browser does not support the secure sharing features required by PDF Seal.', 'error');
+  }
+  showIdleShareProgress();
+  shareClosedByUser = false;
   shareRole = 'sender';
   shareSessionId = createSessionId();
-  document.getElementById('startShareBtn').hidden = true;
-  document.getElementById('shareLinkRow').hidden = false;
-  setShareStep(2);
-  const url = `${location.origin}/share/${shareSessionId}`;
-  document.getElementById('shareLink').value = url;
-  setShareStatus('Creating private share link…', 'waiting');
-  try { await createPeerConnection(); connectToShareSession(); }
-  catch (error) { setShareStatus(error.message || 'Could not start sharing.', 'error'); }
+  shareStarted = true;
+  shareTransferStarted = false;
+  try {
+    setShareStatus('Encrypting the PDF in your browser…', 'waiting');
+    const shareToken = createCompactShareToken();
+    const keyBytes = await deriveShareKeyBytes(shareToken);
+    const encrypted = await encryptShareFile(activeFile, keyBytes);
+    shareEncryptedData = encrypted.ciphertext;
+    shareMeta = encrypted.meta;
+    document.getElementById('startShareBtn').hidden = true;
+    document.getElementById('shareLinkRow').hidden = false;
+    document.getElementById('shareLink').value = `${location.origin}/share/${shareSessionId}?k=${shareToken}`;
+    setShareStatus('PDF encrypted locally. Connecting to the secure sharing service…', 'waiting');
+    connectToShareSession();
+  } catch (error) {
+    setShareStatus(error.message || 'Could not prepare secure sharing.', 'error');
+  }
 }
 
 async function startReceivingShare(sessionId) {
+  shareClosedByUser = false;
   shareRole = 'receiver';
   shareSessionId = sessionId;
+  shareStarted = true;
   resetShareProgress();
   shareModal.querySelector('.share-modal-box').classList.add('is-receiver');
-  document.getElementById('shareModalTitle').textContent = 'Receive shared PDF';
-  document.getElementById('shareDescription').textContent = 'The sender is sharing a PDF directly from their browser. Keep this page open while the secure connection is made.';
-  document.getElementById('shareSecurityNote').textContent = '🔒 The PDF is downloaded directly to this browser. Its SHA-256 integrity is checked before it opens.';
-  document.getElementById('shareRecipientNote').hidden = true;
+  document.getElementById('shareModalTitle').textContent = 'Receive PDF securely';
+  document.getElementById('shareDescription').textContent = 'Your browser will try a direct encrypted WebRTC transfer first. If the VPN, firewall or network changes interrupt it, PDF Seal automatically switches to an encrypted WebSocket relay.';
+  document.getElementById('shareSecurityNote').textContent = '🔒 AES-256-GCM end-to-end encryption · the server never receives the decryption key or plaintext PDF';
+  document.getElementById('shareRecipientNote').textContent = 'The encryption key is contained in this URL fragment and is not sent to the server. The share session expires after 15 minutes.';
+  document.getElementById('shareRecipientNote').hidden = false;
   document.getElementById('startShareBtn').hidden = true;
   document.getElementById('cancelShareBtn').textContent = 'Close';
   openShareModal();
-  setShareStatus('Joining secure share link…', 'waiting');
-  try { await createPeerConnection(); connectToShareSession(); }
-  catch (error) { setShareStatus(error.message || 'Could not join this share.', 'error'); }
+  try {
+    await importReceiveKey();
+    setShareStatus('Joining the encrypted share session…', 'waiting');
+    connectToShareSession();
+  } catch (error) {
+    setShareStatus(error.message || 'This share link is invalid.', 'error');
+  }
 }
 
 document.getElementById('btnShare').addEventListener('click', openShareModal);
@@ -2105,8 +2472,8 @@ document.getElementById('copyShareLinkBtn').addEventListener('click', async () =
 });
 shareModal.addEventListener('click', (event) => { if (event.target === shareModal) closeShareModal(); });
 
-const sharedSessionFromUrl = location.pathname.match(/^\/share\/([a-zA-Z0-9_-]{6,32})$/)?.[1];
-if (sharedSessionFromUrl) startReceivingShare(sharedSessionFromUrl.toUpperCase());
+const sharedSessionFromUrl = location.pathname.match(/^\/share\/([a-zA-Z0-9_-]{8,32})$/)?.[1];
+if (sharedSessionFromUrl) startReceivingShare(sharedSessionFromUrl);
   </script>
 </body>
 </html>
