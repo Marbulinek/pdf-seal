@@ -14,6 +14,20 @@ const PORT = process.env.PORT || 3000;
 const SHARE_SESSION_TTL_MS = 15 * 60 * 1000;
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8,32}$/;
 
+// Railway (and most PaaS hosts) sit the app behind a single reverse proxy
+// that appends the real client IP to X-Forwarded-For. Express doesn't trust
+// that header by default, which is what express-rate-limit's default
+// IP-based key generator needs to identify clients -- hence the
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR warning without this.
+//
+// Deliberately set to `1` (one hop) rather than `true`: `true` trusts every
+// proxy in the chain, which lets a client forge its own X-Forwarded-For
+// value and be believed, letting them spoof a fresh IP on every request to
+// dodge rate limiting entirely. Trusting exactly the number of hops your
+// own infrastructure adds closes that off. If you move behind a different
+// number of proxies/CDNs, adjust this value to match.
+app.set("trust proxy", 1);
+
 // All uploaded/generated PDFs must live here -- every filesystem path we
 // touch is required to resolve inside this directory before we act on it,
 // which is what keeps `req.file.path`-derived values from being usable for
