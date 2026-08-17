@@ -1,6 +1,7 @@
 'use strict';
 
 import fs from 'fs';
+import path from 'path';
 import {
   PDFDocument,
   PDFName,
@@ -119,14 +120,32 @@ class PdfSignatureTool {
 
   /**
    * Open a PDF file from disk.
+   *
+   * `filePath` is expected to come from a trusted caller (e.g. a path
+   * produced by multer), but since it ultimately traces back to request
+   * handling, we never dereference it as-is. `baseDir` is required: only
+   * the basename of `filePath` is kept and rejoined onto `baseDir`, which
+   * makes the final path structurally incapable of escaping it (no `/`,
+   * `\`, or `..` can survive path.basename()).
+   *
    * @param {string} filePath
+   * @param {object} options
+   * @param {string} options.baseDir trusted directory the filename is read from
    * @returns {Promise<PdfSignatureTool>}
    */
-  static async open(filePath: string) {
-    const bytes = fs.readFileSync(filePath);
+  static async open(filePath: string, options: { baseDir: string }) {
+    if (!options || !options.baseDir) {
+      throw new Error("open() requires a baseDir to read the file from.");
+    }
+    const safeName = path.basename(filePath);
+    if (!safeName || safeName === "." || safeName === "..") {
+      throw new Error("Invalid file name.");
+    }
+    const resolvedPath = path.join(path.resolve(options.baseDir), safeName);
+    const bytes = fs.readFileSync(resolvedPath);
     try {
       const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
-      return new PdfSignatureTool(pdfDoc, filePath);
+      return new PdfSignatureTool(pdfDoc, resolvedPath);
     } catch (error: any) {
       if (/encrypt|password/i.test(error?.message || "")) {
         throw new Error(
@@ -536,11 +555,26 @@ class PdfSignatureTool {
     return this.pdfDoc.save();
   }
 
-  /** Save to disk. */
-  async save(outputPath: string) {
+  /**
+   * Save to disk.
+   *
+   * `baseDir` is required for the same reason as open(): only the
+   * basename of `outputPath` is kept and rejoined onto `baseDir`, so the
+   * write target can never escape that directory regardless of what
+   * `outputPath` contains.
+   */
+  async save(outputPath: string, options: { baseDir: string }) {
+    if (!options || !options.baseDir) {
+      throw new Error("save() requires a baseDir to write the file into.");
+    }
+    const safeName = path.basename(outputPath);
+    if (!safeName || safeName === "." || safeName === "..") {
+      throw new Error("Invalid file name.");
+    }
+    const resolvedPath = path.join(path.resolve(options.baseDir), safeName);
     const bytes = await this.toBytes();
-    fs.writeFileSync(outputPath, bytes);
-    return outputPath;
+    fs.writeFileSync(resolvedPath, bytes);
+    return resolvedPath;
   }
 
   // ---------------------------------------------------------------------

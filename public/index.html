@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="/vendor/pdfjs/pdf.min.js"></script>
   <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
   </script>
 </head>
 <body>
@@ -1778,6 +1778,7 @@ let sharePeerFailed = new Set();
 let receiveMeta = null;
 let receiveChunks = [];
 let receiveBytes = 0;
+let receiveRelayActive = false;
 let receiveCiphertext = null;
 let receiveUsingRelay = false;
 let receiveCompleted = false;
@@ -1962,6 +1963,7 @@ function teardownShareSession(statusMessage) {
   shareStarted = false;
   shareTransferStarted = false;
   shareSocketReconnectAttempt = 0;
+  shareUploadInFlight = false;
   sharePeerStarted.clear();
   sharePeerFailed.clear();
   receiveMeta = null;
@@ -1969,6 +1971,7 @@ function teardownShareSession(statusMessage) {
   receiveBytes = 0;
   receiveCiphertext = null;
   receiveUsingRelay = false;
+  receiveRelayActive = false;
   receiveCompleted = false;
   receiveSessionKey = null;
   document.getElementById('startShareBtn').hidden = false;
@@ -2034,13 +2037,31 @@ function connectToShareSession() {
         receiverId = message.receiverId || receiverId;
         if (message.fileReady) {
           receiveMeta = message.fileMeta;
-          setShareStatus('Encrypted PDF is available. Trying WebRTC direct transfer…', 'waiting');
-          startReceiverFallbackTimer();
+          if (receiveUsingRelay || receiveBytes > 0) {
+            // We already had a relay transfer under way (or partial bytes)
+            // before this socket dropped -- resume it directly instead of
+            // re-running the WebRTC handshake and fallback timer from
+            // scratch, which would just waste time with no data flowing.
+            setShareStatus('Reconnected. Resuming the encrypted transfer…', 'waiting');
+            startEncryptedRelayDownload(receiveBytes);
+          } else {
+            setShareStatus('Encrypted PDF is available. Trying WebRTC direct transfer…', 'waiting');
+            startReceiverFallbackTimer();
+          }
         } else if (!message.fileReady && message.role === 'receiver') {
           setShareStatus('Waiting for the sender to finish preparing the encrypted PDF…', 'waiting');
         }
       } else {
         setConnectedUserCount(message.receiverCount || 0);
+        if (shareTransferStarted && shareEncryptedData && shareMeta
+          && typeof message.relayReceivedBytes === 'number'
+          && message.relayReceivedBytes < shareEncryptedData.byteLength) {
+          // The sender's own socket reconnected mid-upload; the server told
+          // us exactly how many bytes it already has, so resume from there
+          // instead of leaving the upload stalled.
+          showIdleShareProgress('Reconnected. Resuming encrypted upload…');
+          continueRelayUpload(message.relayReceivedBytes);
+        }
       }
       return;
     }
@@ -2123,9 +2144,12 @@ function connectToShareSession() {
 
   shareSocket.onclose = () => {
     shareSocket = null;
+    receiveRelayActive = false;
     if (shareClosedByUser) return;
     scheduleShareSocketReconnect();
-    if (shareRole === 'receiver' && !receiveCompleted) startEncryptedRelayDownload(receiveBytes);
+    // Note: we deliberately don't try to resume the relay download here --
+    // shareSocket is already null, so it would be a no-op. The actual resume
+    // happens once the reconnect succeeds and we get a fresh 'joined' reply.
   };
 }
 
@@ -2140,18 +2164,29 @@ function scheduleShareSocketReconnect() {
   }, delay + jitter);
 }
 
+let shareUploadInFlight = false;
+
 async function continueRelayUpload(offset) {
   if (shareRole !== 'sender' || !shareEncryptedData || !shareMeta || !shareSocket || shareSocket.readyState !== WebSocket.OPEN) return;
-  const safeOffset = Math.max(0, Math.min(offset, shareEncryptedData.byteLength));
-  setShareProgress(safeOffset, shareEncryptedData.byteLength, 'Uploading encrypted share…');
-  for (let cursor = safeOffset; cursor < shareEncryptedData.byteLength; cursor += SHARE_CHUNK_BYTES) {
-    await waitForSocketSpace();
-    if (!shareSocket || shareSocket.readyState !== WebSocket.OPEN) return;
-    const end = Math.min(cursor + SHARE_CHUNK_BYTES, shareEncryptedData.byteLength);
-    shareSocket.send(shareEncryptedData.slice(cursor, end));
-    setShareProgress(end, shareEncryptedData.byteLength, 'Uploading encrypted share…');
+  // Guard against 'file-upload-started' and a reconnect's 'joined' resume
+  // both trying to drive the same upload loop at once, which would
+  // interleave chunks the server appends blindly at its own byte offset.
+  if (shareUploadInFlight) return;
+  shareUploadInFlight = true;
+  try {
+    const safeOffset = Math.max(0, Math.min(offset, shareEncryptedData.byteLength));
+    setShareProgress(safeOffset, shareEncryptedData.byteLength, 'Uploading encrypted share…');
+    for (let cursor = safeOffset; cursor < shareEncryptedData.byteLength; cursor += SHARE_CHUNK_BYTES) {
+      await waitForSocketSpace();
+      if (!shareSocket || shareSocket.readyState !== WebSocket.OPEN) return;
+      const end = Math.min(cursor + SHARE_CHUNK_BYTES, shareEncryptedData.byteLength);
+      shareSocket.send(shareEncryptedData.slice(cursor, end));
+      setShareProgress(end, shareEncryptedData.byteLength, 'Uploading encrypted share…');
+    }
+    if (shareSocket?.readyState === WebSocket.OPEN) shareSocket.send(JSON.stringify({ type: 'file-complete', sessionId: shareSessionId }));
+  } finally {
+    shareUploadInFlight = false;
   }
-  if (shareSocket?.readyState === WebSocket.OPEN) shareSocket.send(JSON.stringify({ type: 'file-complete', sessionId: shareSessionId }));
 }
 
 async function receiveRelayControl(message) {
@@ -2164,7 +2199,10 @@ async function receiveRelayControl(message) {
     setShareStatus('Using encrypted WebSocket fallback. The server can only relay ciphertext.', 'waiting');
     return;
   }
-  if (message.type === 'relay-complete') await finishReceivedFile();
+  if (message.type === 'relay-complete') {
+    receiveRelayActive = false;
+    await finishReceivedFile();
+  }
 }
 
 async function receiveRelayChunk(data) {
@@ -2178,7 +2216,10 @@ async function receiveRelayChunk(data) {
 
 async function finishReceivedFile() {
   if (!receiveMeta || receiveBytes !== receiveMeta.encryptedSize) {
-    return setShareStatus('The encrypted transfer ended before the whole PDF arrived. Reconnecting…', 'waiting');
+    setShareStatus('The encrypted transfer ended before the whole PDF arrived. Resuming…', 'waiting');
+    // Actually resume from where we left off instead of just saying so.
+    startEncryptedRelayDownload(receiveBytes);
+    return;
   }
   try {
     const ciphertext = concatChunks(receiveChunks);
@@ -2212,6 +2253,13 @@ function concatChunks(chunks) {
 
 function startEncryptedRelayDownload(offset = 0) {
   if (shareRole !== 'receiver' || !shareSocket || shareSocket.readyState !== WebSocket.OPEN || receiveCompleted) return;
+  // Several independent triggers (WebRTC fallback timer, sender-left, ICE
+  // failure, socket reconnect) can all fire close together and each try to
+  // start a relay download. Without this guard that sends multiple
+  // concurrent 'download' requests, whose replies interleave on the wire and
+  // make an in-progress transfer look like it "ended early" when it hasn't.
+  if (receiveRelayActive && offset === receiveBytes) return;
+  receiveRelayActive = true;
   receiveUsingRelay = true;
   shareSocket.send(JSON.stringify({ type: 'download', sessionId: shareSessionId, offset }));
 }
