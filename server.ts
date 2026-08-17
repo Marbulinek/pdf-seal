@@ -21,18 +21,19 @@ const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8,32}$/;
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
 
 /**
- * Resolve `candidatePath` and guarantee it lives inside UPLOADS_DIR.
- * Throws if it doesn't. Use this for every fs.* call whose path could
- * ever (directly or indirectly) trace back to request data.
+ * Reduce `candidatePath` to a bare filename via path.basename() -- which by
+ * definition can never contain a `/`, `\`, or `..` traversal segment -- and
+ * rejoin it onto the fixed, trusted UPLOADS_DIR. This is what actually
+ * severs the taint from request data rather than just checking it: the
+ * returned path is *constructed* from a known-safe directory plus a value
+ * that structurally cannot escape it.
  */
 function resolveUploadPath(candidatePath: string): string {
-  const resolved = path.resolve(candidatePath);
-  const relative = path.relative(UPLOADS_DIR, resolved);
-  const escapesUploadsDir = relative.startsWith("..") || path.isAbsolute(relative);
-  if (escapesUploadsDir) {
-    throw new Error("Refusing to operate on a path outside the uploads directory.");
+  const safeName = path.basename(candidatePath);
+  if (!safeName || safeName === "." || safeName === "..") {
+    throw new Error("Refusing to operate on an invalid file path.");
   }
-  return resolved;
+  return path.join(UPLOADS_DIR, safeName);
 }
 
 type ShareRole = "sender" | "receiver";

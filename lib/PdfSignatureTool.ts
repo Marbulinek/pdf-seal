@@ -123,14 +123,14 @@ class PdfSignatureTool {
    *
    * `filePath` is expected to come from a trusted caller (e.g. a path
    * produced by multer), but since it ultimately traces back to request
-   * handling, we still refuse to dereference it blindly. When `baseDir`
-   * is supplied, the resolved path is required to stay inside it --
-   * this closes off `..`-style traversal even if a caller ever passed
-   * through an unsanitized value.
+   * handling, we don't dereference it as-is. When `baseDir` is supplied,
+   * only the basename of `filePath` is kept and rejoined onto `baseDir`,
+   * which makes the final path structurally incapable of escaping it
+   * (no `/`, `\`, or `..` can survive path.basename()).
    *
    * @param {string} filePath
    * @param {object} [options]
-   * @param {string} [options.baseDir] directory the file must resolve inside of
+   * @param {string} [options.baseDir] trusted directory the filename is read from
    * @returns {Promise<PdfSignatureTool>}
    */
   static async open(filePath: string, options: { baseDir?: string } = {}) {
@@ -561,26 +561,27 @@ class PdfSignatureTool {
   // ---------------------------------------------------------------------
 
   /**
-   * Resolve `filePath` to an absolute path, optionally requiring it to
-   * live inside `baseDir`. Rejects anything that would escape `baseDir`
-   * (e.g. via `..` segments), which is what makes this safe to feed
-   * straight into `fs.readFileSync` even for a path that originated
-   * from request handling.
+   * Reduce `filePath` to a bare filename via path.basename() -- which
+   * structurally cannot contain a `/`, `\`, or `..` segment -- and rejoin
+   * it onto `baseDir`. This severs any taint carried by `filePath` (e.g.
+   * a value that traces back to request handling) rather than merely
+   * checking it, so the result is always safe to hand to fs.readFileSync
+   * / fs.writeFileSync. Without a `baseDir`, we only require a non-empty
+   * string and resolve it as-is (for callers, like tests, that intend to
+   * operate on an arbitrary trusted path).
    */
   static _resolveSafePath(filePath: string, baseDir?: string): string {
     if (typeof filePath !== 'string' || filePath.length === 0) {
       throw new Error('A file path is required.');
     }
-    const resolved = path.resolve(filePath);
-    if (baseDir) {
-      const resolvedBase = path.resolve(baseDir);
-      const relative = path.relative(resolvedBase, resolved);
-      const escapesBase = relative.startsWith('..') || path.isAbsolute(relative);
-      if (escapesBase) {
-        throw new Error('Refusing to open a file outside the allowed directory.');
-      }
+    if (!baseDir) {
+      return path.resolve(filePath);
     }
-    return resolved;
+    const safeName = path.basename(filePath);
+    if (!safeName || safeName === '.' || safeName === '..') {
+      throw new Error('Invalid file name.');
+    }
+    return path.join(path.resolve(baseDir), safeName);
   }
 
   _requireField(name: string) {
