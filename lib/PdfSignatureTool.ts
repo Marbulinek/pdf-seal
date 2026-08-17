@@ -123,18 +123,25 @@ class PdfSignatureTool {
    *
    * `filePath` is expected to come from a trusted caller (e.g. a path
    * produced by multer), but since it ultimately traces back to request
-   * handling, we don't dereference it as-is. When `baseDir` is supplied,
-   * only the basename of `filePath` is kept and rejoined onto `baseDir`,
-   * which makes the final path structurally incapable of escaping it
-   * (no `/`, `\`, or `..` can survive path.basename()).
+   * handling, we never dereference it as-is. `baseDir` is required: only
+   * the basename of `filePath` is kept and rejoined onto `baseDir`, which
+   * makes the final path structurally incapable of escaping it (no `/`,
+   * `\`, or `..` can survive path.basename()).
    *
    * @param {string} filePath
-   * @param {object} [options]
-   * @param {string} [options.baseDir] trusted directory the filename is read from
+   * @param {object} options
+   * @param {string} options.baseDir trusted directory the filename is read from
    * @returns {Promise<PdfSignatureTool>}
    */
-  static async open(filePath: string, options: { baseDir?: string } = {}) {
-    const resolvedPath = PdfSignatureTool._resolveSafePath(filePath, options.baseDir);
+  static async open(filePath: string, options: { baseDir: string }) {
+    if (!options || !options.baseDir) {
+      throw new Error("open() requires a baseDir to read the file from.");
+    }
+    const safeName = path.basename(filePath);
+    if (!safeName || safeName === "." || safeName === "..") {
+      throw new Error("Invalid file name.");
+    }
+    const resolvedPath = path.join(path.resolve(options.baseDir), safeName);
     const bytes = fs.readFileSync(resolvedPath);
     try {
       const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
@@ -548,9 +555,23 @@ class PdfSignatureTool {
     return this.pdfDoc.save();
   }
 
-  /** Save to disk. */
-  async save(outputPath: string, options: { baseDir?: string } = {}) {
-    const resolvedPath = PdfSignatureTool._resolveSafePath(outputPath, options.baseDir);
+  /**
+   * Save to disk.
+   *
+   * `baseDir` is required for the same reason as open(): only the
+   * basename of `outputPath` is kept and rejoined onto `baseDir`, so the
+   * write target can never escape that directory regardless of what
+   * `outputPath` contains.
+   */
+  async save(outputPath: string, options: { baseDir: string }) {
+    if (!options || !options.baseDir) {
+      throw new Error("save() requires a baseDir to write the file into.");
+    }
+    const safeName = path.basename(outputPath);
+    if (!safeName || safeName === "." || safeName === "..") {
+      throw new Error("Invalid file name.");
+    }
+    const resolvedPath = path.join(path.resolve(options.baseDir), safeName);
     const bytes = await this.toBytes();
     fs.writeFileSync(resolvedPath, bytes);
     return resolvedPath;
@@ -559,30 +580,6 @@ class PdfSignatureTool {
   // ---------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------
-
-  /**
-   * Reduce `filePath` to a bare filename via path.basename() -- which
-   * structurally cannot contain a `/`, `\`, or `..` segment -- and rejoin
-   * it onto `baseDir`. This severs any taint carried by `filePath` (e.g.
-   * a value that traces back to request handling) rather than merely
-   * checking it, so the result is always safe to hand to fs.readFileSync
-   * / fs.writeFileSync. Without a `baseDir`, we only require a non-empty
-   * string and resolve it as-is (for callers, like tests, that intend to
-   * operate on an arbitrary trusted path).
-   */
-  static _resolveSafePath(filePath: string, baseDir?: string): string {
-    if (typeof filePath !== 'string' || filePath.length === 0) {
-      throw new Error('A file path is required.');
-    }
-    if (!baseDir) {
-      return path.resolve(filePath);
-    }
-    const safeName = path.basename(filePath);
-    if (!safeName || safeName === '.' || safeName === '..') {
-      throw new Error('Invalid file name.');
-    }
-    return path.join(path.resolve(baseDir), safeName);
-  }
 
   _requireField(name: string) {
     const form = this.pdfDoc.getForm();
