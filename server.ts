@@ -325,18 +325,38 @@ async function waitForSocketCapacity(socket: WebSocket) {
   }
 }
 
+// A receiver can end up requesting a relay download more than once in quick
+// succession (fallback timer, WebRTC failure handler, socket reconnect, etc.
+// all racing each other). If two sendRelayFile() calls for the SAME socket
+// ran concurrently, their chunks would interleave on the wire and the
+// earlier call's `relay-complete` could arrive before all bytes were sent --
+// which is exactly what produced the "ended before the whole PDF arrived"
+// false alarm, even though the rest of the data kept arriving right behind it.
+//
+// Each call gets a generation stamp; whenever a newer call starts for the
+// same socket, older in-flight calls notice the stamp changed and quietly
+// stop (no more chunks, no relay-complete), leaving only the latest request
+// to actually finish the stream.
+const relaySendGeneration = new WeakMap<WebSocket, number>();
+
 async function sendRelayFile(session: ShareSession, socket: WebSocket, offset = 0) {
   const file = session.file;
   if (!file || socket.readyState !== WebSocket.OPEN) return;
+
+  const generation = (relaySendGeneration.get(socket) ?? 0) + 1;
+  relaySendGeneration.set(socket, generation);
+  const isCurrent = () => relaySendGeneration.get(socket) === generation;
+
   const start = Math.max(0, Math.min(offset, file.data.length));
   sendJson(socket, { type: 'relay-meta', ...file.meta, offset: start });
 
   for (let cursor = start; cursor < file.data.length; cursor += SHARE_CHUNK_BYTES) {
-    if (socket.readyState !== WebSocket.OPEN) return;
+    if (socket.readyState !== WebSocket.OPEN || !isCurrent()) return;
     await waitForSocketCapacity(socket);
-    if (socket.readyState !== WebSocket.OPEN) return;
+    if (socket.readyState !== WebSocket.OPEN || !isCurrent()) return;
     socket.send(file.data.subarray(cursor, Math.min(cursor + SHARE_CHUNK_BYTES, file.data.length)));
   }
+  if (!isCurrent()) return;
   sendJson(socket, { type: 'relay-complete' });
   logShare('relay-delivered', { sessionId: file.meta.sessionId, receiverOffset: start, encryptedBytes: file.data.length });
 }
