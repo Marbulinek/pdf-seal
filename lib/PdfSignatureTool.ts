@@ -1,6 +1,7 @@
 'use strict';
 
 import fs from 'fs';
+import path from 'path';
 import {
   PDFDocument,
   PDFName,
@@ -119,14 +120,25 @@ class PdfSignatureTool {
 
   /**
    * Open a PDF file from disk.
+   *
+   * `filePath` is expected to come from a trusted caller (e.g. a path
+   * produced by multer), but since it ultimately traces back to request
+   * handling, we still refuse to dereference it blindly. When `baseDir`
+   * is supplied, the resolved path is required to stay inside it --
+   * this closes off `..`-style traversal even if a caller ever passed
+   * through an unsanitized value.
+   *
    * @param {string} filePath
+   * @param {object} [options]
+   * @param {string} [options.baseDir] directory the file must resolve inside of
    * @returns {Promise<PdfSignatureTool>}
    */
-  static async open(filePath: string) {
-    const bytes = fs.readFileSync(filePath);
+  static async open(filePath: string, options: { baseDir?: string } = {}) {
+    const resolvedPath = PdfSignatureTool._resolveSafePath(filePath, options.baseDir);
+    const bytes = fs.readFileSync(resolvedPath);
     try {
       const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
-      return new PdfSignatureTool(pdfDoc, filePath);
+      return new PdfSignatureTool(pdfDoc, resolvedPath);
     } catch (error: any) {
       if (/encrypt|password/i.test(error?.message || "")) {
         throw new Error(
@@ -537,15 +549,39 @@ class PdfSignatureTool {
   }
 
   /** Save to disk. */
-  async save(outputPath: string) {
+  async save(outputPath: string, options: { baseDir?: string } = {}) {
+    const resolvedPath = PdfSignatureTool._resolveSafePath(outputPath, options.baseDir);
     const bytes = await this.toBytes();
-    fs.writeFileSync(outputPath, bytes);
-    return outputPath;
+    fs.writeFileSync(resolvedPath, bytes);
+    return resolvedPath;
   }
 
   // ---------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------
+
+  /**
+   * Resolve `filePath` to an absolute path, optionally requiring it to
+   * live inside `baseDir`. Rejects anything that would escape `baseDir`
+   * (e.g. via `..` segments), which is what makes this safe to feed
+   * straight into `fs.readFileSync` even for a path that originated
+   * from request handling.
+   */
+  static _resolveSafePath(filePath: string, baseDir?: string): string {
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+      throw new Error('A file path is required.');
+    }
+    const resolved = path.resolve(filePath);
+    if (baseDir) {
+      const resolvedBase = path.resolve(baseDir);
+      const relative = path.relative(resolvedBase, resolved);
+      const escapesBase = relative.startsWith('..') || path.isAbsolute(relative);
+      if (escapesBase) {
+        throw new Error('Refusing to open a file outside the allowed directory.');
+      }
+    }
+    return resolved;
+  }
 
   _requireField(name: string) {
     const form = this.pdfDoc.getForm();

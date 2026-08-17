@@ -5,6 +5,7 @@ import http from "http";
 import multer, { MulterError } from "multer";
 import path from "path";
 import fs from "fs";
+import { rateLimit } from "express-rate-limit";
 import { WebSocket, WebSocketServer } from "ws";
 import PdfSignatureTool from "./lib/PdfSignatureTool";
 
@@ -12,6 +13,27 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const SHARE_SESSION_TTL_MS = 15 * 60 * 1000;
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8,32}$/;
+
+// All uploaded/generated PDFs must live here -- every filesystem path we
+// touch is required to resolve inside this directory before we act on it,
+// which is what keeps `req.file.path`-derived values from being usable for
+// path traversal even though they technically originate from a request.
+const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
+
+/**
+ * Resolve `candidatePath` and guarantee it lives inside UPLOADS_DIR.
+ * Throws if it doesn't. Use this for every fs.* call whose path could
+ * ever (directly or indirectly) trace back to request data.
+ */
+function resolveUploadPath(candidatePath: string): string {
+  const resolved = path.resolve(candidatePath);
+  const relative = path.relative(UPLOADS_DIR, resolved);
+  const escapesUploadsDir = relative.startsWith("..") || path.isAbsolute(relative);
+  if (escapesUploadsDir) {
+    throw new Error("Refusing to operate on a path outside the uploads directory.");
+  }
+  return resolved;
+}
 
 type ShareRole = "sender" | "receiver";
 
@@ -24,6 +46,29 @@ const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES }
 // Serve static files from the 'public' directory
 app.use(express.static("public"));
 app.use(express.json());
+
+// Baseline throttling for every HTTP route. Keeps a single client from
+// hammering the server (and, incidentally, from brute-forcing share-session
+// IDs against /share/:sessionId).
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please slow down and try again shortly." },
+});
+app.use(generalLimiter);
+
+// Tighter limit for the endpoints that parse/rewrite PDFs -- these are the
+// most expensive requests to serve (disk I/O + PDF parsing), so they get a
+// stricter cap than everything else.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many upload requests. Please slow down and try again shortly." },
+});
 
 app.get("/share/:sessionId", (req: Request, res: Response) => {
   const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
@@ -45,7 +90,13 @@ function cleanupFiles(...paths: Array<string | null | undefined>) {
   for (const p of paths) {
     if (!p) continue;
     try {
-      if (fs.existsSync(p)) fs.unlinkSync(p);
+      // Every path we ever pass in here is either multer's own upload path
+      // or a `modified_*.pdf` path we generated ourselves -- both should
+      // always live inside UPLOADS_DIR. Enforcing that before touching the
+      // filesystem means a malformed/unexpected value gets rejected instead
+      // of blindly handed to fs.unlinkSync.
+      const safePath = resolveUploadPath(p);
+      if (fs.existsSync(safePath)) fs.unlinkSync(safePath);
     } catch (cleanupErr) {
       logError("cleanup-files", cleanupErr, { path: p });
     }
@@ -61,12 +112,12 @@ function logError(context: string, error: unknown, details?: Record<string, unkn
 }
 
 // --- API Endpoint: Get PDF Info ---
-app.post("/api/info", upload.single("pdfDocument"), async (req: Request, res: Response) => {
+app.post("/api/info", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   try {
-    const tool = await PdfSignatureTool.open(file.path);
+    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
     const result = {
       metadata: tool.getMetadata(),
       fields: tool.listFields(),
@@ -84,6 +135,7 @@ app.post("/api/info", upload.single("pdfDocument"), async (req: Request, res: Re
 // --- API Endpoint: Add Signature Field ---
 app.post(
   "/api/add-signature",
+  uploadLimiter,
   upload.single("pdfDocument"),
   async (req: Request, res: Response) => {
     const file = req.file;
@@ -92,7 +144,7 @@ app.post(
     let outputPath: string | null = null;
 
     try {
-      const tool = await PdfSignatureTool.open(file.path);
+      const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
 
       // Parse incoming form data
       const page = parseInt(req.body.page, 10) || 0;
@@ -105,8 +157,8 @@ app.post(
 
       tool.addSignatureField(page, name, { x, y, width, height, required });
 
-      outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
-      await tool.save(outputPath);
+      outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+      await tool.save(outputPath, { baseDir: UPLOADS_DIR });
 
       // Send the modified file back to the client, then clean up both temp files
       // regardless of whether the download itself succeeded.
@@ -122,14 +174,14 @@ app.post(
 );
 
 // --- API Endpoint: Edit Existing Field ---
-app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, res: Response) => {
+app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   let outputPath: string | null = null;
 
   try {
-    const tool = await PdfSignatureTool.open(file.path);
+    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
 
     const originalName = req.body.originalName || req.body.name;
     const newName = req.body.name || originalName;
@@ -153,8 +205,8 @@ app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, r
 
     tool.setFieldRequired(newName, required);
 
-    outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
-    await tool.save(outputPath);
+    outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+    await tool.save(outputPath, { baseDir: UPLOADS_DIR });
 
     res.download(outputPath, "signed-document.pdf", () => {
       cleanupFiles(file.path, outputPath);
@@ -167,14 +219,14 @@ app.post("/api/edit-field", upload.single("pdfDocument"), async (req: Request, r
 });
 
 // --- API Endpoint: Remove Existing Field ---
-app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request, res: Response) => {
+app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   let outputPath: string | null = null;
 
   try {
-    const tool = await PdfSignatureTool.open(file.path);
+    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
     const name = req.body.name || req.body.originalName;
 
     if (!name) {
@@ -183,8 +235,8 @@ app.post("/api/remove-field", upload.single("pdfDocument"), async (req: Request,
 
     tool.removeField(name);
 
-    outputPath = path.join("uploads", `modified_${Date.now()}.pdf`);
-    await tool.save(outputPath);
+    outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+    await tool.save(outputPath, { baseDir: UPLOADS_DIR });
 
     res.download(outputPath, "signed-document.pdf", () => {
       cleanupFiles(file.path, outputPath);
