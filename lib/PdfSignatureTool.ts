@@ -90,6 +90,32 @@ function pdfValueToPlain(value: any, depth: number = 0): any {
   return typeof value.toString === 'function' ? value.toString() : String(value);
 }
 
+function pdfValueToInfoString(value: any): string {
+  if (value === undefined || value === null) return '';
+  if (value instanceof PDFString || value instanceof PDFHexString) {
+    try {
+      return value.decodeText();
+    } catch (_e) {
+      return value.asString();
+    }
+  }
+  if (value instanceof PDFName) {
+    try {
+      return value.decodeText();
+    } catch (_e) {
+      return value.toString().slice(1);
+    }
+  }
+  if (value instanceof PDFNumber) return String(value.asNumber());
+  if (value instanceof PDFBool) return value.asBoolean() ? 'true' : 'false';
+  if (value === PDFNull) return '';
+  if (typeof value.toString === 'function') {
+    const str = value.toString();
+    return str === '[object Object]' ? JSON.stringify(value) : str;
+  }
+  return String(value);
+}
+
 /**
  * PdfSignatureTool
  * ----------------
@@ -143,9 +169,29 @@ class PdfSignatureTool {
     }
     const resolvedPath = path.join(path.resolve(options.baseDir), safeName);
     const bytes = fs.readFileSync(resolvedPath);
+    return PdfSignatureTool._load(bytes, resolvedPath);
+  }
+
+  /**
+   * Load a PDF directly from an in-memory byte buffer rather than from
+   * disk -- no filesystem access, no baseDir/path-safety concerns, since
+   * nothing here is treated as a file path.
+   *
+   * Used e.g. by PdfRevisionTool to load individual incremental-update
+   * snapshots (byte slices of a larger file) as independent documents.
+   *
+   * @param {Uint8Array} bytes
+   * @returns {Promise<PdfSignatureTool>}
+   */
+  static async fromBytes(bytes: Uint8Array) {
+    return PdfSignatureTool._load(bytes, null);
+  }
+
+  /** Shared load path for open() and fromBytes(). */
+  static async _load(bytes: Uint8Array, sourcePath: string | null) {
     try {
       const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
-      return new PdfSignatureTool(pdfDoc, resolvedPath);
+      return new PdfSignatureTool(pdfDoc, sourcePath);
     } catch (error: any) {
       if (/encrypt|password/i.test(error?.message || "")) {
         throw new Error(
@@ -298,6 +344,43 @@ class PdfSignatureTool {
         raw: this._getRawDictEntries(field.acroField.dict),
       };
     });
+  }
+
+  /**
+   * Inspect every AcroForm signature field (/FT /Sig) that has actually
+   * been signed -- i.e. has a populated /V signature dictionary -- and
+   * return the human-relevant parts of that signature: who applied it,
+   * when, why, and which bytes of the file it covers.
+   *
+   * An empty/unsigned signature field (created by addSignatureField(),
+   * before anyone has signed it) is skipped since it has no /V yet.
+   *
+   * @returns {Array<{fieldName:string,name:?string,reason:?string,location:?string,signingTime:?string,subFilter:?string,contactInfo:?string,byteRange:?number[]}>}
+   */
+  getSignatureInfo() {
+    const form = this.pdfDoc.getForm();
+    const out: any[] = [];
+    for (const field of form.getFields()) {
+      const dict = field.acroField.dict;
+      const ft = dict.lookup(PDFName.of('FT'));
+      if (!ft || ft.toString() !== '/Sig') continue;
+
+      const vDict = dict.lookup(PDFName.of('V'));
+      if (!vDict || !(vDict instanceof PDFDict)) continue; // field exists but hasn't been signed yet
+
+      const plain = pdfValueToPlain(vDict);
+      out.push({
+        fieldName: field.getName(),
+        name: plain.Name ?? null,
+        reason: plain.Reason ?? null,
+        location: plain.Location ?? null,
+        signingTime: plain.M ?? null,
+        subFilter: plain.SubFilter ?? null,
+        contactInfo: plain.ContactInfo ?? null,
+        byteRange: Array.isArray(plain.ByteRange) ? plain.ByteRange : null,
+      });
+    }
+    return out;
   }
 
   /**
@@ -473,9 +556,46 @@ class PdfSignatureTool {
     if (!info) return {};
     const out: Record<string, string> = {};
     for (const [key, value] of info.entries()) {
-      out[key.toString().slice(1)] = value.toString();
+      out[key.toString().slice(1)] = pdfValueToInfoString(value);
     }
     return out;
+  }
+
+  /** Read the embedded revision-chain entries (if any) stored in the Info dictionary. */
+  getRevisionSnapshotChain() {
+    const rawInfo = this.getRawInfoDict();
+    const rawChain = rawInfo['PdfSealRevisionChainV1'] || rawInfo['PdfSealRevisionChain'];
+    if (!rawChain) return [];
+
+    try {
+      const parsed = JSON.parse(rawChain);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter((entry: any) => entry && typeof entry === 'object' && typeof entry.bytes === 'string')
+        .map((entry: any) => ({
+          index: Number.isInteger(entry.index) ? entry.index : 1,
+          bytes: entry.bytes,
+        }));
+    } catch (_err) {
+      return [];
+    }
+  }
+
+  /** Replace the embedded revision-chain entry in the Info dictionary. */
+  setRevisionSnapshotChain(entries: Array<{ index: number; bytes: string }>) {
+    this.setCustomInfoEntry('PdfSealRevisionChainV1', JSON.stringify(entries));
+  }
+
+  /** Append one more revision snapshot to the embedded chain. */
+  addRevisionSnapshot(snapshotBytes: Uint8Array) {
+    const entries = this.getRevisionSnapshotChain().map((entry: any) => ({
+      index: entry.index,
+      bytes: entry.bytes,
+    }));
+    const nextIndex = entries.length ? entries[entries.length - 1].index + 1 : 1;
+    entries.push({ index: nextIndex, bytes: Buffer.from(snapshotBytes).toString('base64') });
+    this.setRevisionSnapshotChain(entries);
+    return entries;
   }
 
   /** Write an arbitrary/custom key into the Info dictionary (e.g. a tracking ID). */
