@@ -8,6 +8,7 @@ import fs from "fs";
 import { rateLimit } from "express-rate-limit";
 import { WebSocket, WebSocketServer } from "ws";
 import PdfSignatureTool from "./lib/PdfSignatureTool";
+import PdfRevisionTool from "./lib/PdfRevisionTool";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -118,6 +119,36 @@ function cleanupFiles(...paths: Array<string | null | undefined>) {
   }
 }
 
+async function persistRevisionSnapshot(tool: PdfSignatureTool, currentBytes: Uint8Array, nextBytes: Uint8Array) {
+  const existingChain = tool.getRevisionSnapshotChain();
+
+  const baseEntries = existingChain.length
+    ? existingChain.map((entry: any) => ({ index: entry.index, bytes: entry.bytes }))
+    : [];
+
+  if (!baseEntries.length) {
+    const existingRevisions = await PdfRevisionTool.listRevisions(currentBytes);
+    for (const revision of existingRevisions) {
+      const revisionBytes = await PdfRevisionTool.getRevisionBytes(currentBytes, revision.index);
+      if (revisionBytes?.length) {
+        baseEntries.push({ index: revision.index, bytes: Buffer.from(revisionBytes).toString('base64') });
+      }
+    }
+  }
+
+  if (!baseEntries.length) {
+    baseEntries.push({ index: 1, bytes: Buffer.from(currentBytes).toString('base64') });
+  }
+
+  const nextEntry = {
+    index: baseEntries[baseEntries.length - 1].index + 1,
+    bytes: Buffer.from(nextBytes).toString('base64'),
+  };
+  baseEntries.push(nextEntry);
+
+  tool.setRevisionSnapshotChain(baseEntries);
+}
+
 function logShare(event: string, details?: Record<string, unknown>) {
   console.log(`[share] ${event}`, details ?? {});
 }
@@ -132,7 +163,8 @@ app.post("/api/info", uploadLimiter, upload.single("pdfDocument"), async (req: R
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   try {
-    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
+    const safePath = resolveUploadPath(file.path);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
     const result = {
       metadata: tool.getMetadata(),
       fields: tool.listFields(),
@@ -159,7 +191,9 @@ app.post(
     let outputPath: string | null = null;
 
     try {
-      const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
+      const safePath = resolveUploadPath(file.path);
+      const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+      const originalBytes = fs.readFileSync(safePath);
 
       // Parse incoming form data
       const page = parseInt(req.body.page, 10) || 0;
@@ -169,8 +203,21 @@ app.post(
       const width = parseFloat(req.body.width) || 200;
       const height = parseFloat(req.body.height) || 60;
       const required = req.body.required === "true";
+      const addRevision = (() => {
+        const rawValue = req.body.addRevision;
+        if (rawValue === undefined || rawValue === null || rawValue === "") return true;
+        if (typeof rawValue === "string") {
+          return rawValue !== "false" && rawValue !== "0" && rawValue !== "no";
+        }
+        return Boolean(rawValue);
+      })();
 
       tool.addSignatureField(page, name, { x, y, width, height, required });
+
+      const updatedBytes = await tool.toBytes();
+      if (addRevision) {
+        await persistRevisionSnapshot(tool, originalBytes, updatedBytes);
+      }
 
       outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
       await tool.save(outputPath, { baseDir: UPLOADS_DIR });
@@ -196,7 +243,9 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
   let outputPath: string | null = null;
 
   try {
-    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
+    const safePath = resolveUploadPath(file.path);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+    const originalBytes = fs.readFileSync(safePath);
 
     const originalName = req.body.originalName || req.body.name;
     const newName = req.body.name || originalName;
@@ -220,6 +269,9 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
 
     tool.setFieldRequired(newName, required);
 
+    const updatedBytes = await tool.toBytes();
+    await persistRevisionSnapshot(tool, originalBytes, updatedBytes);
+
     outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath, { baseDir: UPLOADS_DIR });
 
@@ -241,7 +293,9 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
   let outputPath: string | null = null;
 
   try {
-    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
+    const safePath = resolveUploadPath(file.path);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+    const originalBytes = fs.readFileSync(safePath);
     const name = req.body.name || req.body.originalName;
 
     if (!name) {
@@ -249,6 +303,9 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
     }
 
     tool.removeField(name);
+
+    const updatedBytes = await tool.toBytes();
+    await persistRevisionSnapshot(tool, originalBytes, updatedBytes);
 
     outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath, { baseDir: UPLOADS_DIR });
@@ -260,6 +317,78 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
     logError("api-remove-field", error, { filePath: file.path });
     cleanupFiles(file.path, outputPath);
     res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  }
+});
+
+// --- API Endpoint: List PDF Revisions ---
+// Reads the uploaded PDF's own incremental-update history (see
+// lib/PdfRevisionTool.ts) and returns a summary of every revision found.
+// Stateless like every other route here: nothing is persisted, the same
+// file is simply re-uploaded by the client for the diff endpoint below.
+app.post("/api/revisions", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  try {
+    const safePath = resolveUploadPath(file.path);
+    const bytes = fs.readFileSync(safePath);
+    const revisions = await PdfRevisionTool.listRevisions(bytes);
+    res.json({ revisions });
+  } catch (error: any) {
+    logError("api-revisions", error, { filePath: file.path });
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  } finally {
+    cleanupFiles(file.path);
+  }
+});
+
+// --- API Endpoint: Diff Two PDF Revisions ---
+app.post("/api/revisions/diff", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  try {
+    const from = parseInt(req.body.from, 10);
+    const to = parseInt(req.body.to, 10);
+    if (!Number.isInteger(from) || !Number.isInteger(to)) {
+      throw new Error("Both 'from' and 'to' revision indices are required.");
+    }
+
+    const safePath = resolveUploadPath(file.path);
+    const bytes = fs.readFileSync(safePath);
+    const diff = await PdfRevisionTool.diffRevisions(bytes, from, to);
+    res.json({ diff });
+  } catch (error: any) {
+    logError("api-revisions-diff", error, { filePath: file.path });
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  } finally {
+    cleanupFiles(file.path);
+  }
+});
+
+// --- API Endpoint: Get PDF Byte Slice for a Specific Revision ---
+app.post("/api/revisions/snapshot", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  try {
+    const revisionIndex = parseInt(req.body.revision, 10);
+    if (!Number.isInteger(revisionIndex) || revisionIndex < 1) {
+      throw new Error("A valid 'revision' index is required.");
+    }
+
+    const safePath = resolveUploadPath(file.path);
+    const bytes = fs.readFileSync(safePath);
+    const snapshotBytes = await PdfRevisionTool.getRevisionBytes(bytes, revisionIndex);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="revision-${revisionIndex}.pdf"`);
+    res.send(Buffer.from(snapshotBytes));
+  } catch (error: any) {
+    logError("api-revisions-snapshot", error, { filePath: file.path });
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  } finally {
+    cleanupFiles(file.path);
   }
 });
 
@@ -686,7 +815,25 @@ const sessionCleanup = setInterval(() => {
 }, 60_000);
 sessionCleanup.unref();
 
-server.listen(PORT, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
-  console.log({ maxShareBytes: MAX_SHARE_BYTES, maxShareSessionsMemoryBytes: SHARE_MAX_SESSIONS_MEMORY_BYTES });
-});
+function startServer(port: number, attempt = 1) {
+  const onError = (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE' && attempt < 6) {
+      const nextPort = port + 1;
+      console.warn(`Port ${port} is already in use, retrying on ${nextPort}.`);
+      server.off('error', onError);
+      startServer(nextPort, attempt + 1);
+      return;
+    }
+    throw error;
+  };
+
+  server.once('error', onError);
+  server.listen(port, () => {
+    server.off('error', onError);
+    console.log(`Server is running at http://localhost:${port}`);
+    console.log({ maxShareBytes: MAX_SHARE_BYTES, maxShareSessionsMemoryBytes: SHARE_MAX_SESSIONS_MEMORY_BYTES });
+  });
+}
+
+const requestedPort = Number.parseInt(process.env.PORT || '3000', 10);
+startServer(Number.isFinite(requestedPort) ? requestedPort : 3000);
