@@ -163,7 +163,8 @@ app.post("/api/info", uploadLimiter, upload.single("pdfDocument"), async (req: R
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   try {
-    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
+    const safePath = resolveUploadPath(file.path);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
     const result = {
       metadata: tool.getMetadata(),
       fields: tool.listFields(),
@@ -190,8 +191,9 @@ app.post(
     let outputPath: string | null = null;
 
     try {
-      const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
-      const originalBytes = fs.readFileSync(file.path);
+      const safePath = resolveUploadPath(file.path);
+      const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+      const originalBytes = fs.readFileSync(safePath);
 
       // Parse incoming form data
       const page = parseInt(req.body.page, 10) || 0;
@@ -241,8 +243,9 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
   let outputPath: string | null = null;
 
   try {
-    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
-    const originalBytes = fs.readFileSync(file.path);
+    const safePath = resolveUploadPath(file.path);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+    const originalBytes = fs.readFileSync(safePath);
 
     const originalName = req.body.originalName || req.body.name;
     const newName = req.body.name || originalName;
@@ -290,8 +293,9 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
   let outputPath: string | null = null;
 
   try {
-    const tool = await PdfSignatureTool.open(file.path, { baseDir: UPLOADS_DIR });
-    const originalBytes = fs.readFileSync(file.path);
+    const safePath = resolveUploadPath(file.path);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+    const originalBytes = fs.readFileSync(safePath);
     const name = req.body.name || req.body.originalName;
 
     if (!name) {
