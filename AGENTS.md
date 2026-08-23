@@ -105,3 +105,37 @@ npm start
 - Keep server and client logic consistent when behavior changes.
 - If the change touches request-derived filesystem paths or adds an HTTP route, apply the relevant rule from "Security conventions."
 - Verify the result with `npm run build` before finishing.
+
+## Tasks / TODO
+
+### Fix rectangle handling in PDF revision comparisons
+
+**Status:** Fixed  
+**Priority:** High  
+**Area:** PDF revision tracking  
+**Related files:** [lib/PdfRevisionTool.ts](https://github.com/Marbulinek/pdf-seal/blob/main/lib/PdfRevisionTool.ts) (the actual fix landed here, not PdfSignatureTool.ts -- see root cause below)
+
+**Issue:**
+When checking changes between PDF revisions, the revision comparison logic incorrectly handles rectangle (Rect) entries for signature fields. Multiple object references (e.g., `6 0 R`, `7 0 R`) are treated as separate changes when they should be consolidated as a single rectangle update.
+
+**Root cause (confirmed via a standalone repro against the compiled lib/):**
+`diffRawObjects()`/`describeRawObject()` in `lib/PdfRevisionTool.ts` computed a "Page" object's preview rectangle two different ways that could both fire for the same edit: (1) the page's own `/Annots` array gaining a ref is used to derive a rect from that annotation's `/Rect`, and (2) that same annotation object is *also* independently listed (and rendered) as its own added/modified object with its own `/Rect`. Adding or moving a signature field therefore surfaced the identical rectangle under two unrelated-looking entries (the "Page N" chip and the widget's own chip, e.g. `6 0 R` and `7 0 R`), which the revision UI drew/reported as two separate changes instead of one.
+
+**Details:**
+- PDF object references like `6 0 R` and `7 0 R` both represent rectangles within the document
+- Current implementation may be registering duplicate or overlapping changes for the same rectangle modification
+- This causes false positives when tracking which fields have actually changed between revisions
+- Affects the accuracy of revision comparison and audit trails
+
+**Expected behavior:**
+- Revisions should correctly identify and group related rectangle changes
+- A single field rectangle edit should be tracked as one logical change, not multiple independent object modifications
+- Revision comparison should accurately reflect which signature fields were added, removed, moved, or resized
+
+**Fix:**
+`describeRawObject()` now takes the set of keys already independently tracked in the diff (`independentlyTrackedKeys`, built in `diffRawObjects()` from `addedKeys`/`modifiedKeys`/`removedKeys`) and excludes any annotation ref already in that set from the Page-level rect fallback. The Page object can still show up as changed (its `/Annots` dict diff is untouched), but it no longer re-derives/re-draws a rectangle that the annotation's own entry already covers. Verified end-to-end against the compiled `dist/lib` output: adding a signature field now reports its rectangle exactly once (under the field's own entry), where it previously also appeared under the page's entry.
+
+**Acceptance criteria:**
+- [x] Revision comparison correctly consolidates multiple object references into single logical changes
+- [x] Rectangle modifications are properly deduplicated in revision diffs
+- [x] Audit trail accurately reflects field modifications between revisions (the Page entry's dictionary diff still shows the `/Annots` change; only the redundant rectangle draw was removed, nothing was hidden)

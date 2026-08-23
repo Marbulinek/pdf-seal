@@ -43,6 +43,8 @@
 </head>
 <body>
 
+  <div id="notificationStack" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
+
   <header class="topbar">
     <div class="topbar-inner">
       <div class="topbar-row topbar-row-primary">
@@ -52,23 +54,23 @@
 
         <div class="section-nav-shell">
           <button type="button" class="section-nav-toggle" id="sectionNavToggle" aria-label="Toggle sections" aria-expanded="false" aria-controls="sectionNav">
-            <span aria-hidden="true">☰</span>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <nav class="section-nav" id="sectionNav" aria-label="Document sections">
             <button type="button" class="section-nav-btn" id="navBtnMetaData" data-section="metadata">
-              <span class="section-nav-icon" aria-hidden="true">◈</span>
+              <span class="section-nav-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="16" x2="12" y2="11"></line><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"></circle></svg></span>
               <span class="section-nav-label">MetaData</span>
             </button>
             <button type="button" class="section-nav-btn active" id="navBtnSignatures" data-section="signatures" aria-current="page">
-              <span class="section-nav-icon" aria-hidden="true">✍</span>
+              <span class="section-nav-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></span>
               <span class="section-nav-label">Signatures</span>
             </button>
             <button type="button" class="section-nav-btn" id="navBtnRevisions" data-section="revisions">
-              <span class="section-nav-icon" aria-hidden="true">◷</span>
+              <span class="section-nav-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg></span>
               <span class="section-nav-label">Revisions</span>
             </button>
             <button type="button" class="section-nav-btn" id="navBtnCertificates" data-section="certificates" disabled title="Coming soon">
-              <span class="section-nav-icon" aria-hidden="true">▣</span>
+              <span class="section-nav-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-3.5 7-9V5.5L12 3 5 5.5V12c0 5.5 7 9 7 9z"></path></svg></span>
               <span class="section-nav-label">Certificates</span>
               <span class="section-nav-soon">Soon</span>
             </button>
@@ -78,18 +80,18 @@
 
       <div class="topbar-actions">
         <div class="topbar-row topbar-row-secondary">
-          <button type="button" class="icon-btn topbar-settings-btn" id="btnOpenSettings" aria-label="Open settings" title="Settings">⚙</button>
+          <button type="button" class="icon-btn topbar-settings-btn" id="btnOpenSettings" aria-label="Open settings" title="Settings"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
           <div class="upload-zone">
             <div class="dropdown" id="uploadDropdown">
               <button type="button" class="btn btn-ghost dropdown-toggle" id="btnUploadToggle" aria-haspopup="true" aria-expanded="false">
-                Upload <span class="dropdown-caret">▾</span>
+                Upload <span class="dropdown-caret"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
               </button>
               <div class="dropdown-menu" id="uploadMenu" role="menu">
                 <button type="button" class="dropdown-item" id="uploadFromComputerBtn" role="menuitem">
-                  <span class="dropdown-item-icon">📁</span> Upload from device
+                  <span class="dropdown-item-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span> Upload from device
                 </button>
                 <button type="button" class="dropdown-item" id="uploadBase64Btn" role="menuitem">
-                  <span class="dropdown-item-icon">🔤</span> Upload as Base64
+                  <span class="dropdown-item-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg></span> Upload as Base64
                 </button>
               </div>
             </div>
@@ -97,23 +99,22 @@
             <span id="loadingState" class="loading-pill" style="display: none;">
               <span class="spinner" aria-hidden="true"></span>Processing...
             </span>
-            <span id="topbarFeedback" class="loading-pill" style="display: none;"></span>
           </div>
         </div>
         <div class="topbar-row topbar-row-tertiary">
           <button type="button" class="btn btn-ghost" id="btnShare" disabled>
-            <span aria-hidden="true">↗</span> Share
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.6"></circle><circle cx="6" cy="12" r="2.6"></circle><circle cx="18" cy="19" r="2.6"></circle><line x1="8.3" y1="10.6" x2="15.7" y2="6.4"></line><line x1="8.3" y1="13.4" x2="15.7" y2="17.6"></line></svg> Share
           </button>
           <div class="dropdown" id="downloadDropdown">
             <button type="button" class="btn btn-primary dropdown-toggle" id="btnDownloadToggle" disabled aria-haspopup="true" aria-expanded="false">
-              Download <span class="dropdown-caret">▾</span>
+              Download <span class="dropdown-caret"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
             </button>
             <div class="dropdown-menu dropdown-menu-right" id="downloadMenu" role="menu">
               <button type="button" class="dropdown-item" id="exportPdfBtn" role="menuitem">
-                <span class="dropdown-item-icon">⬇️</span> Export as PDF
+                <span class="dropdown-item-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></span> Export as PDF
               </button>
               <button type="button" class="dropdown-item" id="copyBase64Btn" role="menuitem">
-                <span class="dropdown-item-icon">📋</span> Copy as Base64
+                <span class="dropdown-item-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect></svg></span> Copy as Base64
               </button>
             </div>
           </div>
@@ -128,12 +129,12 @@
     <div class="modal-box">
       <div class="modal-header">
         <h3>Upload as Base64</h3>
-        <button type="button" class="modal-close" id="closeBase64ModalBtn" aria-label="Close">✕</button>
+        <button type="button" class="modal-close" id="closeBase64ModalBtn" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
       <p class="modal-hint">Paste a Base64-encoded PDF below — with or without the <code>data:application/pdf;base64,</code> prefix.</p>
       <div class="modal-textarea-toolbar">
-        <button type="button" class="icon-btn modal-nav-btn" id="base64JumpTopBtn" aria-label="Jump to top">↑</button>
-        <button type="button" class="icon-btn modal-nav-btn" id="base64JumpBottomBtn" aria-label="Jump to bottom">↓</button>
+        <button type="button" class="icon-btn modal-nav-btn" id="base64JumpTopBtn" aria-label="Jump to top"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"></polyline></svg></button>
+        <button type="button" class="icon-btn modal-nav-btn" id="base64JumpBottomBtn" aria-label="Jump to bottom"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
       </div>
       <textarea class="modal-textarea" id="base64Input" placeholder="JVBERi0xLjQK..." spellcheck="false"></textarea>
       <div class="modal-status" id="base64ModalStatus"></div>
@@ -149,7 +150,7 @@
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
       <div class="modal-header">
         <h3 id="settingsModalTitle">Settings</h3>
-        <button type="button" class="modal-close" id="closeSettingsModalBtn" aria-label="Close">✕</button>
+        <button type="button" class="modal-close" id="closeSettingsModalBtn" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
       <p class="modal-hint">Choose the default behavior for document changes.</p>
       <label class="checkbox-group checkbox-group-block" for="settingsAddRevision">
@@ -171,7 +172,7 @@
     <div class="modal-box">
       <div class="modal-header">
         <h3>Save As</h3>
-        <button type="button" class="modal-close" id="closeSaveAsModalBtn" aria-label="Close">✕</button>
+        <button type="button" class="modal-close" id="closeSaveAsModalBtn" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
       <p class="modal-hint">Choose a name for the downloaded PDF file.</p>
       <label for="saveAsFileName" class="modal-label">File name</label>
@@ -192,7 +193,7 @@
       <div class="viewer-controls">
         <div class="viewer-diff-banner" id="viewerDiffBanner" hidden>
           <span id="viewerDiffBannerText">Comparing revisions</span>
-          <button type="button" class="btn btn-ghost" id="btnExitDiffView">✕ Back to document</button>
+          <button type="button" class="btn btn-ghost" id="btnExitDiffView"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> Back to document</button>
         </div>
         <span id="viewerFileName" class="viewer-file-name" title="">
           <svg class="viewer-file-name-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -203,15 +204,15 @@
         </span>
         <div class="viewer-controls-row">
           <div class="viewer-controls-group">
-            <button id="btnPrev" class="icon-btn" disabled aria-label="Previous page">‹</button>
+            <button id="btnPrev" class="icon-btn" disabled aria-label="Previous page"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
             <span class="page-indicator">Page <span id="pageNum">0</span> / <span id="pageCount">0</span></span>
-            <button id="btnNext" class="icon-btn" disabled aria-label="Next page">›</button>
+            <button id="btnNext" class="icon-btn" disabled aria-label="Next page"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
           </div>
           <div class="viewer-controls-group">
-            <button id="btnPan" class="icon-btn viewer-tool-btn" disabled aria-label="Pan document" aria-pressed="false" title="Pan document">✋</button>
-            <button id="btnZoomOut" class="icon-btn" disabled aria-label="Zoom out">−</button>
+            <button id="btnPan" class="icon-btn viewer-tool-btn" disabled aria-label="Pan document" aria-pressed="false" title="Pan document"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="15 19 12 22 9 19"></polyline><polyline points="19 9 22 12 19 15"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg></button>
+            <button id="btnZoomOut" class="icon-btn" disabled aria-label="Zoom out"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
             <span id="zoomLevel" class="zoom-level">100%</span>
-            <button id="btnZoomIn" class="icon-btn" disabled aria-label="Zoom in">+</button>
+            <button id="btnZoomIn" class="icon-btn" disabled aria-label="Zoom in"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
           </div>
         </div>
       </div>
@@ -230,7 +231,7 @@
           <h3>No Document Loaded</h3>
           <p>Drag &amp; drop a PDF into this area, use <strong>Upload</strong> in the header, or load one straight from Base64.</p>
           <button type="button" class="btn btn-ghost empty-state-base64-btn" id="emptyStateBase64Btn">
-            <span aria-hidden="true">🔤</span> Paste Base64
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg> Paste Base64
           </button>
           <div class="empty-state-dropline" aria-hidden="true"></div>
         </div>
@@ -280,7 +281,7 @@
               <div class="modal-box field-info-modal-box">
                 <div class="modal-header">
                   <h3 id="fieldInfoTitle">Property details</h3>
-                  <button type="button" class="modal-close" id="closeFieldInfoModalBtn" aria-label="Close">✕</button>
+                  <button type="button" class="modal-close" id="closeFieldInfoModalBtn" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
                 <div class="field-info-body" id="fieldInfoBody"></div>
               </div>
@@ -335,7 +336,7 @@
           <div class="meta-search-wrap">
             <label for="metaSearchInput" class="sr-only">Search document metadata</label>
             <input type="text" id="metaSearchInput" class="meta-search-input" placeholder="Find a key or value…" disabled>
-            <button type="button" class="meta-search-clear" id="metaSearchClearBtn" aria-label="Clear search" hidden>✕</button>
+            <button type="button" class="meta-search-clear" id="metaSearchClearBtn" aria-label="Clear search" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
           </div>
 
           <div class="meta-tree-container" id="metaTreeContainer">
@@ -375,7 +376,7 @@
               <label for="revisionFromSelect">From</label>
               <select id="revisionFromSelect"></select>
             </div>
-            <span class="revisions-compare-arrow" aria-hidden="true">→</span>
+            <span class="revisions-compare-arrow" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></span>
             <div class="revisions-compare-select">
               <label for="revisionToSelect">To</label>
               <select id="revisionToSelect"></select>
@@ -384,8 +385,8 @@
           </div>
 
           <div class="revisions-view-tabs" id="revisionsViewTabs" hidden>
-            <button type="button" class="revisions-view-tab active" id="tabRevSummary" data-rev-tab="summary">📋 Summary & Objects</button>
-            <button type="button" class="revisions-view-tab" id="tabRevVisual" data-rev-tab="visual">👁️ Visual Page Diff</button>
+            <button type="button" class="revisions-view-tab active" id="tabRevSummary" data-rev-tab="summary"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="21" y2="6"></line><line x1="9" y1="12" x2="21" y2="12"></line><line x1="9" y1="18" x2="21" y2="18"></line><line x1="4.5" y1="6" x2="4.5" y2="6"></line><line x1="4.5" y1="12" x2="4.5" y2="12"></line><line x1="4.5" y1="18" x2="4.5" y2="18"></line></svg> Summary & Objects</button>
+            <button type="button" class="revisions-view-tab" id="tabRevVisual" data-rev-tab="visual"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> Visual Page Diff</button>
           </div>
 
           <div class="revisions-diff-empty" id="revisionsDiffEmpty">
@@ -400,9 +401,9 @@
             <div class="revision-checklist-mini" id="visualDiffChecklistMini"></div>
             <div class="visual-diff-toolbar">
               <div class="visual-diff-page-nav">
-                <button type="button" class="icon-btn" id="btnVisualDiffPrevPage" aria-label="Previous page">‹</button>
+                <button type="button" class="icon-btn" id="btnVisualDiffPrevPage" aria-label="Previous page"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
                 <span id="visualDiffPageLabel">Page 1 / 1</span>
-                <button type="button" class="icon-btn" id="btnVisualDiffNextPage" aria-label="Next page">›</button>
+                <button type="button" class="icon-btn" id="btnVisualDiffNextPage" aria-label="Next page"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
               </div>
               <div class="visual-diff-mode-select">
                 <label for="visualDiffColor">Highlight:</label>
@@ -420,7 +421,7 @@
 
       <section class="section-panel" id="sectionCertificates" data-section-panel="certificates" hidden>
         <div class="empty-state-viewer" style="flex: 1 1 auto;">
-          <div class="empty-icon-wrap"><span style="font-size: 2.2rem;" aria-hidden="true">🛡️</span></div>
+          <div class="empty-icon-wrap"><svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-3.5 7-9V5.5L12 3 5 5.5V12c0 5.5 7 9 7 9z"></path></svg></div>
           <h3>Certificates</h3>
           <p>Certificate management — inspecting and validating the certificates behind a signature — is coming soon.</p>
         </div>
@@ -434,14 +435,14 @@
     <div class="modal-box share-modal-box" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
       <div class="modal-header">
         <h3 id="shareModalTitle">Share PDF</h3>
-        <button type="button" class="modal-close" id="closeShareModalBtn" aria-label="Close">✕</button>
+        <button type="button" class="modal-close" id="closeShareModalBtn" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
       <div class="share-modal-hero-panel">
         <div class="share-hero-row">
-          <div class="share-hero" aria-hidden="true">⇄</div>
+          <div class="share-hero" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></div>
           <p class="modal-hint" id="shareDescription">Create a private link. The PDF is uploaded to the sharing server once and every person who opens the link can receive their own local copy. WebRTC direct transfer with an encrypted WebSocket fallback. The share session expires in 15 minutes.</p>
         </div>
-        <div class="share-security-note" id="shareSecurityNote">🔒 AES-256-GCM end-to-end encryption · the server stores only encrypted share data · 15-minute session</div>
+        <div class="share-security-note" id="shareSecurityNote"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11"></path></svg> AES-256-GCM end-to-end encryption · the server stores only encrypted share data · 15-minute session</div>
       </div>
       <div class="share-link-row" id="shareLinkRow" hidden>
         <input class="modal-text-input share-link-input" id="shareLink" readonly aria-label="Share link">
@@ -475,7 +476,7 @@
         </svg>
       </span>
       <a class="footer-link" href="https://github.com/marbulinek/pdf-seal/issues/new" target="_blank" rel="noopener noreferrer">
-        <span class="footer-link-icon" aria-hidden="true">💡</span>
+        <span class="footer-link-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-4.85 7.6 8.5 8.5 0 0 1-9.15-1.13L3 21l1.9-5.7a8.38 8.38 0 0 1 1.13-9.15A8.5 8.5 0 0 1 21 11.5z"></path></svg></span>
         <span class="footer-link-text">Got an idea or found a bug? Let us know on GitHub</span>
       </a>
     </div>
@@ -543,6 +544,30 @@
     let activeField = null;
     let activeFieldDiv = null;
 
+    // ---------------------------------------------------------------
+    // Icon set (inline SVG, feather-style) used by markup generated in JS --
+    // static icons live directly in the HTML above.
+    // ---------------------------------------------------------------
+    const ICONS = {
+      pen: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>',
+      fileText: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>',
+      x: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>',
+      chevronRight: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>',
+      chevronDown: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>',
+      repeat: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>',
+      download: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>',
+      check: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+      dot: '<svg class="icon icon-fill" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"></circle></svg>',
+      alertTriangle: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+      lock: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11"></path></svg>',
+      list: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="21" y2="6"></line><line x1="9" y1="12" x2="21" y2="12"></line><line x1="9" y1="18" x2="21" y2="18"></line><line x1="4.5" y1="6" x2="4.5" y2="6"></line><line x1="4.5" y1="12" x2="4.5" y2="12"></line><line x1="4.5" y1="18" x2="4.5" y2="18"></line></svg>',
+      layers: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>',
+      info: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="16" x2="12" y2="11"></line><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"></circle></svg>',
+      plus: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+      minus: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+      edit2: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>',
+    };
+
     const canvas = document.getElementById('pdf-canvas');
     const ctx = canvas.getContext('2d');
     const overlayLayer = document.getElementById('overlay-layer');
@@ -550,7 +575,6 @@
     const viewerScroll = document.querySelector('.viewer-column .viewer-scroll');
     const emptyStateViewer = document.getElementById('emptyStateViewer');
     const statusEl = document.getElementById('actionStatus');
-    const topbarFeedbackEl = document.getElementById('topbarFeedback');
     const removeFieldBtn = document.getElementById('btnRemoveField');
     const settingsModal = document.getElementById('settingsModal');
     const settingsOpenBtn = document.getElementById('btnOpenSettings');
@@ -631,15 +655,66 @@
       setTimeout(() => { if(statusEl.textContent === msg) statusEl.textContent = ''; }, 3000);
     };
 
-    // Utility to show a brief pill next to the topbar (used by Upload/Download menu actions)
-    const setTopbarFeedback = (msg, duration = 2200) => {
-      topbarFeedbackEl.textContent = msg;
-      topbarFeedbackEl.style.display = 'inline-flex';
-      clearTimeout(setTopbarFeedback._t);
-      setTopbarFeedback._t = setTimeout(() => {
-        topbarFeedbackEl.style.display = 'none';
-      }, duration);
+    // Global notification bar: shows a dismissible toast in the top-right
+    // corner. Stays for `duration` ms, pausing the countdown while hovered
+    // and resuming (with whatever time was left) on mouse-leave.
+    const NOTIFICATION_ICONS = {
+      success: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
+      error: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>',
+      info: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
     };
+
+    function showNotification(message, type = 'info', duration = 6000) {
+      const stack = document.getElementById('notificationStack');
+      if (!stack) return;
+
+      const el = document.createElement('div');
+      el.className = `notification notification-${type}`;
+      el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+      el.innerHTML = `
+        <span class="notification-icon">${NOTIFICATION_ICONS[type] || NOTIFICATION_ICONS.info}</span>
+        <span class="notification-message"></span>
+        <button type="button" class="notification-close" aria-label="Dismiss notification">&times;</button>
+        <span class="notification-progress"></span>
+      `;
+      el.querySelector('.notification-message').textContent = message;
+
+      const progressEl = el.querySelector('.notification-progress');
+      progressEl.style.animationDuration = `${duration}ms`;
+
+      let remaining = duration;
+      let startedAt = Date.now();
+      let timer = null;
+
+      const dismiss = () => {
+        clearTimeout(timer);
+        el.classList.remove('is-visible');
+        el.classList.add('is-leaving');
+        setTimeout(() => el.remove(), 220);
+      };
+
+      const startCountdown = () => {
+        startedAt = Date.now();
+        progressEl.style.animationPlayState = 'running';
+        timer = setTimeout(dismiss, remaining);
+      };
+
+      const pauseCountdown = () => {
+        clearTimeout(timer);
+        remaining -= Date.now() - startedAt;
+        progressEl.style.animationPlayState = 'paused';
+      };
+
+      el.addEventListener('mouseenter', pauseCountdown);
+      el.addEventListener('mouseleave', startCountdown);
+      el.querySelector('.notification-close').addEventListener('click', dismiss);
+
+      stack.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('is-visible'));
+      startCountdown();
+
+      return el;
+    }
 
     // ---------------------------------------------------------------
     // Generic dropdown behavior (Upload / Download menus)
@@ -766,7 +841,7 @@
 
     function handleDroppedFile(file) {
       if (!isPdfFile(file)) {
-        setStatus('Please drop a PDF file.', 'error');
+        showNotification('Please drop a PDF file.', 'error');
         return;
       }
       processNewFile(file);
@@ -1043,6 +1118,7 @@
       revisionsData = null;
       revisionsLoadedForFile = null;
       revisionsLoading = false;
+      resetRevisionsDiffState();
       if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
         loadRevisionsIfNeeded();
       }
@@ -1102,7 +1178,7 @@
         documentRawObjects = null;
         renderMetaTree();
         updateViewerControlsState();
-        alert('Error processing PDF: ' + err.message);
+        showNotification('Error processing PDF: ' + err.message, 'error');
       } finally {
         document.getElementById('loadingState').style.display = 'none';
       }
@@ -1193,7 +1269,7 @@
         const div = document.createElement('div');
         div.className = `field-overlay${field.required ? ' required' : ''}`;
         div.title = field.name || 'Signature field';
-        div.textContent = field.type === 'Signature' ? '✍️' : '📝';
+        div.innerHTML = field.type === 'Signature' ? ICONS.pen : ICONS.fileText;
         applyRectToOverlay(div, field.rect);
 
         const label = document.createElement('div');
@@ -1438,7 +1514,7 @@
       const ghost = document.createElement('div');
       ghost.className = `field-overlay pending${document.getElementById('sigRequired').checked ? ' required' : ''}`;
       ghost.title = ghostName;
-      ghost.textContent = '✍️';
+      ghost.innerHTML = ICONS.pen;
       applyRectToOverlay(ghost, pendingField);
 
       const label = document.createElement('div');
@@ -1448,7 +1524,7 @@
 
       const removeBtn = document.createElement('div');
       removeBtn.className = 'pending-remove';
-      removeBtn.textContent = '✕';
+      removeBtn.innerHTML = ICONS.x;
       removeBtn.title = 'Remove';
       removeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1576,9 +1652,9 @@
         const updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
 
         await processNewFile(updatedFile, { preservePage: true });
-        setStatus('Update successful.', 'success');
+        showNotification('Update successful.', 'success');
       } catch (err) {
-        setStatus(`Error: ${err.message}`, 'error');
+        showNotification(`Error: ${err.message}`, 'error');
       } finally {
         isDocumentUpdating = false;
         updateViewerControlsState();
@@ -1592,7 +1668,7 @@
       e.preventDefault();
       if (!activeFile) return;
       if (!pendingField) {
-        setStatus('Place the field on the document first', 'error');
+        showNotification('Place the field on the document first', 'error');
         return;
       }
 
@@ -1703,7 +1779,7 @@
       a.remove();
       window.URL.revokeObjectURL(downloadUrl);
       closeSaveAsModal();
-      setTopbarFeedback('PDF downloaded!');
+      showNotification('PDF downloaded!', 'success');
     }
 
     document.getElementById('exportPdfBtn').addEventListener('click', openSaveAsModal);
@@ -1725,8 +1801,6 @@
 
     document.getElementById('copyBase64Btn').addEventListener('click', async () => {
       if (!activeFile) return;
-
-      setTopbarFeedback('Converting...');
 
       try {
         // 1. Wrap the asynchronous FileReader in a Promise
@@ -1763,10 +1837,10 @@
           }
         }
 
-        setTopbarFeedback('Copied to clipboard!');
+        showNotification('Copied to clipboard!', 'success');
       } catch (err) {
         console.error(err);
-        setTopbarFeedback('Copy failed: ' + err.message, 3500);
+        showNotification('Copy failed: ' + err.message, 'error');
       }
     });
 
@@ -2447,7 +2521,7 @@ function openShareModal() {
     shareModal.querySelector('.share-modal-box').classList.remove('is-receiver');
     document.getElementById('shareModalTitle').textContent = 'Share PDF securely';
     document.getElementById('shareDescription').textContent = 'Create an end-to-end encrypted link. WebRTC tries a direct browser-to-browser transfer first; an encrypted WebSocket relay automatically takes over when VPNs, firewalls or network changes block it.';
-    document.getElementById('shareSecurityNote').textContent = '🔒 AES-256-GCM end-to-end encryption · the server stores only encrypted PDF data · 15-minute session';
+    document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' AES-256-GCM end-to-end encryption · the server stores only encrypted PDF data · 15-minute session';
     document.getElementById('shareRecipientNote').textContent = 'Anyone with the complete link can receive the PDF while the share session is active. The decryption key stays in the link fragment and is never sent to the server.';
     document.getElementById('shareRecipientNote').hidden = false;
     document.getElementById('startShareBtn').hidden = false;
@@ -2948,7 +3022,7 @@ async function startReceivingShare(sessionId) {
   shareModal.querySelector('.share-modal-box').classList.add('is-receiver');
   document.getElementById('shareModalTitle').textContent = 'Receive PDF securely';
   document.getElementById('shareDescription').textContent = 'Your browser will try a direct encrypted WebRTC transfer first. If the VPN, firewall or network changes interrupt it, PDF Seal automatically switches to an encrypted WebSocket relay.';
-  document.getElementById('shareSecurityNote').textContent = '🔒 AES-256-GCM end-to-end encryption · the server never receives the decryption key or plaintext PDF';
+  document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' AES-256-GCM end-to-end encryption · the server never receives the decryption key or plaintext PDF';
   document.getElementById('shareRecipientNote').textContent = 'The encryption key is contained in this URL fragment and is not sent to the server. The share session expires after 15 minutes.';
   document.getElementById('shareRecipientNote').hidden = false;
   document.getElementById('startShareBtn').hidden = true;
@@ -3077,6 +3151,8 @@ async function loadRevisionsIfNeeded() {
   if (revisionsLoading) return;
   revisionsLoading = true;
 
+  const requestedFile = activeFile; // guards against a stale response landing after a newer upload
+
   emptyState.hidden = true;
   errorState.hidden = true;
   timeline.hidden = true;
@@ -3085,7 +3161,7 @@ async function loadRevisionsIfNeeded() {
 
   try {
     const formData = new FormData();
-    formData.append('pdfDocument', activeFile);
+    formData.append('pdfDocument', requestedFile);
     const res = await fetch('/api/revisions', { method: 'POST', body: formData });
     let data;
     try {
@@ -3094,17 +3170,19 @@ async function loadRevisionsIfNeeded() {
       throw new Error(`Server returned status ${res.status}.`);
     }
     if (!res.ok) throw new Error(data?.error || 'Could not read revision history.');
+    if (requestedFile !== activeFile) return; // a newer upload superseded this request
 
     revisionsData = data.revisions || [];
-    revisionsLoadedForFile = activeFile;
+    revisionsLoadedForFile = requestedFile;
     renderRevisionsTimeline(revisionsData);
   } catch (err) {
+    if (requestedFile !== activeFile) return;
     revisionsData = null;
     revisionsLoadedForFile = null;
     errorState.textContent = err.message;
     errorState.hidden = false;
   } finally {
-    revisionsLoading = false;
+    if (requestedFile === activeFile) revisionsLoading = false;
     loadingState.hidden = true;
   }
 }
@@ -3128,7 +3206,7 @@ function renderRevisionsTimeline(revisions) {
 
       let sigCell = '';
       if (isSigned) {
-        sigCell = `<div class="revision-card-signatures">🔏 ${rev.signatures
+        sigCell = `<div class="revision-card-signatures">${ICONS.lock} ${rev.signatures
           .map((s) => escapeHtml(s.name || s.fieldName || 'Signature'))
           .join(', ')}</div>`;
       }
@@ -3163,7 +3241,7 @@ function renderRevisionsTimeline(revisions) {
             </div>
             <div class="revision-card-head-actions">
               <span class="revision-row-tags">${tags.join(' ')}</span>
-              <span class="revision-expand-btn" aria-hidden="true">▸</span>
+              <span class="revision-expand-btn" aria-hidden="true">${ICONS.chevronRight}</span>
             </div>
           </button>
           <div class="revision-card-body">
@@ -3175,9 +3253,9 @@ function renderRevisionsTimeline(revisions) {
             ${errorHtml}
             <div class="revision-card-actions">
               <button type="button" class="btn revision-action-btn" title="View this revision in the document viewer" data-rev-action="view" data-rev-index="${rev.index}">View</button>
-              ${rev.index > 1 ? `<button type="button" class="btn revision-action-btn" title="Visually compare this revision against the one right before it" data-rev-action="diff-prev" data-rev-index="${rev.index}">⇄ vs previous</button>` : ''}
+              ${rev.index > 1 ? `<button type="button" class="btn revision-action-btn" title="Visually compare this revision against the one right before it" data-rev-action="diff-prev" data-rev-index="${rev.index}">${ICONS.repeat} vs previous</button>` : ''}
               <span class="revision-action-divider" aria-hidden="true"></span>
-              <button type="button" class="icon-btn revision-action-btn" title="Download this revision as a standalone PDF" data-rev-action="download" data-rev-index="${rev.index}">⬇</button>
+              <button type="button" class="icon-btn revision-action-btn" title="Download this revision as a standalone PDF" data-rev-action="download" data-rev-index="${rev.index}">${ICONS.download}</button>
             </div>
           </div>
         </li>`;
@@ -3194,7 +3272,7 @@ function renderRevisionsTimeline(revisions) {
       card.classList.toggle('is-collapsed', !expanded);
       btn.setAttribute('aria-expanded', String(expanded));
       const arrow = btn.querySelector('.revision-expand-btn');
-      if (arrow) arrow.textContent = expanded ? '▾' : '▸';
+      if (arrow) arrow.innerHTML = expanded ? ICONS.chevronDown : ICONS.chevronRight;
     });
   });
 
@@ -3265,8 +3343,10 @@ async function runQuickDiff(fromIndex, toIndex, landOnTab) {
 }
 
 async function viewRevisionInMainViewer(revIndex) {
+  const requestedFile = activeFile; // guards against a stale response landing after a newer upload
   try {
-    const doc = await fetchRevisionPdfDoc(revIndex);
+    const doc = await fetchRevisionPdfDoc(revIndex, requestedFile);
+    if (requestedFile !== activeFile) return; // a newer upload superseded this request
     enterDiffViewMode();
     setDiffBannerText(`Viewing Revision ${revIndex} snapshot (read-only)`);
     const page = await doc.getPage(1);
@@ -3318,13 +3398,52 @@ function renderCompareSelectors(revisions) {
   }
 }
 
-function diffRowsHtml(title, changes, renderRow) {
+// Clears every bit of state the "Compare Revisions" panel (summary/objects
+// results, visual PDF diff, and the pdf.js snapshots it renders from) holds
+// onto -- otherwise a stale diff computed for the previous document stays
+// visible (and re-render-able) after a new document is loaded.
+function resetRevisionsDiffState() {
+  if (diffDocA) diffDocA.destroy();
+  if (diffDocB) diffDocB.destroy();
+  diffDocA = null;
+  diffDocB = null;
+  currentDiffResultData = null;
+  currentDiffFromRevIndex = null;
+  currentDiffToRevIndex = null;
+  currentDiffActiveTab = 'summary';
+  diffCurrentPage = 1;
+  pendingDiffLandingTab = null;
+  clearActiveDiffObjectSelection();
+
+  document.getElementById('tabRevSummary').classList.add('active');
+  document.getElementById('tabRevVisual').classList.remove('active');
+  document.getElementById('revisionsViewTabs').hidden = true;
+  document.getElementById('revisionsDiffLoading').hidden = true;
+  const diffResults = document.getElementById('revisionsDiffResults');
+  diffResults.hidden = true;
+  diffResults.innerHTML = '';
+  document.getElementById('visualDiffPanel').hidden = true;
+  document.getElementById('visualDiffChecklistMini').innerHTML = '';
+  const diffEmpty = document.getElementById('revisionsDiffEmpty');
+  diffEmpty.innerHTML = '<p>Select two revisions above and hit Compare to see what changed — metadata, signature fields, raw PDF objects, and visual page diff.</p>';
+  diffEmpty.hidden = false;
+  document.getElementById('revisionFromSelect').innerHTML = '';
+  document.getElementById('revisionToSelect').innerHTML = '';
+  document.getElementById('revisionsCompareBar').hidden = true;
+}
+
+function sectionTitleHtml(icon, text) {
+  return `<span class="diff-section-icon">${icon}</span>${text}`;
+}
+
+function diffRowsHtml(icon, title, changes, renderRow) {
+  const titleHtml = sectionTitleHtml(icon, title);
   if (!changes || !changes.length) {
-    return `<div class="diff-section"><h4 class="diff-section-title">${title}</h4><p class="diff-empty-note">No changes.</p></div>`;
+    return `<div class="diff-section"><h4 class="diff-section-title">${titleHtml}</h4><p class="diff-empty-note">No changes.</p></div>`;
   }
   return `
     <div class="diff-section">
-      <h4 class="diff-section-title">${title}</h4>
+      <h4 class="diff-section-title">${titleHtml}</h4>
       <ul class="diff-list">${changes.map(renderRow).join('')}</ul>
     </div>`;
 }
@@ -3340,15 +3459,69 @@ function metadataChangeRow(change) {
     </li>`;
 }
 
-function objectChipsHtml(label, entries, cls) {
+const CLASSIFICATION_BADGES = {
+  structural: { label: 'Structural', cls: 'badge-structural' },
+  dictionary: { label: 'Dictionary', cls: 'badge-dictionary' },
+  'content-stream': { label: 'Content stream', cls: 'badge-content' },
+  'visual-content': { label: 'Visual/content', cls: 'badge-visual' },
+  signing: { label: 'Signing', cls: 'badge-signing' },
+};
+
+function dictionaryChangesHtml(changes) {
+  if (!Array.isArray(changes) || !changes.length) return '';
+  const rows = changes
+    .map((c) => {
+      if (c.status === 'added') {
+        return `<div class="diff-dict-change-row"><span class="diff-dict-change-key">/${escapeHtml(c.key)}</span><span class="diff-dict-change-values"><span class="diff-dict-added">new: ${escapeHtml(c.after)}</span></span></div>`;
+      }
+      if (c.status === 'removed') {
+        return `<div class="diff-dict-change-row"><span class="diff-dict-change-key">/${escapeHtml(c.key)}</span><span class="diff-dict-change-values"><span class="diff-dict-removed">removed: ${escapeHtml(c.before)}</span></span></div>`;
+      }
+      return `<div class="diff-dict-change-row"><span class="diff-dict-change-key">/${escapeHtml(c.key)}</span><span class="diff-dict-change-values"><del>${escapeHtml(c.before)}</del> → <ins>${escapeHtml(c.after)}</ins></span></div>`;
+    })
+    .join('');
+  return `<div class="diff-object-subsection">
+    <div class="diff-object-subsection-title">Dictionary changes</div>
+    <div class="diff-dict-changes">${rows}</div>
+  </div>`;
+}
+
+function streamDiffHtml(streamDiff) {
+  if (!streamDiff || !streamDiff.available) return '';
+  if (streamDiff.contentUnchanged) {
+    return `<div class="diff-object-subsection">
+      <div class="diff-object-subsection-title">Content changes</div>
+      <p class="diff-empty-note">Decoded content is unchanged — only the compressed size differs.</p>
+    </div>`;
+  }
+  if (streamDiff.truncated) {
+    return `<div class="diff-object-subsection">
+      <div class="diff-object-subsection-title">Content changes</div>
+      <p class="diff-empty-note">This stream is too large to diff line-by-line here.</p>
+    </div>`;
+  }
+  if (!streamDiff.removed.length && !streamDiff.added.length) return '';
+  const lines = [
+    ...streamDiff.removed.map((line) => `<span class="diff-stream-line diff-stream-remove">- ${escapeHtml(line)}</span>`),
+    ...streamDiff.added.map((line) => `<span class="diff-stream-line diff-stream-add">+ ${escapeHtml(line)}</span>`),
+  ].join('\n');
+  return `<div class="diff-object-subsection">
+    <div class="diff-object-subsection-title">Content changes</div>
+    <pre class="diff-stream-diff">${lines}</pre>
+  </div>`;
+}
+
+const OBJECT_CHIP_ICONS = { 'chip-added': ICONS.plus, 'chip-removed': ICONS.minus, 'chip-modified': ICONS.edit2 };
+
+function objectChipsHtml(label, entries, cls, revisionIndex) {
   if (!entries.length) return '';
   return `
     <div class="diff-section">
-      <h4 class="diff-section-title">${label} <span class="diff-empty-note">(${entries.length})</span></h4>
+      <h4 class="diff-section-title">${sectionTitleHtml(OBJECT_CHIP_ICONS[cls] || '', label)} <span class="diff-empty-note">(${entries.length})</span></h4>
       <div class="diff-object-chips">${entries
         .map((entry) => {
           const item = typeof entry === 'string'
-            ? { key: entry, page: null, rects: [], hasVisualLocation: false, type: null, subtype: null, previewMode: 'none' }
+            ? { key: entry, page: null, rects: [], hasVisualLocation: false, type: null, subtype: null, previewMode: 'none', category: null, fieldName: null, changesText: '', humanName: null, label: entry, dictionaryChanges: [], streamDiff: null, classifications: [] }
             : entry;
           const rects = Array.isArray(item.rects)
             ? item.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join('|')
@@ -3359,7 +3532,40 @@ function objectChipsHtml(label, entries, cls) {
               ? `Click to preview page diff on page ${item.page + 1}`
               : `Click to preview on page ${item.page + 1}`
             : 'PDF source change only — no visible page location is available for this raw object';
-          return `<span class="diff-object-chip ${cls}${previewClass}" data-object-key="${escapeHtml(item.key)}" data-preview-mode="${escapeHtml(item.previewMode || 'none')}" data-preview-page="${item.page ?? ''}" data-preview-rects="${escapeHtml(rects)}" title="${escapeHtml(previewTitle)}">${escapeHtml(item.key)}</span>`;
+
+          // Keep the raw object reference visible alongside its human-readable
+          // meaning (e.g. "6 0 R — Page 1 Content Stream") rather than
+          // replacing one with the other.
+          const refLabel = item.label || item.key;
+
+          const badges = (Array.isArray(item.classifications) ? item.classifications : [])
+            .map((c) => CLASSIFICATION_BADGES[c])
+            .filter(Boolean)
+            .map((b) => `<span class="diff-object-badge ${b.cls}">${escapeHtml(b.label)}</span>`)
+            .join('');
+
+          const metaRows = [
+            item.category ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Type</span><span class="diff-object-meta-value">${escapeHtml(item.category)}</span></span>` : '',
+            Number.isInteger(revisionIndex) ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Revision</span><span class="diff-object-meta-value">${revisionIndex}</span></span>` : '',
+            Number.isInteger(item.page) ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Page</span><span class="diff-object-meta-value">${item.page + 1}</span></span>` : '',
+            item.fieldName ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Field</span><span class="diff-object-meta-value">${escapeHtml(item.fieldName)}</span></span>` : '',
+          ].join('');
+
+          // Raw technical dump stays available (collapsed under a <details>)
+          // even once the human-readable sections above cover the same
+          // ground -- this stays a debugging tool, not just a summary.
+          const rawDetails = item.changesText
+            ? `<details class="diff-object-raw"><summary>Raw dictionary (current)</summary><div class="diff-object-meta-value diff-object-raw-value">${escapeHtml(item.changesText)}</div></details>`
+            : '';
+
+          return `<div class="diff-object-chip ${cls}${previewClass}" data-object-key="${escapeHtml(item.key)}" data-preview-mode="${escapeHtml(item.previewMode || 'none')}" data-preview-page="${item.page ?? ''}" data-preview-rects="${escapeHtml(rects)}" title="${escapeHtml(previewTitle)}">
+            <div class="diff-object-ref">${escapeHtml(refLabel)}</div>
+            ${badges ? `<div class="diff-object-badges">${badges}</div>` : ''}
+            ${metaRows ? `<div class="diff-object-meta">${metaRows}</div>` : ''}
+            ${dictionaryChangesHtml(item.dictionaryChanges)}
+            ${streamDiffHtml(item.streamDiff)}
+            ${rawDetails}
+          </div>`;
         })
         .join('')}</div>
     </div>`;
@@ -3535,7 +3741,7 @@ function checklistItemHtml(label, unchanged, changedCount, changedNoun) {
   const detail = unchanged ? 'Unchanged' : `${changedCount} ${changedNoun}`;
   return `
     <div class="revision-check-item ${stateClass}">
-      <span class="revision-check-icon" aria-hidden="true">${unchanged ? '✓' : '●'}</span>
+      <span class="revision-check-icon" aria-hidden="true">${unchanged ? ICONS.check : ICONS.dot}</span>
       <span class="revision-check-label">${escapeHtml(label)}</span>
       <span class="revision-check-detail">${escapeHtml(detail)}</span>
     </div>`;
@@ -3556,7 +3762,7 @@ function renderChecklistHtml(diff) {
   return `
     <div class="diff-section revision-checklist-section">
       <div class="revision-checklist-head">
-        <h4 class="diff-section-title">What changed</h4>
+        <h4 class="diff-section-title">${sectionTitleHtml(ICONS.list, 'What changed')}</h4>
         <span class="diff-empty-note">${formatByteDelta(diff.byteLengthDelta)} file size</span>
       </div>
       <div class="revision-checklist">${items.join('')}</div>
@@ -3574,13 +3780,13 @@ function renderIntegrityHtml(diff) {
   if (integrity.ok) {
     return `
       <div class="revision-integrity is-ok">
-        <span class="revision-integrity-icon" aria-hidden="true">✓</span>
+        <span class="revision-integrity-icon" aria-hidden="true">${ICONS.check}</span>
         Everything this revision added or modified checks out structurally — no dangling references, and any new signature's /ByteRange covers the full revision.
       </div>`;
   }
   return `
     <div class="revision-integrity is-warning">
-      <div class="revision-integrity-title"><span class="revision-integrity-icon" aria-hidden="true">⚠</span> ${integrity.issues.length} possible issue${integrity.issues.length === 1 ? '' : 's'} found in what this revision added or modified</div>
+      <div class="revision-integrity-title"><span class="revision-integrity-icon" aria-hidden="true">${ICONS.alertTriangle}</span> ${integrity.issues.length} possible issue${integrity.issues.length === 1 ? '' : 's'} found in what this revision added or modified</div>
       <ul class="revision-integrity-list">${integrity.issues.map((issue) => `<li>${escapeHtml(issue)}</li>`).join('')}</ul>
     </div>`;
 }
@@ -3590,7 +3796,7 @@ function renderDiffResults(diff, fromRev, toRev) {
 
   const checklistHtml = renderChecklistHtml(diff);
   const integrityHtml = renderIntegrityHtml(diff);
-  const metadataHtml = diffRowsHtml('Metadata', diff.metadataChanges, metadataChangeRow);
+  const metadataHtml = diffRowsHtml(ICONS.info, 'Metadata', diff.metadataChanges, metadataChangeRow);
 
   const fieldRows = [
     ...diff.fieldChanges.added.map(
@@ -3606,9 +3812,10 @@ function renderDiffResults(diff, fromRev, toRev) {
           .join('; ')}</span></li>`,
     ),
   ];
+  const fieldsTitleHtml = sectionTitleHtml(ICONS.pen, 'Signature fields');
   const fieldsHtml = fieldRows.length
-    ? `<div class="diff-section"><h4 class="diff-section-title">Signature fields</h4><ul class="diff-list">${fieldRows.join('')}</ul></div>`
-    : `<div class="diff-section"><h4 class="diff-section-title">Signature fields</h4><p class="diff-empty-note">No changes.</p></div>`;
+    ? `<div class="diff-section"><h4 class="diff-section-title">${fieldsTitleHtml}</h4><ul class="diff-list">${fieldRows.join('')}</ul></div>`
+    : `<div class="diff-section"><h4 class="diff-section-title">${fieldsTitleHtml}</h4><p class="diff-empty-note">No changes.</p></div>`;
 
   const sigRows = [
     ...diff.signatureChanges.added.map(
@@ -3622,21 +3829,22 @@ function renderDiffResults(diff, fromRev, toRev) {
         `<li class="diff-row"><span class="diff-row-badge badge-removed">removed</span><span class="diff-row-key">${escapeHtml(s.fieldName)}</span><span class="diff-row-values">Signature no longer present</span></li>`,
     ),
   ];
+  const signaturesTitleHtml = sectionTitleHtml(ICONS.lock, 'Signature');
   const signaturesHtml = sigRows.length
-    ? `<div class="diff-section"><h4 class="diff-section-title">Signature</h4><ul class="diff-list">${sigRows.join('')}</ul></div>`
-    : `<div class="diff-section"><h4 class="diff-section-title">Signature</h4><p class="diff-empty-note">No changes.</p></div>`;
+    ? `<div class="diff-section"><h4 class="diff-section-title">${signaturesTitleHtml}</h4><ul class="diff-list">${sigRows.join('')}</ul></div>`
+    : `<div class="diff-section"><h4 class="diff-section-title">${signaturesTitleHtml}</h4><p class="diff-empty-note">No changes.</p></div>`;
 
   const objectCount = diff.objectChanges.added.length + diff.objectChanges.removed.length + diff.objectChanges.modified.length;
   const objectsHtml = `
     <details class="diff-section diff-raw-objects">
-      <summary class="diff-section-title">Raw PDF objects <span class="diff-empty-note">(${objectCount})</span></summary>
+      <summary class="diff-section-title">${sectionTitleHtml(ICONS.layers, 'Raw PDF objects')} <span class="diff-empty-note">(${objectCount})</span></summary>
       ${
         !objectCount
           ? '<p class="diff-empty-note">No changes.</p>'
           : [
-              objectChipsHtml('Added objects', diff.objectChanges.addedDetails || diff.objectChanges.added, 'chip-added'),
-              objectChipsHtml('Removed objects', diff.objectChanges.removed, 'chip-removed'),
-              objectChipsHtml('Modified objects', diff.objectChanges.modifiedDetails || diff.objectChanges.modified, 'chip-modified'),
+              objectChipsHtml('Added objects', diff.objectChanges.addedDetails || diff.objectChanges.added, 'chip-added', toRev),
+              objectChipsHtml('Removed objects', diff.objectChanges.removedDetails || diff.objectChanges.removed, 'chip-removed', fromRev),
+              objectChipsHtml('Modified objects', diff.objectChanges.modifiedDetails || diff.objectChanges.modified, 'chip-modified', toRev),
             ].join('')
       }
       ${diff.objectChanges.truncated ? '<p class="diff-truncated-note">Showing the first 500 changes of each kind — this revision touched more objects than that.</p>' : ''}
@@ -3650,6 +3858,7 @@ function renderDiffResults(diff, fromRev, toRev) {
 
 document.getElementById('btnCompareRevisions').addEventListener('click', async () => {
   if (!activeFile) return;
+  const requestedFile = activeFile; // guards against a stale response landing after a newer upload
   const from = parseInt(document.getElementById('revisionFromSelect').value, 10);
   const to = parseInt(document.getElementById('revisionToSelect').value, 10);
   if (!Number.isInteger(from) || !Number.isInteger(to)) return;
@@ -3674,7 +3883,7 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
 
   try {
     const formData = new FormData();
-    formData.append('pdfDocument', activeFile);
+    formData.append('pdfDocument', requestedFile);
     formData.append('from', String(from));
     formData.append('to', String(to));
     const res = await fetch('/api/revisions/diff', { method: 'POST', body: formData });
@@ -3685,6 +3894,7 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
       throw new Error(`Server returned status ${res.status}.`);
     }
     if (!res.ok) throw new Error(data?.error || 'Could not compute the diff.');
+    if (requestedFile !== activeFile) return; // a newer upload superseded this request
 
     currentDiffResultData = data.diff;
     currentDiffFromRevIndex = from;
@@ -3703,22 +3913,25 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
     // Load PDF snapshots in background for visual diffing
     try {
       const [docA, docB] = await Promise.all([
-        fetchRevisionPdfDoc(from).catch(() => null),
-        fetchRevisionPdfDoc(to).catch(() => null),
+        fetchRevisionPdfDoc(from, requestedFile).catch(() => null),
+        fetchRevisionPdfDoc(to, requestedFile).catch(() => null),
       ]);
+      if (requestedFile !== activeFile) return; // a newer upload superseded this request
       diffDocA = docA;
       diffDocB = docB;
       if (currentDiffActiveTab === 'visual') renderVisualDiffView();
     } catch (_e) {
+      if (requestedFile !== activeFile) return;
       diffDocA = null;
       diffDocB = null;
     }
   } catch (err) {
+    if (requestedFile !== activeFile) return; // a newer upload superseded this request
     diffEmpty.textContent = err.message;
     diffEmpty.hidden = false;
     viewTabs.hidden = true;
   } finally {
-    diffLoading.hidden = true;
+    if (requestedFile === activeFile) diffLoading.hidden = true;
   }
 });
 
@@ -3726,9 +3939,9 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
 // Visual Diff Implementation
 // ---------------------------------------------------------------
 
-async function fetchRevisionPdfDoc(revisionIndex) {
+async function fetchRevisionPdfDoc(revisionIndex, file = activeFile) {
   const formData = new FormData();
-  formData.append('pdfDocument', activeFile);
+  formData.append('pdfDocument', file);
   formData.append('revision', String(revisionIndex));
   const res = await fetch('/api/revisions/snapshot', { method: 'POST', body: formData });
   if (!res.ok) throw new Error(`Could not load snapshot for revision ${revisionIndex}`);
@@ -3783,7 +3996,7 @@ function renderVisualDiffChecklistMini(diff) {
   if (!mount || !diff?.checklist) { if (mount) mount.innerHTML = ''; return; }
   const c = diff.checklist;
   const chip = (label, unchanged) =>
-    `<span class="revision-check-chip ${unchanged ? 'is-unchanged' : 'is-changed'}">${unchanged ? '✓' : '●'} ${escapeHtml(label)}</span>`;
+    `<span class="revision-check-chip ${unchanged ? 'is-unchanged' : 'is-changed'}">${unchanged ? ICONS.check : ICONS.dot} ${escapeHtml(label)}</span>`;
   mount.innerHTML = [
     chip('Pages', c.pagesUnchanged),
     chip('Text', c.textUnchanged),

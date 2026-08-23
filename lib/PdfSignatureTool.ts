@@ -10,6 +10,8 @@ import {
   PDFDict,
   PDFArray,
   PDFStream,
+  PDFRawStream,
+  decodePDFRawStream,
   PDFNumber,
   PDFBool,
   PDFHexString,
@@ -644,6 +646,44 @@ class PdfSignatureTool {
     }
 
     return { trailer, objects };
+  }
+
+  /**
+   * Decode a stream object's actual (post-/Filter) bytes given its
+   * "<num> <gen> R" reference -- e.g. a page's content stream is almost
+   * always FlateDecode-compressed, so the raw bytes in the file aren't
+   * the PDF operators themselves; this is what lets the revision diff
+   * compare what a content stream actually *says* rather than just its
+   * compressed size.
+   *
+   * Returns null if the ref doesn't resolve to a stream, or if pdf-lib
+   * can't decode it (an unsupported/custom filter) -- callers treat
+   * that as "no content diff available for this object" rather than an
+   * error, since plenty of streams (images, embedded fonts) are opaque
+   * binary data this isn't meant to handle anyway.
+   */
+  getStreamText(ref: string): { text: string; rawByteLength: number } | null {
+    const match = /^(\d+)\s+(\d+)\s+R$/.exec(ref);
+    if (!match) return null;
+    const context = this.pdfDoc.context;
+    try {
+      const pdfRef = PDFRef.of(parseInt(match[1], 10), parseInt(match[2], 10));
+      const obj = context.lookup(pdfRef);
+      if (!(obj instanceof PDFStream)) return null;
+      // Passing no length reads to EOF -- required here since `getBytes`'s
+      // (optional-at-runtime, non-optional-in-its-.d.ts) length param
+      // causes a pre-allocation loop for something like Infinity instead.
+      const decoded = obj instanceof PDFRawStream
+        ? (decodePDFRawStream(obj).getBytes as (length?: number) => Uint8Array)()
+        : obj.getContents();
+      // Latin1 is a lossless 1-byte-to-1-char mapping (same rationale as
+      // REVISION_BOUNDARY_PATTERN above) -- keeps this safe for content
+      // streams that are mostly-but-not-strictly ASCII, without ever
+      // throwing on genuinely binary bytes.
+      return { text: Buffer.from(decoded).toString('latin1'), rawByteLength: decoded.length };
+    } catch (_e) {
+      return null;
+    }
   }
 
   /**

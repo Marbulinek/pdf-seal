@@ -303,6 +303,22 @@ interface RawObjectPreview {
   subtype: string | null;
   previewMode: 'rects' | 'visual-page' | 'none';
   hasVisualLocation: boolean;
+  /** Human-readable bucket, e.g. "Signature", "Page", "Form Field". */
+  category: string;
+  /** AcroForm field name this object belongs to, if any (e.g. "Signature1"). */
+  fieldName: string | null;
+  /** PDF-syntax-flavored one-liner of this object's own (current) dict entries, e.g. "/Type /Sig /Filter /Adobe.PPKLite ...". Kept for backward compatibility -- prefer dictionaryChanges for an actual before/after. */
+  changesText: string;
+  /** e.g. "Page 1 Content Stream", "Signature Dictionary", "Widget Annotation (Signature1)". */
+  humanName: string;
+  /** "<key> — <humanName>", the raw ref kept alongside its human-readable meaning per the revision viewer's display requirement. */
+  label: string;
+  /** Structured before/after per changed dict key (or all-added/all-removed for an object that only exists on one side). */
+  dictionaryChanges: DictionaryChangeEntry[];
+  /** Decoded content-stream diff, or null if this object isn't a (decodable) stream. */
+  streamDiff: StreamDiffResult | null;
+  /** One or more of: 'structural' | 'dictionary' | 'content-stream' | 'visual-content' | 'signing'. */
+  classifications: string[];
 }
 
 function normalizeRect(rawRect: any): RawObjectRect | null {
@@ -419,6 +435,440 @@ function uniqueRects(rects: RawObjectRect[]) {
   });
 }
 
+// ---------------------------------------------------------------------
+// Human-readable object summaries -- turns a raw "31 0 R" key plus its
+// plain-data dict (as produced by PdfSignatureTool.getFullRawDump) into
+// the kind of one-line, PDF-syntax-flavored description a person can
+// actually scan: /Type /Sig /Filter /Adobe.PPKLite /ByteRange [...]
+// /Contents <binary, 4096 bytes>, instead of just the bare object ref.
+// ---------------------------------------------------------------------
+
+// Dict keys whose value is conventionally a PDF Name (i.e. it should be
+// rendered with a leading slash, like the key itself) rather than as a
+// plain string or literal -- pdfValueToPlain() already stripped that
+// distinction away, so this is a best-effort allowlist of the common
+// ones rather than something derived from the data itself.
+const NAME_VALUED_DICT_KEYS = new Set([
+  'Type', 'Subtype', 'FT', 'Filter', 'SubFilter', 'S', 'BM', 'Intent', 'Encoding', 'BaseFont', 'ColorSpace',
+]);
+
+// Values longer than this are almost certainly binary/opaque payloads
+// (signature hashes, embedded fonts, image samples) -- worth flagging
+// their size rather than dumping the content inline.
+const BINARY_VALUE_THRESHOLD = 80;
+const MAX_CHANGES_ENTRIES = 12;
+
+function formatPdfDictValue(key: string, value: any): string {
+  if (value === null || value === undefined) return 'null';
+  if (key === 'Contents' && typeof value === 'string') {
+    return `<binary, ${value.length} bytes>`;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 6 || value.some((item) => item !== null && typeof item === 'object')) return '[...]';
+    return `[${value.map((item) => formatPdfDictValue('', item)).join(' ')}]`;
+  }
+  if (typeof value === 'object') return '<<...>>';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') {
+    if (value.length > BINARY_VALUE_THRESHOLD) return `<binary, ${value.length} chars>`;
+    return NAME_VALUED_DICT_KEYS.has(key) ? `/${value}` : `(${value})`;
+  }
+  return String(value);
+}
+
+/** PDF-syntax-flavored one-liner of a dict's own entries, capped so a huge Resources dict etc. doesn't blow up the response. */
+function formatObjectChanges(node: any): string {
+  if (Array.isArray(node)) {
+    return node.length ? `[${node.map((item) => formatPdfDictValue('', item)).join(' ')}]` : '[]';
+  }
+  if (!node || typeof node !== 'object') return node == null ? '' : String(node);
+
+  const keys = Object.keys(node).filter((k) => k !== '@type' && k !== '@rawByteLength');
+  // Lead with Type/Subtype/FT so what the object *is* reads first.
+  const priority = ['Type', 'Subtype', 'FT'];
+  keys.sort((a, b) => {
+    const pa = priority.indexOf(a);
+    const pb = priority.indexOf(b);
+    if (pa !== -1 || pb !== -1) return (pa === -1 ? priority.length : pa) - (pb === -1 ? priority.length : pb);
+    return a.localeCompare(b);
+  });
+
+  const shown = keys.slice(0, MAX_CHANGES_ENTRIES);
+  const parts = shown.map((k) => `/${k} ${formatPdfDictValue(k, node[k])}`);
+  if (keys.length > shown.length) parts.push(`… +${keys.length - shown.length} more`);
+  return parts.join(' ');
+}
+
+/**
+ * Resolve the AcroForm field name (the /T entry) an object belongs to,
+ * whether the object IS the field/widget itself, is a widget nested
+ * under a parent field, or is a signature dictionary pointed to by some
+ * widget's /V -- e.g. a "31 0 R" signature dict has no /T of its own,
+ * but the widget that names it "Signature1" does.
+ */
+function resolveFieldName(key: string, node: any, objects: Record<string, any>): string | null {
+  if (node && typeof node === 'object' && typeof node.T === 'string' && node.T) return node.T;
+
+  let current = node;
+  let depth = 0;
+  while (current && typeof current === 'object' && typeof current.Parent === 'string' && depth < 6) {
+    const parent = objects[current.Parent];
+    if (!parent || typeof parent !== 'object') break;
+    if (typeof parent.T === 'string' && parent.T) return parent.T;
+    current = parent;
+    depth += 1;
+  }
+
+  for (const other of Object.values(objects)) {
+    if (!other || typeof other !== 'object') continue;
+    if ((other as any).V === key && typeof (other as any).T === 'string' && (other as any).T) {
+      return (other as any).T;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------
+// Dictionary-level before/after diffing -- as opposed to formatObjectChanges()
+// above (which just prints the *current* dict), this compares two
+// revisions' copies of the same object key by key so the UI can show
+// "/Length: 500 → 560" instead of making the person diff two chip
+// dumps by eye. An object that only exists in one revision (added or
+// removed outright) has every one of its own entries reported as
+// added/removed, since there is nothing on the other side to compare.
+// ---------------------------------------------------------------------
+
+interface DictionaryChangeEntry {
+  key: string;
+  before: string;
+  after: string;
+  status: 'added' | 'removed' | 'changed';
+}
+
+function buildDictionaryChanges(beforeNode: any, afterNode: any): DictionaryChangeEntry[] {
+  const beforeDict = beforeNode && typeof beforeNode === 'object' && !Array.isArray(beforeNode) ? beforeNode : {};
+  const afterDict = afterNode && typeof afterNode === 'object' && !Array.isArray(afterNode) ? afterNode : {};
+  const keys = new Set([...Object.keys(beforeDict), ...Object.keys(afterDict)]);
+
+  const changes: DictionaryChangeEntry[] = [];
+  for (const key of keys) {
+    if (key === '@type' || key === '@rawByteLength') continue;
+    const hasBefore = Object.prototype.hasOwnProperty.call(beforeDict, key);
+    const hasAfter = Object.prototype.hasOwnProperty.call(afterDict, key);
+    const beforeVal = beforeDict[key];
+    const afterVal = afterDict[key];
+    if (hasBefore && hasAfter && JSON.stringify(beforeVal) === JSON.stringify(afterVal)) continue;
+
+    changes.push({
+      key,
+      before: hasBefore ? formatPdfDictValue(key, beforeVal) : '—',
+      after: hasAfter ? formatPdfDictValue(key, afterVal) : '—',
+      status: !hasBefore ? 'added' : !hasAfter ? 'removed' : 'changed',
+    });
+  }
+
+  changes.sort((a, b) => a.key.localeCompare(b.key));
+  return changes.slice(0, MAX_CHANGES_ENTRIES);
+}
+
+// ---------------------------------------------------------------------
+// Content-stream diffing -- for the subset of objects that carry an
+// actual PDF stream (page content, mainly), compares the *decoded*
+// bytes between two revisions rather than the compressed ones, so a
+// re-flated-but-identical stream doesn't look like a content change
+// just because /Length moved.
+// ---------------------------------------------------------------------
+
+interface StreamDiffResult {
+  available: boolean;
+  contentUnchanged: boolean;
+  added: string[];
+  removed: string[];
+  truncated: boolean;
+  rawByteLengthBefore: number | null;
+  rawByteLengthAfter: number | null;
+}
+
+// Bounds the O(n*m) LCS table below -- content streams are normally a
+// few hundred operators at most; a stream bigger than this still gets
+// flagged as changed, just without a line-level breakdown.
+const MAX_STREAM_DIFF_UNITS = 2000;
+
+function isStreamNode(node: any): boolean {
+  return !!node && typeof node === 'object' && node['@type'] === 'Stream';
+}
+
+/** Split decoded stream text into diffable units: lines if the producer wrote one operator per line (pdf-lib's own style), otherwise a rough PDF-token split as a fallback for minified/single-line streams. */
+function splitStreamText(text: string): string[] {
+  const lines = text.split(/\r\n|\r|\n/).filter((line) => line.trim().length > 0);
+  if (lines.length > 1) return lines;
+  const tokens = text.match(/\((?:\\.|[^\\)])*\)|<[^>]*>|\[[^\]]*\]|\S+/g);
+  if (tokens && tokens.length > 1) return tokens;
+  return text.trim() ? [text.trim()] : [];
+}
+
+/** Classic LCS-based diff -- unchanged units are dropped from the output entirely per the "don't show unchanged content" requirement, only the added/removed ones are kept. */
+function diffTextUnits(oldUnits: string[], newUnits: string[]): { added: string[]; removed: string[]; truncated: boolean } {
+  if (oldUnits.length > MAX_STREAM_DIFF_UNITS || newUnits.length > MAX_STREAM_DIFF_UNITS) {
+    return { added: [], removed: [], truncated: true };
+  }
+  const n = oldUnits.length;
+  const m = newUnits.length;
+  const dp: Int32Array[] = new Array(n + 1);
+  for (let i = 0; i <= n; i++) dp[i] = new Int32Array(m + 1);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = oldUnits[i] === newUnits[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const removed: string[] = [];
+  const added: string[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (oldUnits[i] === newUnits[j]) {
+      i += 1;
+      j += 1;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      removed.push(oldUnits[i]);
+      i += 1;
+    } else {
+      added.push(newUnits[j]);
+      j += 1;
+    }
+  }
+  while (i < n) {
+    removed.push(oldUnits[i]);
+    i += 1;
+  }
+  while (j < m) {
+    added.push(newUnits[j]);
+    j += 1;
+  }
+  return { added, removed, truncated: false };
+}
+
+const NUM = String.raw`-?\d+(?:\.\d+)?`;
+
+// Matches a PDF content-stream "x y w h re" (rectangle) operator --
+// captures the same four numbers a person would read off the operator
+// itself, e.g. "50 410 280 50 re f" defines (and then fills) a rectangle
+// at x=50 y=410 width=280 height=50.
+const CONTENT_RECT_OP_PATTERN = new RegExp(String.raw`(${NUM})\s+(${NUM})\s+(${NUM})\s+(${NUM})\s+re\b`, 'g');
+
+// Matches a straight stroked line: "x1 y1 m x2 y2 l S" (or lowercase "s")
+// -- the standard way to draw a strikethrough/underline/divider rule.
+const CONTENT_LINE_OP_PATTERN = new RegExp(
+  String.raw`(${NUM})\s+(${NUM})\s+m\s+(${NUM})\s+(${NUM})\s+l\s+[sS]\b`, 'g',
+);
+
+// A PDF string literal's inner content. The spec allows unescaped
+// parentheses inside a literal string as long as they're balanced, e.g.
+// "(-> 5 Weeks (Extended for audit))" is ONE string, not two -- so a
+// naive "stop at the first unescaped )" pattern fails to match it at
+// all. This handles up to one level of that nesting (the overwhelming
+// common case for a short label); anything nested deeper than that
+// falls back to not matching, same as before.
+const PDF_STRING_LITERAL_INNER = String.raw`(?:\\.|[^\\()]|\((?:\\.|[^\\()])*\))*`;
+
+// Matches one self-contained "show text at this position" unit --
+// "/FontName size Tf x y Td (text) Tj" -- as commonly written when a
+// producer emits one BT..ET block per line. Font size is needed to
+// estimate the text's on-page footprint.
+const CONTENT_TEXT_OP_PATTERN = new RegExp(
+  String.raw`\/\S+\s+(${NUM})\s+Tf\s+(${NUM})\s+(${NUM})\s+Td\s*\((${PDF_STRING_LITERAL_INNER})\)\s*Tj`, 'g',
+);
+
+// Rough average glyph-width-to-font-size ratio for common text -- good
+// enough for a highlight box, not for real layout.
+const AVG_CHAR_WIDTH_RATIO = 0.55;
+
+function rectFromPoints(x1: number, y1: number, x2: number, y2: number): RawObjectRect | null {
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  // A couple of points of padding so a perfectly horizontal/vertical line
+  // (zero width or height on its own) still renders as a visible box.
+  const pad = 3;
+  const left = Math.min(x1, x2) - pad;
+  const right = Math.max(x1, x2) + pad;
+  const bottom = Math.min(y1, y2) - pad;
+  const top = Math.max(y1, y2) + pad;
+  return { x: left, y: bottom, width: right - left, height: top - bottom };
+}
+
+/**
+ * Pull the drawing operators out of a content-stream diff's added/removed
+ * lines and turn each one into a page-space rect: rectangles ("re"),
+ * straight lines ("m ... l ... S", e.g. a strikethrough or underline
+ * rule), and single-line text placements ("Tf ... Td (text) Tj").
+ *
+ * Without this, a content-stream change (e.g. adding one line of text,
+ * striking through another, or drawing a stamp box) has no better preview
+ * than a whole-page pixel diff, which highlights every visual difference
+ * on the page -- including unrelated edits from other objects/revisions
+ * -- instead of just the specific regions this object's diff actually
+ * touched. Each distinct change gets its own rect here (deduplicated by
+ * the caller), rather than only the last/only one that happened to match.
+ */
+function extractRectsFromStreamDiff(streamDiff: StreamDiffResult | null): RawObjectRect[] {
+  if (!streamDiff || !streamDiff.available || streamDiff.contentUnchanged) return [];
+  const rects: RawObjectRect[] = [];
+
+  for (const line of [...streamDiff.added, ...streamDiff.removed]) {
+    CONTENT_RECT_OP_PATTERN.lastIndex = 0;
+    let rectMatch: RegExpExecArray | null;
+    while ((rectMatch = CONTENT_RECT_OP_PATTERN.exec(line)) !== null) {
+      const x = Number(rectMatch[1]);
+      const y = Number(rectMatch[2]);
+      const w = Number(rectMatch[3]);
+      const h = Number(rectMatch[4]);
+      if (![x, y, w, h].every(Number.isFinite) || w === 0 || h === 0) continue;
+      rects.push({
+        x: w < 0 ? x + w : x,
+        y: h < 0 ? y + h : y,
+        width: Math.abs(w),
+        height: Math.abs(h),
+      });
+    }
+
+    CONTENT_LINE_OP_PATTERN.lastIndex = 0;
+    let lineMatch: RegExpExecArray | null;
+    while ((lineMatch = CONTENT_LINE_OP_PATTERN.exec(line)) !== null) {
+      const rect = rectFromPoints(Number(lineMatch[1]), Number(lineMatch[2]), Number(lineMatch[3]), Number(lineMatch[4]));
+      if (rect) rects.push(rect);
+    }
+
+    CONTENT_TEXT_OP_PATTERN.lastIndex = 0;
+    let textMatch: RegExpExecArray | null;
+    while ((textMatch = CONTENT_TEXT_OP_PATTERN.exec(line)) !== null) {
+      const fontSize = Number(textMatch[1]);
+      const x = Number(textMatch[2]);
+      const y = Number(textMatch[3]);
+      const text = textMatch[4] || '';
+      if (![fontSize, x, y].every(Number.isFinite) || fontSize <= 0 || !text.length) continue;
+      rects.push({
+        x,
+        y: y - fontSize * 0.25, // allow room for descenders below the baseline
+        width: Math.max(fontSize, text.length * fontSize * AVG_CHAR_WIDTH_RATIO),
+        height: fontSize * 1.15,
+      });
+    }
+  }
+
+  return rects;
+}
+
+/**
+ * Diff a stream object's decoded content between two revisions. `toolA`/
+ * `toolB` may be null (this key doesn't exist in that revision, e.g. a
+ * brand-new or fully-removed object) -- in that case the whole stream
+ * on the side that does exist is reported as added/removed content.
+ * Returns null when neither side is a decodable stream at all.
+ */
+function computeStreamDiff(key: string, toolA: any, toolB: any): StreamDiffResult | null {
+  const before = toolA ? toolA.getStreamText(key) : null;
+  const after = toolB ? toolB.getStreamText(key) : null;
+  if (!before && !after) return null;
+
+  if (before && after && before.text === after.text) {
+    return {
+      available: true,
+      contentUnchanged: true,
+      added: [],
+      removed: [],
+      truncated: false,
+      rawByteLengthBefore: before.rawByteLength,
+      rawByteLengthAfter: after.rawByteLength,
+    };
+  }
+
+  const oldUnits = before ? splitStreamText(before.text) : [];
+  const newUnits = after ? splitStreamText(after.text) : [];
+  const { added, removed, truncated } = diffTextUnits(oldUnits, newUnits);
+
+  return {
+    available: true,
+    contentUnchanged: false,
+    added,
+    removed,
+    truncated,
+    rawByteLengthBefore: before ? before.rawByteLength : null,
+    rawByteLengthAfter: after ? after.rawByteLength : null,
+  };
+}
+
+// ---------------------------------------------------------------------
+// Human-readable naming + change classification
+// ---------------------------------------------------------------------
+
+function humanObjectName(node: any, category: ObjectCategory, page: number | null, fieldName: string | null): string {
+  const type = node && typeof node === 'object' && typeof node.Type === 'string' ? node.Type : null;
+  const subFilter = node && typeof node === 'object' && typeof node.SubFilter === 'string' ? node.SubFilter : null;
+
+  if (type === 'DSS') return 'Document Security Store (DSS)';
+  if (type === 'VRI') return 'Validation-Related Info (VRI)';
+  if (type === 'DocTimeStamp' || subFilter === 'ETSI.RFC3161') return 'Timestamp';
+
+  const withField = (base: string) => (fieldName ? `${base} (${fieldName})` : base);
+
+  switch (category) {
+    case 'page':
+      return page !== null ? `Page ${page + 1}` : 'Page';
+    case 'content':
+      return page !== null ? `Page ${page + 1} Content Stream` : 'Content Stream';
+    case 'image':
+      return page !== null ? `Page ${page + 1} Image` : 'Image';
+    case 'signatureField':
+      return type === 'Sig' ? 'Signature Dictionary' : withField('Signature Field');
+    case 'formField':
+      return node && node.Subtype === 'Widget' ? withField('Widget Annotation') : withField('Form Field');
+    case 'acroform':
+      return 'AcroForm';
+    case 'xmp':
+      return 'XMP Metadata';
+    case 'font':
+      return 'Font';
+    default:
+      return 'Object';
+  }
+}
+
+const SIGNING_DICT_KEYS = new Set(['ByteRange', 'Contents', 'Filter', 'SubFilter']);
+
+function classifyChanges(params: {
+  dictionaryChanges: DictionaryChangeEntry[];
+  streamDiff: StreamDiffResult | null;
+  category: ObjectCategory;
+  node: any;
+}): string[] {
+  const { dictionaryChanges, streamDiff, category, node } = params;
+  const tags = new Set<string>();
+
+  const hasLengthChange = dictionaryChanges.some((c) => c.key === 'Length');
+  const nonLengthChanges = dictionaryChanges.filter((c) => c.key !== 'Length');
+
+  if (streamDiff && streamDiff.available && !streamDiff.contentUnchanged) {
+    tags.add('content-stream');
+    if (category === 'content' || category === 'image') tags.add('visual-content');
+  } else if (hasLengthChange) {
+    // /Length moved but the decoded content is identical (or couldn't be
+    // compared) -- a byte-size/structural change, not a content one.
+    tags.add('structural');
+  }
+
+  if (nonLengthChanges.length) tags.add('dictionary');
+
+  const type = node && typeof node === 'object' && typeof node.Type === 'string' ? node.Type : null;
+  const isSigningRelated =
+    category === 'signatureField' ||
+    type === 'Sig' || type === 'DSS' || type === 'VRI' || type === 'DocTimeStamp' ||
+    dictionaryChanges.some((c) => SIGNING_DICT_KEYS.has(c.key));
+  if (isSigningRelated) tags.add('signing');
+
+  if (!tags.size) tags.add('dictionary');
+  return Array.from(tags);
+}
+
 function describeRawObject(
   key: string,
   dumpA: any,
@@ -426,6 +876,10 @@ function describeRawObject(
   pageRefs: Map<string, number>,
   annotationPages: Map<string, number>,
   contentStreamPages: Map<string, number>,
+  category: ObjectCategory,
+  toolA: any,
+  toolB: any,
+  independentlyTrackedKeys: Set<string>,
 ): RawObjectPreview {
   const objectsA = dumpA?.objects || {};
   const objectsB = dumpB?.objects || {};
@@ -448,14 +902,40 @@ function describeRawObject(
   if (!rects.length && type === 'Page' && node && typeof node === 'object') {
     const beforeAnnots = Array.isArray(beforeNode?.Annots) ? beforeNode.Annots : [];
     const afterAnnots = Array.isArray(node.Annots) ? node.Annots : [];
-    const changedRefs = afterAnnots.filter((ref: any) => !beforeAnnots.includes(ref));
+    // A newly-attached annotation (e.g. a signature widget just added to
+    // this page) is *also* reported as its own added/modified object --
+    // with its own /Rect -- elsewhere in this same diff. Deriving the
+    // page's rect from it too would draw/report that one rectangle twice
+    // under two unrelated-looking entries (e.g. "Page 1" and "6 0 R"),
+    // which is exactly the duplicate/overlapping-change bug this guards
+    // against: only fall back to an annotation's rect here if that
+    // annotation ISN'T already independently tracked in this diff.
+    const changedRefs = afterAnnots.filter(
+      (ref: any) => !beforeAnnots.includes(ref) && !independentlyTrackedKeys.has(ref),
+    );
     rects = rectsFromAnnotationRefs(changedRefs, dumpB);
+  }
+
+  const streamDiff = isStreamNode(beforeNode) || isStreamNode(node) ? computeStreamDiff(key, toolA, toolB) : null;
+
+  // A content stream has no /Rect of its own -- without this, ANY change
+  // to it (even one that only drew a single small box) falls back to a
+  // whole-page pixel diff that highlights every visual difference on the
+  // page, not just this object's own. When its diff text contains
+  // rectangle-drawing operators, use those instead for an exact preview.
+  if (!rects.length && streamDiff) {
+    rects = extractRectsFromStreamDiff(streamDiff);
   }
 
   rects = uniqueRects(rects);
   const previewMode = rects.length > 0
     ? 'rects'
     : (page !== null && contentStreamPages.has(key) ? 'visual-page' : 'none');
+
+  const fieldName = resolveFieldName(key, node, objectsB);
+  const dictionaryChanges = buildDictionaryChanges(beforeNode, node);
+  const classifications = classifyChanges({ dictionaryChanges, streamDiff, category, node });
+  const humanName = humanObjectName(node, category, page, fieldName);
 
   return {
     key,
@@ -465,6 +945,72 @@ function describeRawObject(
     subtype,
     previewMode,
     hasVisualLocation: previewMode !== 'none',
+    category: CATEGORY_LABELS[category],
+    fieldName,
+    changesText: formatObjectChanges(node),
+    humanName,
+    label: `${key} — ${humanName}`,
+    dictionaryChanges,
+    streamDiff,
+    classifications,
+  };
+}
+
+/** Mirror of describeRawObject() for an object that only existed in the "from" snapshot (i.e. it was removed by the revision). */
+function describeRemovedObject(
+  key: string,
+  dumpA: any,
+  pageRefs: Map<string, number>,
+  annotationPages: Map<string, number>,
+  contentStreamPages: Map<string, number>,
+  category: ObjectCategory,
+  toolA: any,
+): RawObjectPreview {
+  const objectsA = dumpA?.objects || {};
+  const node = objectsA[key];
+  const type = node && typeof node === 'object' && typeof node.Type === 'string' ? node.Type : null;
+  const subtype = node && typeof node === 'object' && typeof node.Subtype === 'string' ? node.Subtype : null;
+
+  let pageRef = node && typeof node === 'object' && typeof node.P === 'string' ? node.P : null;
+  if (!pageRef && annotationPages.has(key)) {
+    const pageIndex = annotationPages.get(key)!;
+    pageRef = Array.from(pageRefs.entries()).find(([, idx]) => idx === pageIndex)?.[0] || null;
+  }
+  const page = pageRef && pageRefs.has(pageRef)
+    ? pageRefs.get(pageRef)!
+    : (pageRefs.get(key) ?? annotationPages.get(key) ?? contentStreamPages.get(key) ?? null);
+
+  let rects = collectExplicitRects(node);
+  const streamDiff = isStreamNode(node) ? computeStreamDiff(key, toolA, null) : null;
+  if (!rects.length && streamDiff) {
+    rects = extractRectsFromStreamDiff(streamDiff);
+  }
+  rects = uniqueRects(rects);
+  const previewMode = rects.length > 0
+    ? 'rects'
+    : (page !== null && contentStreamPages.has(key) ? 'visual-page' : 'none');
+
+  const fieldName = resolveFieldName(key, node, objectsA);
+  const dictionaryChanges = buildDictionaryChanges(node, null);
+  const classifications = classifyChanges({ dictionaryChanges, streamDiff, category, node });
+  const humanName = humanObjectName(node, category, page, fieldName);
+
+  return {
+    key,
+    page,
+    rects,
+    type,
+    subtype,
+    previewMode,
+    hasVisualLocation: previewMode !== 'none',
+    category: CATEGORY_LABELS[category],
+    fieldName,
+    changesText: formatObjectChanges(node),
+    humanName,
+    label: `${key} — ${humanName}`,
+    dictionaryChanges,
+    streamDiff,
+    classifications,
   };
 }
 
@@ -486,6 +1032,18 @@ type ObjectCategory =
   | 'xmp'
   | 'font'
   | 'other';
+
+const CATEGORY_LABELS: Record<ObjectCategory, string> = {
+  page: 'Page',
+  acroform: 'AcroForm',
+  content: 'Page Content',
+  image: 'Image',
+  signatureField: 'Signature',
+  formField: 'Form Field',
+  xmp: 'XMP Metadata',
+  font: 'Font',
+  other: 'Object',
+};
 
 function findAcroFormRef(dump: any): string | null {
   const objects = dump?.objects || {};
@@ -517,7 +1075,7 @@ function classifyObjectKey(
   return 'other';
 }
 
-function diffRawObjects(dumpA: any, dumpB: any) {
+function diffRawObjects(dumpA: any, dumpB: any, toolA: any = null, toolB: any = null) {
   const objectsA = dumpA?.objects || {};
   const objectsB = dumpB?.objects || {};
   const keysA = new Set(Object.keys(objectsA));
@@ -557,12 +1115,30 @@ function diffRawObjects(dumpA: any, dumpB: any) {
 
   const integrityIssues = findDanglingReferences([...addedKeys, ...modifiedKeys], dumpB);
 
+  // Removed objects only exist in the "from" snapshot, so their page/
+  // rect/field lookups need to run against dumpA's own indices rather
+  // than dumpB's (which no longer contains them).
+  const pageRefsA = buildPageRefIndex(dumpA);
+  const annotationPagesA = buildAnnotationPageIndex(dumpA, pageRefsA);
+  const contentStreamPagesA = buildContentStreamPageIndex(dumpA, pageRefsA);
+
+  const withCategory = (preview: RawObjectPreview): RawObjectPreview => ({
+    ...preview,
+    category: CATEGORY_LABELS[categories[preview.key]] || CATEGORY_LABELS.other,
+  });
+
+  // Every key that already has its own added/modified/removed entry in this
+  // diff -- passed into describeRawObject() so a Page's derived rect
+  // doesn't re-report a rectangle that one of these entries already covers.
+  const independentlyTrackedKeys = new Set<string>([...addedKeys, ...modifiedKeys, ...removedKeys]);
+
   return {
     added: addedKeys,
     removed: removedKeys,
     modified: modifiedKeys,
-    addedDetails: addedKeys.map((key) => describeRawObject(key, dumpA, dumpB, pageRefs, annotationPages, contentStreamPages)),
-    modifiedDetails: modifiedKeys.map((key) => describeRawObject(key, dumpA, dumpB, pageRefs, annotationPages, contentStreamPages)),
+    addedDetails: addedKeys.map((key) => describeRawObject(key, dumpA, dumpB, pageRefs, annotationPages, contentStreamPages, categories[key], toolA, toolB, independentlyTrackedKeys)),
+    modifiedDetails: modifiedKeys.map((key) => describeRawObject(key, dumpA, dumpB, pageRefs, annotationPages, contentStreamPages, categories[key], toolA, toolB, independentlyTrackedKeys)),
+    removedDetails: removedKeys.map((key) => describeRemovedObject(key, dumpA, pageRefsA, annotationPagesA, contentStreamPagesA, categories[key], toolA)),
     truncated,
     categories,
     integrityIssues,
@@ -691,7 +1267,7 @@ async function diffSnapshotBytes(bytesA: Uint8Array, bytesB: Uint8Array) {
   const metaB = toolB.getMetadata();
   const metadataChanges = diffMetadata(metaA, metaB);
   const signatureChanges = diffSignatures(toolA.getSignatureInfo(), toolB.getSignatureInfo());
-  const objectChanges = diffRawObjects(toolA.getFullRawDump(), toolB.getFullRawDump());
+  const objectChanges = diffRawObjects(toolA.getFullRawDump(), toolB.getFullRawDump(), toolA, toolB);
   const pageCountDelta = (metaB.pageCount || 0) - (metaA.pageCount || 0);
 
   const integrityIssues = [
