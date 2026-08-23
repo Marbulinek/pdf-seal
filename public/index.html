@@ -45,71 +45,77 @@
 
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand">
-        <img class="brand-logo" src="/assets/logo_app.png" alt="PDF Seal logo">
-      </div>
+      <div class="topbar-row topbar-row-primary">
+        <div class="brand">
+          <img class="brand-logo" src="/assets/logo_app.png" alt="PDF Seal logo">
+        </div>
 
-      <div class="section-nav-shell">
-        <button type="button" class="section-nav-toggle" id="sectionNavToggle" aria-label="Toggle sections" aria-expanded="false" aria-controls="sectionNav">
-          <span aria-hidden="true">☰</span>
-        </button>
-        <nav class="section-nav" id="sectionNav" aria-label="Document sections">
-          <button type="button" class="section-nav-btn" id="navBtnMetaData" data-section="metadata">
-            <span class="section-nav-icon" aria-hidden="true">◈</span>
-            <span class="section-nav-label">MetaData</span>
+        <div class="section-nav-shell">
+          <button type="button" class="section-nav-toggle" id="sectionNavToggle" aria-label="Toggle sections" aria-expanded="false" aria-controls="sectionNav">
+            <span aria-hidden="true">☰</span>
           </button>
-          <button type="button" class="section-nav-btn active" id="navBtnSignatures" data-section="signatures" aria-current="page">
-            <span class="section-nav-icon" aria-hidden="true">✍</span>
-            <span class="section-nav-label">Signatures</span>
-          </button>
-          <button type="button" class="section-nav-btn" id="navBtnRevisions" data-section="revisions">
-            <span class="section-nav-icon" aria-hidden="true">◷</span>
-            <span class="section-nav-label">Revisions</span>
-          </button>
-          <button type="button" class="section-nav-btn" id="navBtnCertificates" data-section="certificates" disabled title="Coming soon">
-            <span class="section-nav-icon" aria-hidden="true">▣</span>
-            <span class="section-nav-label">Certificates</span>
-            <span class="section-nav-soon">Soon</span>
-          </button>
-        </nav>
+          <nav class="section-nav" id="sectionNav" aria-label="Document sections">
+            <button type="button" class="section-nav-btn" id="navBtnMetaData" data-section="metadata">
+              <span class="section-nav-icon" aria-hidden="true">◈</span>
+              <span class="section-nav-label">MetaData</span>
+            </button>
+            <button type="button" class="section-nav-btn active" id="navBtnSignatures" data-section="signatures" aria-current="page">
+              <span class="section-nav-icon" aria-hidden="true">✍</span>
+              <span class="section-nav-label">Signatures</span>
+            </button>
+            <button type="button" class="section-nav-btn" id="navBtnRevisions" data-section="revisions">
+              <span class="section-nav-icon" aria-hidden="true">◷</span>
+              <span class="section-nav-label">Revisions</span>
+            </button>
+            <button type="button" class="section-nav-btn" id="navBtnCertificates" data-section="certificates" disabled title="Coming soon">
+              <span class="section-nav-icon" aria-hidden="true">▣</span>
+              <span class="section-nav-label">Certificates</span>
+              <span class="section-nav-soon">Soon</span>
+            </button>
+          </nav>
+        </div>
       </div>
 
       <div class="topbar-actions">
-        <button type="button" class="icon-btn topbar-settings-btn" id="btnOpenSettings" aria-label="Open settings" title="Settings">⚙</button>
-        <div class="upload-zone">
-          <div class="dropdown" id="uploadDropdown">
-            <button type="button" class="btn btn-ghost dropdown-toggle" id="btnUploadToggle" aria-haspopup="true" aria-expanded="false">
-              Upload <span class="dropdown-caret">▾</span>
-            </button>
-            <div class="dropdown-menu" id="uploadMenu" role="menu">
-              <button type="button" class="dropdown-item" id="uploadFromComputerBtn" role="menuitem">
-                <span class="dropdown-item-icon">📁</span> Upload from computer
+        <div class="topbar-row topbar-row-secondary">
+          <button type="button" class="icon-btn topbar-settings-btn" id="btnOpenSettings" aria-label="Open settings" title="Settings">⚙</button>
+          <div class="upload-zone">
+            <div class="dropdown" id="uploadDropdown">
+              <button type="button" class="btn btn-ghost dropdown-toggle" id="btnUploadToggle" aria-haspopup="true" aria-expanded="false">
+                Upload <span class="dropdown-caret">▾</span>
               </button>
-              <button type="button" class="dropdown-item" id="uploadBase64Btn" role="menuitem">
-                <span class="dropdown-item-icon">🔤</span> Upload as Base64
+              <div class="dropdown-menu" id="uploadMenu" role="menu">
+                <button type="button" class="dropdown-item" id="uploadFromComputerBtn" role="menuitem">
+                  <span class="dropdown-item-icon">📁</span> Upload from device
+                </button>
+                <button type="button" class="dropdown-item" id="uploadBase64Btn" role="menuitem">
+                  <span class="dropdown-item-icon">🔤</span> Upload as Base64
+                </button>
+              </div>
+            </div>
+            <input type="file" id="mainFileInput" accept="application/pdf" style="display: none;">
+            <span id="loadingState" class="loading-pill" style="display: none;">
+              <span class="spinner" aria-hidden="true"></span>Processing...
+            </span>
+            <span id="topbarFeedback" class="loading-pill" style="display: none;"></span>
+          </div>
+        </div>
+        <div class="topbar-row topbar-row-tertiary">
+          <button type="button" class="btn btn-ghost" id="btnShare" disabled>
+            <span aria-hidden="true">↗</span> Share
+          </button>
+          <div class="dropdown" id="downloadDropdown">
+            <button type="button" class="btn btn-primary dropdown-toggle" id="btnDownloadToggle" disabled aria-haspopup="true" aria-expanded="false">
+              Download <span class="dropdown-caret">▾</span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-right" id="downloadMenu" role="menu">
+              <button type="button" class="dropdown-item" id="exportPdfBtn" role="menuitem">
+                <span class="dropdown-item-icon">⬇️</span> Export as PDF
+              </button>
+              <button type="button" class="dropdown-item" id="copyBase64Btn" role="menuitem">
+                <span class="dropdown-item-icon">📋</span> Copy as Base64
               </button>
             </div>
-          </div>
-          <input type="file" id="mainFileInput" accept="application/pdf" style="display: none;">
-          <span id="loadingState" class="loading-pill" style="display: none;">
-            <span class="spinner" aria-hidden="true"></span>Processing...
-          </span>
-          <span id="topbarFeedback" class="loading-pill" style="display: none;"></span>
-        </div>
-        <button type="button" class="btn btn-ghost" id="btnShare" disabled>
-          <span aria-hidden="true">↗</span> Share
-        </button>
-        <div class="dropdown" id="downloadDropdown">
-          <button type="button" class="btn btn-primary dropdown-toggle" id="btnDownloadToggle" disabled aria-haspopup="true" aria-expanded="false">
-            Download <span class="dropdown-caret">▾</span>
-          </button>
-          <div class="dropdown-menu dropdown-menu-right" id="downloadMenu" role="menu">
-            <button type="button" class="dropdown-item" id="exportPdfBtn" role="menuitem">
-              <span class="dropdown-item-icon">⬇️</span> Export as PDF
-            </button>
-            <button type="button" class="dropdown-item" id="copyBase64Btn" role="menuitem">
-              <span class="dropdown-item-icon">📋</span> Copy as Base64
-            </button>
           </div>
         </div>
       </div>
@@ -391,13 +397,19 @@
           <div class="revisions-diff-results" id="revisionsDiffResults" hidden></div>
 
           <div class="visual-diff-panel" id="visualDiffPanel" hidden>
+            <div class="revision-checklist-mini" id="visualDiffChecklistMini"></div>
             <div class="visual-diff-toolbar">
+              <div class="visual-diff-page-nav">
+                <button type="button" class="icon-btn" id="btnVisualDiffPrevPage" aria-label="Previous page">‹</button>
+                <span id="visualDiffPageLabel">Page 1 / 1</span>
+                <button type="button" class="icon-btn" id="btnVisualDiffNextPage" aria-label="Next page">›</button>
+              </div>
               <div class="visual-diff-mode-select">
                 <label for="visualDiffColor">Highlight:</label>
                 <select id="visualDiffColor" style="padding: 4px 8px; font-size: 0.8rem; border: 1px solid var(--ice); border-radius: 6px; font-weight: 600;">
+                  <option value="yellow" selected>🟡 Light Yellow</option>
                   <option value="red">🔴 Light Red</option>
                   <option value="green">🟢 Light Green</option>
-                  <option value="yellow" selected>🟡 Light Yellow</option>
                 </select>
               </div>
             </div>
@@ -455,6 +467,7 @@
   <footer class="site-footer">
     <div class="site-footer-inner">
       <span class="footer-copy">© 2026 PDF Seal</span>
+      <span class="footer-version" id="footerVersion" aria-live="polite">Version …</span>
       <span class="footer-love">
         Built with
         <svg class="heart-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -467,6 +480,24 @@
       </a>
     </div>
   </footer>
+
+  <script>
+    (() => {
+      const footerVersionEl = document.getElementById('footerVersion');
+      if (!footerVersionEl) return;
+
+      fetch('/api/version')
+        .then(async (response) => {
+          if (!response.ok) throw new Error('Unable to read version');
+          const data = await response.json();
+          const version = typeof data.version === 'string' && data.version.trim() ? data.version : null;
+          footerVersionEl.textContent = version ? `Version ${version}` : 'Version unavailable';
+        })
+        .catch(() => {
+          footerVersionEl.textContent = 'Version unavailable';
+        });
+    })();
+  </script>
 
   <script>
     // State variables
@@ -498,6 +529,7 @@
     let currentDiffFromRevIndex = null;
     let currentDiffToRevIndex = null;
     let currentDiffActiveTab = 'summary';
+    let pendingDiffLandingTab = null; // which tab to switch to once the in-flight compare finishes (set by runQuickDiff)
     let viewerDiffActive = false; // true while the main viewer shows a revision snapshot/diff instead of the live document
     let hoveredDiffObjectKey = null;
     let hoverActivatedViewerDiff = false;
@@ -531,13 +563,13 @@
     function loadSettings() {
       try {
         const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (!raw) return { addRevisionByDefault: true };
+        if (!raw) return { addRevisionByDefault: false };
         const parsed = JSON.parse(raw);
         return {
-          addRevisionByDefault: parsed && typeof parsed.addRevisionByDefault === 'boolean' ? parsed.addRevisionByDefault : true,
+          addRevisionByDefault: parsed && typeof parsed.addRevisionByDefault === 'boolean' ? parsed.addRevisionByDefault : false,
         };
       } catch (_err) {
-        return { addRevisionByDefault: true };
+        return { addRevisionByDefault: false };
       }
     }
 
@@ -3108,11 +3140,13 @@ function renderRevisionsTimeline(revisions) {
 
       const changeSummary = rev.changeSummary || {};
       const summaryItems = [
-        { label: 'Pages', value: changeSummary.pageCount != null ? changeSummary.pageCount : (rev.pageCount != null ? rev.pageCount : '—') },
-        { label: 'Fields', value: changeSummary.fieldCount ?? (rev.fields ? rev.fields.length : 0) },
-        { label: 'Signatures', value: changeSummary.signatureCount ?? 0 },
-        { label: 'Texts', value: changeSummary.textCount ?? 0 },
-        { label: 'Annotations', value: changeSummary.annotationCount ?? 0 },
+        { label: 'Pages',            value: changeSummary.pageCount         != null ? changeSummary.pageCount         : (rev.pageCount != null ? rev.pageCount : '—') },
+        { label: 'Text',             value: changeSummary.textCount         ?? 0 },
+        { label: 'Images',           value: changeSummary.imageCount        ?? 0 },
+        { label: 'Signature fields', value: changeSummary.fieldCount        ?? (rev.fields ? rev.fields.length : 0) },
+        { label: 'AcroForm',         value: changeSummary.acroFormCount     ?? 0 },
+        { label: 'Metadata',         value: changeSummary.metadataFieldCount ?? 0 },
+        { label: 'Signature',        value: changeSummary.signatureCount    ?? 0 },
       ];
 
       let errorHtml = '';
@@ -3141,6 +3175,7 @@ function renderRevisionsTimeline(revisions) {
             ${errorHtml}
             <div class="revision-card-actions">
               <button type="button" class="btn revision-action-btn" title="View this revision in the document viewer" data-rev-action="view" data-rev-index="${rev.index}">View</button>
+              ${rev.index > 1 ? `<button type="button" class="btn revision-action-btn" title="Visually compare this revision against the one right before it" data-rev-action="diff-prev" data-rev-index="${rev.index}">⇄ vs previous</button>` : ''}
               <span class="revision-action-divider" aria-hidden="true"></span>
               <button type="button" class="icon-btn revision-action-btn" title="Download this revision as a standalone PDF" data-rev-action="download" data-rev-index="${rev.index}">⬇</button>
             </div>
@@ -3204,7 +3239,29 @@ async function handleRevisionRowAction(action, revIndex) {
   }
   if (action === 'download') {
     await downloadRevisionFile(revIndex);
+    return;
   }
+  if (action === 'diff-prev') {
+    await runQuickDiff(revIndex - 1, revIndex, 'visual');
+  }
+}
+
+/**
+ * One click, straight to a rendered visual diff -- sets the From/To
+ * selects, scrolls the compare panel into view, runs the same compare
+ * flow as the button, and switches directly into the tab the caller
+ * wants (defaults to 'visual', since that's almost always what a click
+ * from a revision card is after).
+ */
+async function runQuickDiff(fromIndex, toIndex, landOnTab) {
+  const fromSelect = document.getElementById('revisionFromSelect');
+  const toSelect = document.getElementById('revisionToSelect');
+  if (!fromSelect || !toSelect) return;
+  fromSelect.value = String(fromIndex);
+  toSelect.value = String(toIndex);
+  pendingDiffLandingTab = landOnTab || 'summary';
+  document.getElementById('revisionsDiffPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('btnCompareRevisions').click();
 }
 
 async function viewRevisionInMainViewer(revIndex) {
@@ -3301,7 +3358,7 @@ function objectChipsHtml(label, entries, cls) {
             ? item.previewMode === 'visual-page'
               ? `Click to preview page diff on page ${item.page + 1}`
               : `Click to preview on page ${item.page + 1}`
-            : 'No visible page location available for this raw object';
+            : 'PDF source change only — no visible page location is available for this raw object';
           return `<span class="diff-object-chip ${cls}${previewClass}" data-object-key="${escapeHtml(item.key)}" data-preview-mode="${escapeHtml(item.previewMode || 'none')}" data-preview-page="${item.page ?? ''}" data-preview-rects="${escapeHtml(rects)}" title="${escapeHtml(previewTitle)}">${escapeHtml(item.key)}</span>`;
         })
         .join('')}</div>
@@ -3369,8 +3426,6 @@ async function drawHoveredDiffObjectOverlay(page, pdfRects) {
 async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects) {
   if (!Number.isInteger(currentDiffToRevIndex) || pageIndex < 0 || !Array.isArray(pdfRects) || !pdfRects.length) return;
 
-  if (viewerDiffActive && currentDiffActiveTab !== 'visual') return;
-
   const previewedObjectKey = objectKey;
   hoveredDiffObjectKey = previewedObjectKey;
   hoverActivatedViewerDiff = !viewerDiffActive;
@@ -3412,7 +3467,7 @@ async function renderHoveredDiffVisualPagePreview(objectKey, pageIndex) {
 
   if (hoveredDiffObjectKey !== objectKey) return;
   enterDiffViewMode();
-  await renderVisualDiff(pageIndex + 1);
+  await renderVisualDiffAsMarkers(pageIndex + 1);
   if (hoveredDiffObjectKey !== objectKey) return;
   setDiffBannerText(`Previewing changed page content for ${objectKey} on page ${pageIndex + 1}`);
 }
@@ -3455,6 +3510,7 @@ function attachDiffObjectPreviewHandlers(container) {
       }
 
       chip.classList.add('is-hovered');
+      overlayLayer.innerHTML = ''; // clear stale overlay before the async render begins
       const renderPreview = previewMode === 'visual-page'
         ? renderHoveredDiffVisualPagePreview(objectKey, pageIndex)
         : renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects);
@@ -3465,21 +3521,75 @@ function attachDiffObjectPreviewHandlers(container) {
   });
 }
 
+// ---------------------------------------------------------------
+// Revision checklist -- the seven at-a-glance answers to "what
+// actually changed": Pages / Text / Images / Signature fields /
+// AcroForm / Metadata / Signature. This is the first thing rendered
+// for any comparison, in both the Summary and Visual tabs, so the
+// person never has to go hunting through raw object chips just to
+// know whether e.g. the images changed.
+// ---------------------------------------------------------------
+
+function checklistItemHtml(label, unchanged, changedCount, changedNoun) {
+  const stateClass = unchanged ? 'is-unchanged' : 'is-changed';
+  const detail = unchanged ? 'Unchanged' : `${changedCount} ${changedNoun}`;
+  return `
+    <div class="revision-check-item ${stateClass}">
+      <span class="revision-check-icon" aria-hidden="true">${unchanged ? '✓' : '●'}</span>
+      <span class="revision-check-label">${escapeHtml(label)}</span>
+      <span class="revision-check-detail">${escapeHtml(detail)}</span>
+    </div>`;
+}
+
+function renderChecklistHtml(diff) {
+  const c = diff.checklist;
+  if (!c) return '';
+  const items = [
+    checklistItemHtml('Pages', c.pagesUnchanged, c.pagesChangedCount, 'page(s) changed'),
+    checklistItemHtml('Text', c.textUnchanged, c.textChangedCount, 'content stream(s) changed'),
+    checklistItemHtml('Images', c.imagesUnchanged, c.imagesChangedCount, 'image(s) changed'),
+    checklistItemHtml('Signature fields', c.signatureFieldsUnchanged, c.signatureFieldsChangedCount, 'field(s) changed'),
+    checklistItemHtml('AcroForm', c.acroFormUnchanged, c.acroFormChangedCount, 'object(s) changed'),
+    checklistItemHtml('Metadata', c.metadataUnchanged, c.metadataChangedCount, 'value(s) changed'),
+    checklistItemHtml('Signature', c.signatureUnchanged, c.signatureChangedCount, 'signature event(s)'),
+  ];
+  return `
+    <div class="diff-section revision-checklist-section">
+      <div class="revision-checklist-head">
+        <h4 class="diff-section-title">What changed</h4>
+        <span class="diff-empty-note">${formatByteDelta(diff.byteLengthDelta)} file size</span>
+      </div>
+      <div class="revision-checklist">${items.join('')}</div>
+    </div>`;
+}
+
+// Correctness check on the objects this revision added/modified: any
+// dangling references, and (for a newly-applied signature) whether its
+// /ByteRange actually covers the whole revision. See
+// findDanglingReferences() / checkSignatureByteRangeCoverage() in
+// PdfRevisionTool.ts for what's actually being checked here.
+function renderIntegrityHtml(diff) {
+  const integrity = diff.integrity;
+  if (!integrity) return '';
+  if (integrity.ok) {
+    return `
+      <div class="revision-integrity is-ok">
+        <span class="revision-integrity-icon" aria-hidden="true">✓</span>
+        Everything this revision added or modified checks out structurally — no dangling references, and any new signature's /ByteRange covers the full revision.
+      </div>`;
+  }
+  return `
+    <div class="revision-integrity is-warning">
+      <div class="revision-integrity-title"><span class="revision-integrity-icon" aria-hidden="true">⚠</span> ${integrity.issues.length} possible issue${integrity.issues.length === 1 ? '' : 's'} found in what this revision added or modified</div>
+      <ul class="revision-integrity-list">${integrity.issues.map((issue) => `<li>${escapeHtml(issue)}</li>`).join('')}</ul>
+    </div>`;
+}
+
 function renderDiffResults(diff, fromRev, toRev) {
   const container = document.getElementById('revisionsDiffResults');
-  const fieldAdded = diff.fieldChanges.added.length;
-  const fieldRemoved = diff.fieldChanges.removed.length;
-  const fieldModified = diff.fieldChanges.modified.length;
 
-  const summaryHtml = `
-    <div class="diff-summary-row">
-      <div class="diff-stat"><div class="diff-stat-value">${formatByteDelta(diff.byteLengthDelta)}</div><div class="diff-stat-label">File size</div></div>
-      <div class="diff-stat"><div class="diff-stat-value">${diff.pageCountDelta >= 0 ? '+' : ''}${diff.pageCountDelta}</div><div class="diff-stat-label">Pages</div></div>
-      <div class="diff-stat"><div class="diff-stat-value">${diff.metadataChanges.length}</div><div class="diff-stat-label">Metadata changes</div></div>
-      <div class="diff-stat"><div class="diff-stat-value">${fieldAdded + fieldRemoved + fieldModified}</div><div class="diff-stat-label">Field changes</div></div>
-      <div class="diff-stat"><div class="diff-stat-value">${diff.signatureChanges.added.length}</div><div class="diff-stat-label">New signatures</div></div>
-    </div>`;
-
+  const checklistHtml = renderChecklistHtml(diff);
+  const integrityHtml = renderIntegrityHtml(diff);
   const metadataHtml = diffRowsHtml('Metadata', diff.metadataChanges, metadataChangeRow);
 
   const fieldRows = [
@@ -3513,14 +3623,15 @@ function renderDiffResults(diff, fromRev, toRev) {
     ),
   ];
   const signaturesHtml = sigRows.length
-    ? `<div class="diff-section"><h4 class="diff-section-title">Signatures</h4><ul class="diff-list">${sigRows.join('')}</ul></div>`
-    : `<div class="diff-section"><h4 class="diff-section-title">Signatures</h4><p class="diff-empty-note">No changes.</p></div>`;
+    ? `<div class="diff-section"><h4 class="diff-section-title">Signature</h4><ul class="diff-list">${sigRows.join('')}</ul></div>`
+    : `<div class="diff-section"><h4 class="diff-section-title">Signature</h4><p class="diff-empty-note">No changes.</p></div>`;
 
+  const objectCount = diff.objectChanges.added.length + diff.objectChanges.removed.length + diff.objectChanges.modified.length;
   const objectsHtml = `
-    <div class="diff-section">
-      <h4 class="diff-section-title">Raw PDF objects</h4>
+    <details class="diff-section diff-raw-objects">
+      <summary class="diff-section-title">Raw PDF objects <span class="diff-empty-note">(${objectCount})</span></summary>
       ${
-        !diff.objectChanges.added.length && !diff.objectChanges.removed.length && !diff.objectChanges.modified.length
+        !objectCount
           ? '<p class="diff-empty-note">No changes.</p>'
           : [
               objectChipsHtml('Added objects', diff.objectChanges.addedDetails || diff.objectChanges.added, 'chip-added'),
@@ -3529,9 +3640,9 @@ function renderDiffResults(diff, fromRev, toRev) {
             ].join('')
       }
       ${diff.objectChanges.truncated ? '<p class="diff-truncated-note">Showing the first 500 changes of each kind — this revision touched more objects than that.</p>' : ''}
-    </div>`;
+    </details>`;
 
-  container.innerHTML = summaryHtml + metadataHtml + fieldsHtml + signaturesHtml + objectsHtml;
+  container.innerHTML = checklistHtml + integrityHtml + metadataHtml + fieldsHtml + signaturesHtml + objectsHtml;
   container.hidden = false;
   document.getElementById('revisionsDiffEmpty').hidden = true;
   attachDiffObjectPreviewHandlers(container);
@@ -3554,6 +3665,13 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
   diffEmpty.hidden = true;
   diffLoading.hidden = false;
 
+  if (pendingDiffLandingTab) {
+    currentDiffActiveTab = pendingDiffLandingTab;
+    pendingDiffLandingTab = null;
+    document.getElementById('tabRevSummary').classList.toggle('active', currentDiffActiveTab === 'summary');
+    document.getElementById('tabRevVisual').classList.toggle('active', currentDiffActiveTab === 'visual');
+  }
+
   try {
     const formData = new FormData();
     formData.append('pdfDocument', activeFile);
@@ -3574,6 +3692,7 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
     diffCurrentPage = 1;
 
     renderDiffResults(data.diff, from, to);
+    renderVisualDiffChecklistMini(data.diff);
     viewTabs.hidden = false;
 
     if (currentDiffActiveTab === 'visual') {
@@ -3643,8 +3762,42 @@ document.getElementById('tabRevSummary').addEventListener('click', () => switchD
 document.getElementById('tabRevVisual').addEventListener('click', () => switchDiffTab('visual'));
 document.getElementById('visualDiffColor').addEventListener('change', () => renderVisualDiffView());
 
+document.getElementById('btnVisualDiffPrevPage').addEventListener('click', () => {
+  if (diffCurrentPage <= 1) return;
+  diffCurrentPage -= 1;
+  renderVisualDiffView();
+});
+document.getElementById('btnVisualDiffNextPage').addEventListener('click', () => {
+  const maxPages = Math.max(diffDocA ? diffDocA.numPages : 0, diffDocB ? diffDocB.numPages : 0);
+  if (diffCurrentPage >= maxPages) return;
+  diffCurrentPage += 1;
+  renderVisualDiffView();
+});
+
+// Condensed mirror of the full "What changed" checklist, kept visible
+// in the toolbar while manipulating the visual diff itself -- so the
+// person doesn't have to flip back to the Summary tab just to check
+// whether e.g. the images changed on this page.
+function renderVisualDiffChecklistMini(diff) {
+  const mount = document.getElementById('visualDiffChecklistMini');
+  if (!mount || !diff?.checklist) { if (mount) mount.innerHTML = ''; return; }
+  const c = diff.checklist;
+  const chip = (label, unchanged) =>
+    `<span class="revision-check-chip ${unchanged ? 'is-unchanged' : 'is-changed'}">${unchanged ? '✓' : '●'} ${escapeHtml(label)}</span>`;
+  mount.innerHTML = [
+    chip('Pages', c.pagesUnchanged),
+    chip('Text', c.textUnchanged),
+    chip('Images', c.imagesUnchanged),
+    chip('Signature fields', c.signatureFieldsUnchanged),
+    chip('AcroForm', c.acroFormUnchanged),
+    chip('Metadata', c.metadataUnchanged),
+    chip('Signature', c.signatureUnchanged),
+  ].join('');
+}
+
 async function renderVisualDiffView() {
   enterDiffViewMode();
+  renderVisualDiffChecklistMini(currentDiffResultData);
 
   const fromLabel = currentDiffFromRevIndex ?? '?';
   const toLabel = currentDiffToRevIndex ?? '?';
@@ -3657,6 +3810,11 @@ async function renderVisualDiffView() {
   const maxPages = Math.max(diffDocA ? diffDocA.numPages : 0, diffDocB ? diffDocB.numPages : 0);
   if (diffCurrentPage > maxPages) diffCurrentPage = maxPages;
   if (diffCurrentPage < 1) diffCurrentPage = 1;
+
+  const pageLabel = document.getElementById('visualDiffPageLabel');
+  if (pageLabel) pageLabel.textContent = `Page ${diffCurrentPage} / ${maxPages || 1}`;
+  document.getElementById('btnVisualDiffPrevPage').disabled = diffCurrentPage <= 1;
+  document.getElementById('btnVisualDiffNextPage').disabled = diffCurrentPage >= maxPages;
 
   setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — page ${diffCurrentPage} / ${maxPages}`);
 
@@ -3674,10 +3832,118 @@ async function renderVisualDiffView() {
 // Soft, easy-to-read tint colors the person can pick from to mark changed
 // pixels -- kept to three simple options rather than a full color picker.
 const VISUAL_DIFF_HIGHLIGHT_COLORS = {
+  yellow: { r: 250, g: 204, b: 21 },
   red: { r: 255, g: 99, b: 99 },
   green: { r: 74, g: 222, b: 128 },
-  yellow: { r: 250, g: 204, b: 21 },
 };
+
+// Used by Summary-tab chip clicks: renders the target page cleanly and draws
+// marching-ants rectangles around each visually-changed region instead of
+// tinting the whole page.
+async function renderVisualDiffAsMarkers(pageNum) {
+  const pageA = (diffDocA && pageNum <= diffDocA.numPages) ? await diffDocA.getPage(pageNum) : null;
+  const pageB = (diffDocB && pageNum <= diffDocB.numPages) ? await diffDocB.getPage(pageNum) : null;
+  const targetPage = pageB || pageA;
+
+  if (!targetPage) {
+    setDiffBannerText('Page not available in either revision.');
+    return;
+  }
+
+  if (!userHasManuallyZoomed) {
+    currentScale = 1.0;
+    document.getElementById('zoomLevel').textContent = '100%';
+  }
+  const viewport = targetPage.getViewport({ scale: currentScale });
+  currentViewport = viewport;
+  const width = Math.floor(viewport.width);
+  const height = Math.floor(viewport.height);
+
+  const renderOffscreen = async (page) => {
+    const off = document.createElement('canvas');
+    off.width = width;
+    off.height = height;
+    const offCtx = off.getContext('2d');
+    if (page) {
+      await page.render({ canvasContext: offCtx, viewport: page.getViewport({ scale: currentScale }) }).promise;
+    } else {
+      offCtx.fillStyle = '#ffffff';
+      offCtx.fillRect(0, 0, width, height);
+    }
+    return { pixels: offCtx.getImageData(0, 0, width, height).data, canvas: off };
+  };
+
+  const [resA, resB] = await Promise.all([renderOffscreen(pageA), renderOffscreen(targetPage)]);
+  const imgDataA = resA.pixels;
+  const imgDataB = resB.pixels;
+
+  // Paint the target revision cleanly (cancel any in-flight pdf.js render first)
+  if (currentRenderTask) { currentRenderTask.cancel(); currentRenderTask = null; }
+  overlayLayer.innerHTML = '';
+  canvas.width = width;
+  canvas.height = height;
+  ctx.drawImage(resB.canvas, 0, 0);
+
+  // Detect changed pixels into a coarse cell grid
+  const CELL = 20;
+  const cols = Math.ceil(width / CELL);
+  const rows = Math.ceil(height / CELL);
+  const dirty = new Uint8Array(cols * rows);
+
+  for (let i = 0; i < imgDataA.length; i += 4) {
+    if (
+      Math.abs(imgDataA[i]   - imgDataB[i])   +
+      Math.abs(imgDataA[i+1] - imgDataB[i+1]) +
+      Math.abs(imgDataA[i+2] - imgDataB[i+2]) +
+      Math.abs(imgDataA[i+3] - imgDataB[i+3]) > 20
+    ) {
+      const pixIdx = i >> 2;
+      dirty[((pixIdx / width | 0) / CELL | 0) * cols + ((pixIdx % width) / CELL | 0)] = 1;
+    }
+  }
+
+  // BFS: group adjacent dirty cells into bounding-rect clusters
+  const visited = new Uint8Array(cols * rows);
+  const scale = currentViewport.scale;
+  const pdfPageHeight = currentViewport.viewBox[3];
+  let rectCount = 0;
+
+  for (let start = 0; start < dirty.length; start++) {
+    if (!dirty[start] || visited[start]) continue;
+    if (rectCount >= 50) break; // safety cap for heavily-changed pages
+    let minCx = start % cols, maxCx = minCx;
+    let minCy = (start / cols) | 0, maxCy = minCy;
+    const stack = [start];
+    visited[start] = 1;
+    while (stack.length) {
+      const cell = stack.pop();
+      const cx = cell % cols;
+      const cy = (cell / cols) | 0;
+      if (cx < minCx) minCx = cx; if (cx > maxCx) maxCx = cx;
+      if (cy < minCy) minCy = cy; if (cy > maxCy) maxCy = cy;
+      for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) continue;
+        const nc = ny * cols + nx;
+        if (dirty[nc] && !visited[nc]) { visited[nc] = 1; stack.push(nc); }
+      }
+    }
+    // Convert cell-grid bounds → screen px (with padding) → PDF coords
+    const pad = 4;
+    const sL = Math.max(0, minCx * CELL - pad);
+    const sT = Math.max(0, minCy * CELL - pad);
+    const sR = Math.min(width,  (maxCx + 1) * CELL + pad);
+    const sB = Math.min(height, (maxCy + 1) * CELL + pad);
+    const pdfW = (sR - sL) / scale;
+    const pdfH = (sB - sT) / scale;
+    const pdfRect = { x: sL / scale, y: pdfPageHeight - sT / scale - pdfH, width: pdfW, height: pdfH };
+    const div = document.createElement('div');
+    div.className = 'diff-object-hover-overlay';
+    applyRectToOverlay(div, pdfRect);
+    overlayLayer.appendChild(div);
+    rectCount++;
+  }
+}
 
 async function renderVisualDiff(pageNum) {
   const pageA = (diffDocA && pageNum <= diffDocA.numPages) ? await diffDocA.getPage(pageNum) : null;
@@ -3719,7 +3985,7 @@ async function renderVisualDiff(pageNum) {
 
   const colorKey = document.getElementById('visualDiffColor').value;
   const highlight = VISUAL_DIFF_HIGHLIGHT_COLORS[colorKey] || VISUAL_DIFF_HIGHLIGHT_COLORS.yellow;
-  const alpha = 0.55; // how strongly the highlight tint covers changed pixels
+  const alpha = 0.55;
 
   overlayLayer.innerHTML = '';
   canvas.width = width;
