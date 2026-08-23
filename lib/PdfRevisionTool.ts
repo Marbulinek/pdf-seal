@@ -97,10 +97,12 @@ async function summarizeSnapshot(bytes: Uint8Array, revisionIndex: number, isFin
     const rawDump = tool.getFullRawDump();
     const changeSummary = {
       pageCount: metadata.pageCount,
-      fieldCount: fields.length,
-      signatureCount: signatures.length,
       textCount: countTextItems(fields, rawDump),
-      annotationCount: countAnnotations(rawDump),
+      imageCount: countImages(rawDump),
+      fieldCount: fields.length,
+      acroFormCount: countAcroFormObjects(rawDump),
+      metadataFieldCount: countMetadataFields(metadata),
+      signatureCount: signatures.length,
     };
     return {
       ...base,
@@ -191,6 +193,31 @@ function countAnnotations(rawDump: any): number {
     const subtype = typeof value.Subtype === 'string' ? value.Subtype : '';
     return type === 'Annot' || subtype === 'Widget' || subtype === 'Text' || subtype === 'FreeText';
   }).length;
+}
+
+function countImages(rawDump: any): number {
+  const objects = rawDump?.objects || {};
+  return Object.values(objects).filter((value: any) => {
+    if (!value || typeof value !== 'object') return false;
+    return typeof value.Subtype === 'string' && value.Subtype === 'Image';
+  }).length;
+}
+
+function countAcroFormObjects(rawDump: any): number {
+  const objects = rawDump?.objects || {};
+  return Object.values(objects).filter((value: any) => {
+    if (!value || typeof value !== 'object') return false;
+    const subtype = typeof value.Subtype === 'string' ? value.Subtype : '';
+    const ft = typeof value.FT === 'string' ? value.FT : '';
+    const type = typeof value.Type === 'string' ? value.Type : '';
+    return subtype === 'Widget' || ft !== '' || type === 'AcroForm';
+  }).length;
+}
+
+function countMetadataFields(metadata: any): number {
+  if (!metadata || typeof metadata !== 'object') return 0;
+  const keys = ['title', 'author', 'subject', 'keywords', 'producer', 'creator', 'creationDate', 'modificationDate'];
+  return keys.filter((k) => metadata[k] != null && metadata[k] !== '').length;
 }
 
 function countTextItems(fields: any[], rawDump: any): number {
@@ -414,7 +441,7 @@ function describeRawObject(
   }
   const page = pageRef && pageRefs.has(pageRef)
     ? pageRefs.get(pageRef)!
-    : (annotationPages.get(key) ?? contentStreamPages.get(key) ?? null);
+    : (pageRefs.get(key) ?? annotationPages.get(key) ?? contentStreamPages.get(key) ?? null);
 
   let rects = collectExplicitRects(node);
 
@@ -439,6 +466,55 @@ function describeRawObject(
     previewMode,
     hasVisualLocation: previewMode !== 'none',
   };
+}
+
+// ---------------------------------------------------------------------
+// Object classification -- buckets every added/removed/modified raw PDF
+// object into one of a small set of human-meaningful categories so the
+// UI can answer "did the pages / text / images / form / signature
+// actually change" at a glance, instead of making the person read a
+// flat list of object refs.
+// ---------------------------------------------------------------------
+
+type ObjectCategory =
+  | 'page'
+  | 'acroform'
+  | 'content'
+  | 'image'
+  | 'signatureField'
+  | 'formField'
+  | 'xmp'
+  | 'font'
+  | 'other';
+
+function findAcroFormRef(dump: any): string | null {
+  const objects = dump?.objects || {};
+  const rootRef = dump?.trailer?.Root;
+  const root = typeof rootRef === 'string' ? objects[rootRef] : null;
+  return root && typeof root === 'object' && typeof root.AcroForm === 'string' ? root.AcroForm : null;
+}
+
+function classifyObjectKey(
+  key: string,
+  dumpA: any,
+  dumpB: any,
+  pageRefs: Map<string, number>,
+  contentStreamPages: Map<string, number>,
+  acroFormRef: string | null,
+): ObjectCategory {
+  const node = (dumpB?.objects || {})[key] ?? (dumpA?.objects || {})[key];
+  if (key === acroFormRef) return 'acroform';
+  if (pageRefs.has(key)) return 'page';
+  if (contentStreamPages.has(key)) return 'content';
+  if (!node || typeof node !== 'object') return 'other';
+
+  const subtype = typeof node.Subtype === 'string' ? node.Subtype : '';
+  const ft = typeof node.FT === 'string' ? node.FT : (typeof node.V === 'object' && node.V ? 'Sig' : '');
+  if (subtype === 'Image') return 'image';
+  if (subtype === 'Widget' || ft) return ft === 'Sig' ? 'signatureField' : 'formField';
+  if (node.Type === 'Metadata') return 'xmp';
+  if (node.Type === 'Font') return 'font';
+  return 'other';
 }
 
 function diffRawObjects(dumpA: any, dumpB: any) {
@@ -472,6 +548,14 @@ function diffRawObjects(dumpA: any, dumpB: any) {
   const pageRefs = buildPageRefIndex(dumpB);
   const annotationPages = buildAnnotationPageIndex(dumpB, pageRefs);
   const contentStreamPages = buildContentStreamPageIndex(dumpB, pageRefs);
+  const acroFormRef = findAcroFormRef(dumpB) || findAcroFormRef(dumpA);
+
+  const categories: Record<string, ObjectCategory> = {};
+  for (const key of [...addedKeys, ...removedKeys, ...modifiedKeys]) {
+    categories[key] = classifyObjectKey(key, dumpA, dumpB, pageRefs, contentStreamPages, acroFormRef);
+  }
+
+  const integrityIssues = findDanglingReferences([...addedKeys, ...modifiedKeys], dumpB);
 
   return {
     added: addedKeys,
@@ -480,6 +564,117 @@ function diffRawObjects(dumpA: any, dumpB: any) {
     addedDetails: addedKeys.map((key) => describeRawObject(key, dumpA, dumpB, pageRefs, annotationPages, contentStreamPages)),
     modifiedDetails: modifiedKeys.map((key) => describeRawObject(key, dumpA, dumpB, pageRefs, annotationPages, contentStreamPages)),
     truncated,
+    categories,
+    integrityIssues,
+  };
+}
+
+/**
+ * Sanity-check the objects a revision added or modified: do every
+ * indirect reference they point to actually resolve to something in
+ * this snapshot's object table? A dangling reference (an object that
+ * points at "12 0 R" but no such object exists in the revision's own
+ * dump) means the revision, taken as a standalone file, is malformed --
+ * worth flagging up front rather than discovering it only when some
+ * downstream viewer chokes on the file.
+ */
+function findDanglingReferences(keys: string[], dumpB: any): string[] {
+  const objects = dumpB?.objects || {};
+  const issues: string[] = [];
+  const refPattern = /^\d+ \d+ R$/;
+
+  const collectRefs = (value: any, depth: number, out: Set<string>) => {
+    if (depth > 4 || value == null) return;
+    if (typeof value === 'string') {
+      if (refPattern.test(value)) out.add(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => collectRefs(item, depth + 1, out));
+      return;
+    }
+    if (typeof value === 'object') {
+      Object.values(value).forEach((item) => collectRefs(item, depth + 1, out));
+    }
+  };
+
+  for (const key of keys.slice(0, MAX_OBJECT_DIFF_ENTRIES)) {
+    const node = objects[key];
+    if (!node || typeof node !== 'object') continue;
+    const refs = new Set<string>();
+    collectRefs(node, 0, refs);
+    for (const ref of refs) {
+      if (!objects[ref]) issues.push(`${key} references missing object ${ref}`);
+    }
+  }
+  return issues.slice(0, 25); // keep this a short, scannable list, not a wall of text
+}
+
+/**
+ * Cross-check that a newly-applied signature's /ByteRange actually
+ * covers the revision it claims to sign -- i.e. that nothing was
+ * appended after the signature within the same revision. A gap here
+ * would mean the signature doesn't actually attest to the full
+ * snapshot, which matters a lot more than a cosmetic diff does.
+ */
+function checkSignatureByteRangeCoverage(signaturesAdded: any[], byteLength: number): string[] {
+  const issues: string[] = [];
+  for (const sig of signaturesAdded) {
+    const byteRange = Array.isArray(sig.byteRange) ? sig.byteRange : null;
+    if (!byteRange || byteRange.length !== 4) {
+      issues.push(`${sig.fieldName}: signature has no usable /ByteRange to verify coverage`);
+      continue;
+    }
+    const [off1, , off2, len2] = byteRange;
+    const coveredEnd = off2 + len2;
+    // Small slack for a trailing newline/whitespace after the final %%EOF.
+    if (off1 !== 0 || coveredEnd < byteLength - 4) {
+      issues.push(
+        `${sig.fieldName}: /ByteRange covers up to byte ${coveredEnd} but this revision is ${byteLength} bytes -- the signature may not cover the whole revision`,
+      );
+    }
+  }
+  return issues;
+}
+
+/**
+ * Collapse a raw diff down to the seven at-a-glance checks the revision
+ * panel surfaces: did pages / text / images change, and what happened
+ * to the signature fields, AcroForm, metadata, and the cryptographic
+ * signature itself.
+ */
+function buildRevisionChecklist(params: {
+  pageCountDelta: number;
+  objectChanges: ReturnType<typeof diffRawObjects>;
+  metadataChanges: Array<{ key: string; before: any; after: any }>;
+  signatureChanges: { added: any[]; removed: any[] };
+}) {
+  const { pageCountDelta, objectChanges, metadataChanges, signatureChanges } = params;
+  const categoryValues = Object.values(objectChanges.categories || {});
+  const countCat = (c: ObjectCategory) => categoryValues.filter((v) => v === c).length;
+
+  const pagesChangedCount = countCat('page');
+  const textChangedCount = countCat('content');
+  const imagesChangedCount = countCat('image');
+  const signatureFieldChangedCount = countCat('signatureField');
+  const acroFormChangedCount = countCat('acroform') + countCat('formField');
+  const signatureChangedCount = signatureChanges.added.length + signatureChanges.removed.length;
+
+  return {
+    pagesUnchanged: pageCountDelta === 0 && pagesChangedCount === 0,
+    pagesChangedCount: Math.max(pagesChangedCount, pageCountDelta !== 0 ? 1 : 0),
+    textUnchanged: textChangedCount === 0,
+    textChangedCount,
+    imagesUnchanged: imagesChangedCount === 0,
+    imagesChangedCount,
+    signatureFieldsUnchanged: signatureFieldChangedCount === 0,
+    signatureFieldsChangedCount: signatureFieldChangedCount,
+    acroFormUnchanged: acroFormChangedCount === 0,
+    acroFormChangedCount,
+    metadataUnchanged: metadataChanges.length === 0,
+    metadataChangedCount: metadataChanges.length,
+    signatureUnchanged: signatureChangedCount === 0,
+    signatureChangedCount,
   };
 }
 
@@ -494,14 +689,28 @@ async function diffSnapshotBytes(bytesA: Uint8Array, bytesB: Uint8Array) {
 
   const metaA = toolA.getMetadata();
   const metaB = toolB.getMetadata();
+  const metadataChanges = diffMetadata(metaA, metaB);
+  const signatureChanges = diffSignatures(toolA.getSignatureInfo(), toolB.getSignatureInfo());
+  const objectChanges = diffRawObjects(toolA.getFullRawDump(), toolB.getFullRawDump());
+  const pageCountDelta = (metaB.pageCount || 0) - (metaA.pageCount || 0);
+
+  const integrityIssues = [
+    ...objectChanges.integrityIssues,
+    ...checkSignatureByteRangeCoverage(signatureChanges.added, bytesB.length),
+  ];
 
   return {
     byteLengthDelta: bytesB.length - bytesA.length,
-    pageCountDelta: (metaB.pageCount || 0) - (metaA.pageCount || 0),
-    metadataChanges: diffMetadata(metaA, metaB),
+    pageCountDelta,
+    metadataChanges,
     fieldChanges: diffFields(toolA.listFields(), toolB.listFields()),
-    signatureChanges: diffSignatures(toolA.getSignatureInfo(), toolB.getSignatureInfo()),
-    objectChanges: diffRawObjects(toolA.getFullRawDump(), toolB.getFullRawDump()),
+    signatureChanges,
+    objectChanges,
+    checklist: buildRevisionChecklist({ pageCountDelta, objectChanges, metadataChanges, signatureChanges }),
+    integrity: {
+      ok: integrityIssues.length === 0,
+      issues: integrityIssues,
+    },
   };
 }
 

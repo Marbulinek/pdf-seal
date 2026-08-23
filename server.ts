@@ -97,6 +97,18 @@ if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
+app.get("/api/version", (req: Request, res: Response) => {
+  try {
+    const packageJsonPath = path.resolve(process.cwd(), "package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    const version = typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
+    res.json({ version, name: typeof packageJson.name === "string" ? packageJson.name : "pdf-seal" });
+  } catch (error) {
+    logError("api-version", error);
+    res.status(500).json({ error: "Unable to read app version" });
+  }
+});
+
 /**
  * Best-effort delete of one or more temp files. Never throws -- cleanup must
  * not be able to mask the real error (or, worse, crash an uncaught-exception
