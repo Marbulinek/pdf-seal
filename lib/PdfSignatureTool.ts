@@ -167,7 +167,15 @@ function extractXmpField(xml: string, localName: string): string | null {
   let inner = elMatch[1];
   const liMatch = /<rdf:li[^>]*>([\s\S]*?)<\/rdf:li>/i.exec(inner);
   if (liMatch) inner = liMatch[1];
-  return inner.replace(/<[^>]+>/g, '').trim() || null;
+
+  let stripped = inner;
+  let previous;
+  do {
+    previous = stripped;
+    stripped = previous.replace(/<[^>]*>/g, '');
+  } while (stripped !== previous);
+
+  return stripped.trim() || null;
 }
 
 /**
