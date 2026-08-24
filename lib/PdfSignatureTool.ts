@@ -16,6 +16,8 @@ import {
   PDFBool,
   PDFHexString,
   PDFNull,
+  PDFCatalog,
+  PDFPageTree,
   AcroFieldFlags,
 } from 'pdf-lib';
 
@@ -118,6 +120,64 @@ function pdfValueToInfoString(value: any): string {
   return String(value);
 }
 
+// Common page sizes in points, compared orientation-agnostically (each
+// entry's short/long edge) with a small tolerance for rounding drift.
+const KNOWN_PAGE_SIZES: Array<{ name: string; width: number; height: number }> = [
+  { name: 'A3', width: 841.89, height: 1190.55 },
+  { name: 'A4', width: 595.28, height: 841.89 },
+  { name: 'A5', width: 419.53, height: 595.28 },
+  { name: 'B4', width: 708.66, height: 1000.63 },
+  { name: 'B5', width: 498.9, height: 708.66 },
+  { name: 'Letter', width: 612, height: 792 },
+  { name: 'Legal', width: 612, height: 1008 },
+  { name: 'Tabloid', width: 792, height: 1224 },
+];
+const PAGE_SIZE_TOLERANCE = 3; // pt
+
+function pageSizeName(width: number, height: number): string {
+  const shortEdge = Math.min(width, height);
+  const longEdge = Math.max(width, height);
+  for (const size of KNOWN_PAGE_SIZES) {
+    const sizeShort = Math.min(size.width, size.height);
+    const sizeLong = Math.max(size.width, size.height);
+    if (Math.abs(shortEdge - sizeShort) <= PAGE_SIZE_TOLERANCE && Math.abs(longEdge - sizeLong) <= PAGE_SIZE_TOLERANCE) {
+      return size.name;
+    }
+  }
+  return `${Math.round(width)} × ${Math.round(height)} pt`;
+}
+
+/**
+ * Pull one field out of an XMP packet's raw XML by local name (namespace
+ * prefix-agnostic, since producers vary: dc:, xmp:, xmpMM:, pdf:, ...).
+ * Handles both the attribute form (`prefix:Field="value"`) and the
+ * element form (`<prefix:Field>value</prefix:Field>`), including values
+ * wrapped in an rdf:Alt/Seq/Bag > rdf:li (as dc:title/dc:creator usually
+ * are). Intentionally regex-based rather than a full XML parser -- XMP
+ * packets are small, and this mirrors the rest of this file's approach
+ * to reading PDF-adjacent formats.
+ */
+function extractXmpField(xml: string, localName: string): string | null {
+  const attrMatch = new RegExp(`[\\w-]+:${localName}\\s*=\\s*"([^"]*)"`, 'i').exec(xml);
+  if (attrMatch) return attrMatch[1].trim() || null;
+
+  const elMatch = new RegExp(`<[\\w-]+:${localName}[^>]*>([\\s\\S]*?)<\\/[\\w-]+:${localName}>`, 'i').exec(xml);
+  if (!elMatch) return null;
+
+  let inner = elMatch[1];
+  const liMatch = /<rdf:li[^>]*>([\s\S]*?)<\/rdf:li>/i.exec(inner);
+  if (liMatch) inner = liMatch[1];
+
+  let stripped = inner;
+  let previous;
+  do {
+    previous = stripped;
+    stripped = previous.replace(/<[^>]*>/g, '');
+  } while (stripped !== previous);
+
+  return stripped.trim() || null;
+}
+
 /**
  * PdfSignatureTool
  * ----------------
@@ -193,6 +253,7 @@ class PdfSignatureTool {
   static async _load(bytes: Uint8Array, sourcePath: string | null) {
     try {
       const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
+      PdfSignatureTool._recoverMissingCatalog(pdfDoc);
       return new PdfSignatureTool(pdfDoc, sourcePath);
     } catch (error: any) {
       if (/encrypt|password/i.test(error?.message || "")) {
@@ -202,6 +263,50 @@ class PdfSignatureTool {
       }
       throw error;
     }
+  }
+
+  /**
+   * pdf-lib resolves the document catalog from the trailer's /Root entry
+   * (falling back to scanning for a /Type /Catalog object). Byte slices of
+   * an incremental-update revision -- e.g. an early snapshot taken by
+   * PdfRevisionTool -- can legitimately lack both: the catalog itself may
+   * only be (re)written in a later revision. Left alone, pdf-lib leaves
+   * `pdfDoc.catalog` undefined, and *every* catalog-touching call
+   * (getPageCount()/getPages(), getForm() -> getOrCreateAcroForm(), etc.)
+   * later crashes with a bare "Cannot read properties of undefined
+   * (reading '...')" deep inside pdf-lib. Recover by ensuring a catalog
+   * always exists: point it at the snapshot's own page tree root when one
+   * can be found, otherwise fall back to reusing whatever partial page
+   * tree exists, and as a last resort synthesize an empty one -- so the
+   * snapshot can still be inspected instead of crashing outright.
+   */
+  static _recoverMissingCatalog(pdfDoc: any) {
+    if (pdfDoc.catalog) return;
+    const context = pdfDoc.context;
+    const typeName = PDFName.of('Type');
+    const parentName = PDFName.of('Parent');
+    const pagesName = PDFName.of('Pages');
+
+    let pagesRef: any = null;
+    let anyPagesRef: any = null;
+    for (const [ref, object] of context.enumerateIndirectObjects()) {
+      if (object instanceof PDFDict && object.get(typeName) === pagesName) {
+        anyPagesRef = anyPagesRef || ref;
+        if (!object.get(parentName)) {
+          pagesRef = ref;
+          break;
+        }
+      }
+    }
+    if (!pagesRef) pagesRef = anyPagesRef;
+    if (!pagesRef) {
+      const pageTree = PDFPageTree.withContext(context);
+      pagesRef = context.register(pageTree);
+    }
+
+    const catalog = PDFCatalog.withContextAndPages(context, pagesRef);
+    context.trailerInfo.Root = context.register(catalog);
+    pdfDoc.catalog = catalog;
   }
 
   /**
@@ -317,6 +422,7 @@ class PdfSignatureTool {
   listFields() {
     const form = this.pdfDoc.getForm();
     const pages = this.pdfDoc.getPages();
+    const context = this.pdfDoc.context;
 
     return form.getFields().map((field: any) => {
       const widgets = field.acroField.getWidgets();
@@ -335,6 +441,19 @@ class PdfSignatureTool {
 
       const name = field.getName();
 
+      // Every indirect object backing this field -- its own field dict
+      // plus each widget annotation's dict (same object when merged,
+      // separate ones for Kids-based split fields) -- so callers can
+      // recognize and skip these when walking the full raw object table
+      // (they're already represented here, in user-friendly form).
+      const refs = new Set<string>();
+      const fieldRef = context.getObjectRef(field.acroField.dict);
+      if (fieldRef) refs.add(fieldRef.toString());
+      for (const w of widgets) {
+        const widgetRef = context.getObjectRef(w.dict);
+        if (widgetRef) refs.add(widgetRef.toString());
+      }
+
       return {
         name,
         type: field.constructor.name.replace('PDF', ''), // Signature, TextField, CheckBox, ...
@@ -344,6 +463,7 @@ class PdfSignatureTool {
         page: pageIndex,
         rect,
         raw: this._getRawDictEntries(field.acroField.dict),
+        objectRefs: Array.from(refs),
       };
     });
   }
@@ -514,6 +634,14 @@ class PdfSignatureTool {
   /** Read the standard document Info dictionary fields. */
   getMetadata() {
     const doc = this.pdfDoc;
+    let pageCount = null;
+    try {
+      pageCount = doc.getPageCount();
+    } catch (_err) {
+      // No resolvable page tree in this snapshot (e.g. a byte slice of an
+      // incremental-update revision taken before the catalog/page tree
+      // was (re)written) -- fall back to "unknown" rather than throwing.
+    }
     return {
       title: doc.getTitle(),
       author: doc.getAuthor(),
@@ -523,7 +651,7 @@ class PdfSignatureTool {
       producer: doc.getProducer(),
       creationDate: doc.getCreationDate(),
       modificationDate: doc.getModificationDate(),
-      pageCount: doc.getPageCount(),
+      pageCount,
     };
   }
 
@@ -613,6 +741,219 @@ class PdfSignatureTool {
   }
 
   /**
+   * Read the document's embedded XMP metadata packet (the /Metadata
+   * stream hanging off the Catalog), if any, and pull out the handful of
+   * fields the Metadata panel cares about. Returns null if the document
+   * has no XMP packet at all.
+   */
+  getXmpMetadata() {
+    const catalog = this.pdfDoc.catalog;
+    if (!catalog) return null;
+    const context = this.pdfDoc.context;
+    const metadataRef = catalog.get(PDFName.of('Metadata'));
+    if (!metadataRef) return null;
+    const stream = context.lookup(metadataRef);
+    if (!(stream instanceof PDFStream)) return null;
+
+    let xml: string;
+    try {
+      const bytes = stream instanceof PDFRawStream
+        ? (decodePDFRawStream(stream).getBytes as (length?: number) => Uint8Array)()
+        : stream.getContents();
+      xml = Buffer.from(bytes).toString('utf8');
+    } catch (_e) {
+      return null;
+    }
+
+    return {
+      title: extractXmpField(xml, 'title'),
+      creator: extractXmpField(xml, 'creator'),
+      creatorTool: extractXmpField(xml, 'CreatorTool'),
+      createDate: extractXmpField(xml, 'CreateDate'),
+      modifyDate: extractXmpField(xml, 'ModifyDate'),
+      documentId: extractXmpField(xml, 'DocumentID'),
+      instanceId: extractXmpField(xml, 'InstanceID'),
+      raw: xml,
+    };
+  }
+
+  /** Describe one /Filespec dictionary (an embedded-file attachment) as {filename, mimeType, size}. */
+  _describeAttachment(filespecDict: any) {
+    const context = this.pdfDoc.context;
+    const filenameRaw = filespecDict.get(PDFName.of('UF')) || filespecDict.get(PDFName.of('F'));
+    const filename = filenameRaw ? pdfValueToInfoString(filenameRaw) : 'attachment';
+
+    let mimeType: string | null = null;
+    let size: number | null = null;
+
+    const efRef = filespecDict.get(PDFName.of('EF'));
+    const ef = efRef ? context.lookup(efRef, PDFDict) : null;
+    const streamRef = ef ? (ef.get(PDFName.of('F')) || ef.get(PDFName.of('UF'))) : null;
+    const stream = streamRef ? context.lookup(streamRef) : null;
+
+    if (stream instanceof PDFStream) {
+      const subtype = stream.dict.get(PDFName.of('Subtype'));
+      if (subtype) mimeType = pdfValueToInfoString(subtype);
+      try {
+        const bytes = stream instanceof PDFRawStream
+          ? (decodePDFRawStream(stream).getBytes as (length?: number) => Uint8Array)()
+          : stream.getContents();
+        size = bytes ? bytes.length : null;
+      } catch (_e) {
+        // Opaque/unsupported filter -- fall through to the /Params/Size hint below.
+      }
+      if (size === null) {
+        const params = stream.dict.get(PDFName.of('Params'));
+        const paramsDict = params ? context.lookup(params, PDFDict) : null;
+        const sizeVal = paramsDict ? paramsDict.get(PDFName.of('Size')) : null;
+        if (sizeVal instanceof PDFNumber) size = sizeVal.asNumber();
+      }
+    }
+
+    return { filename, mimeType, size };
+  }
+
+  /**
+   * Assemble the simplified, human-facing overview the Metadata panel
+   * shows by default: document info, feature flags, per-page summary,
+   * attachments, XMP metadata, and document IDs. This is deliberately
+   * NOT the raw object dump (see getFullRawDump() for that) -- every
+   * value here is either a primitive or a small plain object.
+   *
+   * `fileSize` and `incrementalUpdates` come from the caller because
+   * neither is knowable from the parsed document alone: file size is a
+   * property of the original upload, and incremental-update count comes
+   * from scanning the raw bytes for revision boundaries (see
+   * PdfRevisionTool.findRevisionBoundaries), not from anything pdf-lib
+   * models.
+   */
+  getMetadataOverview(options: { fileSize?: number | null; incrementalUpdates?: number | null } = {}) {
+    const doc = this.pdfDoc;
+    const context = doc.context;
+    const catalog = doc.catalog;
+
+    const metadata = this.getMetadata();
+    const header = context.header;
+    const pdfVersion = header ? `${header.major}.${header.minor}` : null;
+
+    const acroFormRef = catalog ? catalog.get(PDFName.of('AcroForm')) : null;
+    const acroForm = acroFormRef ? context.lookup(acroFormRef, PDFDict) : null;
+    const hasAcroForm = !!acroForm;
+    const hasXfa = !!(acroForm && acroForm.has(PDFName.of('XFA')));
+
+    const fields = this.listFields();
+    const signatureFieldCount = fields.filter((f: any) => f.type === 'Signature').length;
+    const signatureInfo = this.getSignatureInfo();
+
+    let hasJavaScript = false;
+    let hasLinearized = false;
+    const attachments: any[] = [];
+    const linearizedKey = PDFName.of('Linearized');
+    const sKey = PDFName.of('S');
+    const typeKey = PDFName.of('Type');
+    const filespecName = PDFName.of('Filespec');
+
+    for (const [, obj] of context.enumerateIndirectObjects()) {
+      const dict = obj instanceof PDFStream ? obj.dict : obj instanceof PDFDict ? obj : null;
+      if (!dict) continue;
+
+      if (!hasJavaScript && dict.get(sKey) === PDFName.of('JavaScript')) hasJavaScript = true;
+      if (!hasLinearized && dict.has(linearizedKey)) hasLinearized = true;
+      if (dict.get(typeKey) === filespecName) attachments.push(this._describeAttachment(dict));
+    }
+
+    const xmp = this.getXmpMetadata();
+
+    let pdfA = 'No';
+    if (xmp && xmp.raw && /pdfaid:part/i.test(xmp.raw)) {
+      pdfA = 'Yes';
+    } else {
+      const outputIntentsRef = catalog ? catalog.get(PDFName.of('OutputIntents')) : null;
+      const outputIntents = outputIntentsRef ? context.lookup(outputIntentsRef, PDFArray) : null;
+      if (outputIntents) {
+        for (let i = 0; i < outputIntents.size(); i++) {
+          const intent = context.lookup(outputIntents.get(i), PDFDict);
+          const s = intent ? intent.get(PDFName.of('S')) : null;
+          if (s && /GTS_PDFA/i.test(s.toString())) {
+            pdfA = 'Yes';
+            break;
+          }
+        }
+      }
+    }
+
+    const toHex = (value: any): string | null => {
+      if (!value) return null;
+      try {
+        const bytes = typeof value.asBytes === 'function' ? value.asBytes() : null;
+        return bytes ? Buffer.from(bytes).toString('hex') : null;
+      } catch (_e) {
+        return null;
+      }
+    };
+    const trailerId = context.trailerInfo.ID;
+    const documentIds: Record<string, string | null> = { permanent: null, changing: null, xmpDocumentId: null, xmpInstanceId: null };
+    if (trailerId instanceof PDFArray && trailerId.size() >= 1) {
+      documentIds.permanent = toHex(trailerId.get(0));
+      documentIds.changing = trailerId.size() > 1 ? toHex(trailerId.get(1)) : documentIds.permanent;
+    }
+    if (xmp) {
+      documentIds.xmpDocumentId = xmp.documentId;
+      documentIds.xmpInstanceId = xmp.instanceId;
+    }
+
+    let pageCount = metadata.pageCount ?? 0;
+    const pages: any[] = [];
+    try {
+      const pdfPages = doc.getPages();
+      pageCount = pdfPages.length;
+      pdfPages.forEach((page: any, index: number) => {
+        const size = page.getSize();
+        const rotation = ((page.getRotation().angle % 360) + 360) % 360;
+        const swapped = rotation === 90 || rotation === 270;
+        const effectiveWidth = swapped ? size.height : size.width;
+        const effectiveHeight = swapped ? size.width : size.height;
+        pages.push({
+          index,
+          width: size.width,
+          height: size.height,
+          rotation,
+          sizeName: pageSizeName(size.width, size.height),
+          orientation: effectiveWidth >= effectiveHeight ? 'Landscape' : 'Portrait',
+        });
+      });
+    } catch (_e) {
+      // No resolvable page tree in this snapshot -- mirror getMetadata()'s tolerance.
+    }
+
+    return {
+      documentInfo: {
+        ...metadata,
+        pdfVersion,
+        fileSize: options.fileSize ?? null,
+        pageCount,
+      },
+      features: {
+        encrypted: !!context.trailerInfo.Encrypt,
+        pdfA,
+        linearized: hasLinearized,
+        xfa: hasXfa,
+        acroForm: hasAcroForm,
+        signatureFieldCount,
+        javascript: hasJavaScript,
+        attachmentCount: attachments.length,
+        xmpMetadata: !!xmp,
+        incrementalUpdates: options.incrementalUpdates ?? null,
+        signatureCount: signatureInfo.length,
+      },
+      pages,
+      attachments,
+      xmp,
+      documentIds,
+    };
+  }
+
+  /**
    * Walk the ENTIRE PDF object graph -- every single indirect object in
    * the file, plus the trailer -- and return it as plain key/value data.
    *
@@ -697,12 +1038,13 @@ class PdfSignatureTool {
    *   const info = tool.getDocumentInfoSummary();
    *   res.json({ fields: info.fields, metadata: info.metadata, rawInfo: info.rawInfo, rawObjects: info.rawObjects });
    */
-  getDocumentInfoSummary() {
+  getDocumentInfoSummary(options: { fileSize?: number | null; incrementalUpdates?: number | null } = {}) {
     return {
       metadata: this.getMetadata(),
       rawInfo: this.getRawInfoDict(),
       fields: this.listFields(),
       rawObjects: this.getFullRawDump(),
+      overview: this.getMetadataOverview(options),
     };
   }
 

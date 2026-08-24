@@ -19,8 +19,10 @@ The app opens as a web workspace with two main areas:
 4. Add a new signature field by clicking "Place on Document", then clicking anywhere on the page.
 5. Drag a field to reposition it, or drag the green resize handle to change its size.
 6. Edit a selected field's name, position, width, height, and whether it is required.
-7. Save the modified PDF, or copy the document as Base64 for further processing.
-8. Share it directly with another user via WebRTC connection
+7. Edit PDF metadata such as title and author.
+8. Save the modified PDF, or copy the document as Base64 for further processing.
+9. Share it directly with another user via WebRTC connection.
+10. Compare two revisions of a PDF to see what changed (added/removed/modified signature fields, metadata changes).
 
 ## How it works
 
@@ -31,6 +33,9 @@ pdf-seal does not apply a cryptographic signature. Instead, it prepares the PDF 
 With a document open, select **Share** to create a `/share/:sessionId` link. When the recipient opens it, the two browsers establish a WebRTC data channel and the PDF is transferred in small binary chunks with backpressure. The recipient verifies the received bytes with SHA-256 before opening the file.
 Share sessions exist only in server memory and expire after 15 minutes.
 
+## Revision diffing
+
+Open the revision panel to compare two versions of a PDF at the raw-object level. It reports added, removed, and modified signature fields as well as metadata changes between the two documents.
 
 ## Run the app
 
@@ -40,9 +45,16 @@ Install dependencies:
 npm install
 ```
 
-Start the server:
+Run locally in development (via ts-node, no build step):
 
 ```bash
+npm run dev
+```
+
+Or build and run the compiled server:
+
+```bash
+npm run build
 npm start
 ```
 

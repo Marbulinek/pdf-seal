@@ -1324,5 +1324,6 @@ async function getRevisionBytes(bytes: Uint8Array, revisionIndex: number): Promi
 export default {
   listRevisions,
   diffRevisions,
+  findRevisionBoundaries,
   getRevisionBytes,
 };
