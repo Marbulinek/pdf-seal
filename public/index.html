@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="PDF Seal is a free, open-source PDF signature field editor. Upload a PDF to view and edit its signature fields, then download the updated PDF or copy it as Base64.">
+  <meta name="description" content="PDF Seal is a free, open-source PDF workspace. Manage signature fields, inspect document metadata, browse and compare revision history, and share PDFs securely — all in your browser, with nothing stored on a server.">
   <meta name="author" content="Lukas Caniga <lukas.caniga@gmail.com>">
   <title>PDF Seal :: Workspace</title>
   <link rel="icon" type="image/png" href="/assets/favicon.png">
@@ -41,7 +41,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
   </script>
 </head>
-<body>
+<body data-active-section="signatures">
 
   <div id="notificationStack" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
 
@@ -160,6 +160,13 @@
         </div>
         <p class="modal-hint settings-hint">If enabled, a new revision entry will be inserted into the document when you add a signature field.</p>
       </label>
+      <label class="checkbox-group checkbox-group-block" for="settingsShowRawData">
+        <div class="checkbox-group-main">
+          <input type="checkbox" id="settingsShowRawData">
+          <span>Show advanced PDF raw data</span>
+        </div>
+        <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata and the "Raw PDF objects" panel in Revisions.</p>
+      </label>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelSettingsBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="saveSettingsBtn">Save</button>
@@ -185,6 +192,17 @@
         <button type="button" class="btn btn-ghost" id="cancelSaveAsBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="confirmSaveAsBtn">Save</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Raw XMP metadata viewer -->
+  <div class="modal-backdrop" id="xmpRawModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="xmpRawModalTitle">
+      <div class="modal-header">
+        <h3 id="xmpRawModalTitle">Raw XMP metadata</h3>
+        <button type="button" class="modal-close" id="closeXmpRawModalBtn" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+      </div>
+      <pre class="xmp-raw-body" id="xmpRawBody"></pre>
     </div>
   </div>
 
@@ -331,19 +349,29 @@
           <div class="panel-overlay" id="docInfoPanelOverlay">
             <div class="panel-overlay-text">Upload a document first to see its metadata</div>
           </div>
-          <h3><span class="panel-dot dot-ocean"></span>Document Metadata</h3>
+          <h3><span class="panel-dot dot-ocean"></span>Metadata</h3>
+          <p class="revisions-hint">What this PDF is and what it contains — document info, features, pages, forms, attachments, and embedded metadata.</p>
 
-          <div class="meta-search-wrap">
-            <label for="metaSearchInput" class="sr-only">Search document metadata</label>
-            <input type="text" id="metaSearchInput" class="meta-search-input" placeholder="Find a key or value…" disabled>
-            <button type="button" class="meta-search-clear" id="metaSearchClearBtn" aria-label="Clear search" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
-          </div>
-
-          <div class="meta-tree-container" id="metaTreeContainer">
+          <div class="meta-overview" id="metaOverview">
             <p class="field-details-empty">No document loaded yet.</p>
           </div>
+
+          <details class="meta-advanced" id="metaAdvancedDetails">
+            <summary>Advanced — raw PDF structure</summary>
+            <div class="meta-advanced-body">
+              <div class="meta-search-wrap">
+                <label for="metaSearchInput" class="sr-only">Search document metadata</label>
+                <input type="text" id="metaSearchInput" class="meta-search-input" placeholder="Find a key or value…" disabled>
+                <button type="button" class="meta-search-clear" id="metaSearchClearBtn" aria-label="Clear search" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+              </div>
+
+              <div class="meta-tree-container" id="metaTreeContainer">
+                <p class="field-details-empty">No document loaded yet.</p>
+              </div>
+            </div>
+          </details>
         </div>
-      
+
       </section>
 
       <section class="section-panel revisions-section-panel" id="sectionRevisions" data-section-panel="revisions" hidden>
@@ -467,18 +495,41 @@
 
   <footer class="site-footer">
     <div class="site-footer-inner">
-      <span class="footer-copy">© 2026 PDF Seal</span>
-      <span class="footer-version" id="footerVersion" aria-live="polite">Version …</span>
-      <span class="footer-love">
-        Built with
-        <svg class="heart-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/>
-        </svg>
-      </span>
-      <a class="footer-link" href="https://github.com/marbulinek/pdf-seal/issues/new" target="_blank" rel="noopener noreferrer">
-        <span class="footer-link-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-4.85 7.6 8.5 8.5 0 0 1-9.15-1.13L3 21l1.9-5.7a8.38 8.38 0 0 1 1.13-9.15A8.5 8.5 0 0 1 21 11.5z"></path></svg></span>
-        <span class="footer-link-text">Got an idea or found a bug? Let us know on GitHub</span>
-      </a>
+      <div class="footer-col footer-col-brand">
+        <div class="footer-brand-row">
+          <img class="footer-logo" src="/assets/logo_app.png" alt="PDF Seal">
+        </div>
+        <p class="footer-tagline">Manage signature fields, inspect metadata, and compare revision history — entirely in your browser, nothing is stored on a server.</p>
+      </div>
+
+      <div class="footer-col">
+        <h5 class="footer-col-heading">Links</h5>
+        <a class="footer-link" href="https://github.com/marbulinek/pdf-seal" target="_blank" rel="noopener noreferrer">
+          <span class="footer-link-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.5 0-.24-.01-1.04-.01-1.89-2.78.62-3.37-1.21-3.37-1.21-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.89 1.57 2.34 1.11 2.91.85.09-.67.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.05 0-1.12.39-2.03 1.03-2.74-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.34 9.34 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.71 1.03 1.62 1.03 2.74 0 3.92-2.34 4.78-4.57 5.04.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.5A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"></path></svg></span>
+          GitHub Repository
+        </a>
+        <a class="footer-link" href="https://github.com/marbulinek/pdf-seal/issues/new" target="_blank" rel="noopener noreferrer">
+          <span class="footer-link-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-4.85 7.6 8.5 8.5 0 0 1-9.15-1.13L3 21l1.9-5.7a8.38 8.38 0 0 1 1.13-9.15A8.5 8.5 0 0 1 21 11.5z"></path></svg></span>
+          Report an Issue
+        </a>
+      </div>
+
+      <div class="footer-col">
+        <h5 class="footer-col-heading">Built for</h5>
+        <span class="footer-badge"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11"></path></svg> Privacy-first editing</span>
+        <span class="footer-badge"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-3.5 7-9V5.5L12 3 5 5.5V12c0 5.5 7 9 7 9z"></path></svg> Open source &amp; free</span>
+      </div>
+
+      <div class="footer-col footer-col-love">
+        <span class="footer-love">
+          Made with
+          <svg class="heart-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="footer-copy">© 2026 PDF Seal</span>
+        <span class="footer-version" id="footerVersion" aria-live="polite">Version …</span>
+      </div>
     </div>
   </footer>
 
@@ -492,7 +543,7 @@
           if (!response.ok) throw new Error('Unable to read version');
           const data = await response.json();
           const version = typeof data.version === 'string' && data.version.trim() ? data.version : null;
-          footerVersionEl.textContent = version ? `Version ${version}` : 'Version unavailable';
+          footerVersionEl.textContent = version ? `v.${version}` : 'Version unavailable';
         })
         .catch(() => {
           footerVersionEl.textContent = 'Version unavailable';
@@ -513,6 +564,7 @@
     let documentMeta = null;       // standard Info dict fields (title, author, producer, ...), from /api/info
     let documentRawInfo = null;    // raw/custom Info dictionary entries, from /api/info
     let documentRawObjects = null; // { trailer, objects } -- the entire raw PDF object table, from /api/info
+    let documentOverview = null;   // simplified Metadata-panel overview (documentInfo/features/pages/attachments/xmp/documentIds), from /api/info
     let currentViewport = null; // viewport of the currently rendered page
     let isPanning = false;
     let panDrag = null;
@@ -534,6 +586,13 @@
     let viewerDiffActive = false; // true while the main viewer shows a revision snapshot/diff instead of the live document
     let hoveredDiffObjectKey = null;
     let hoverActivatedViewerDiff = false;
+
+    // Single-revision "View" mode state -- set only while viewerDiffActive
+    // shows one revision's own pages (as opposed to a visual diff or a
+    // hovered-object preview, which pin the viewer to a single page).
+    let revisionViewDoc = null;    // pdf.js document for the revision snapshot currently shown
+    let revisionViewIndex = null;  // that revision's index, for the banner text
+    let revisionViewPageNum = 1;   // current page within revisionViewDoc
 
     // New-field placement state
     let isPlacing = false;        // true while waiting for the user's next click on the PDF
@@ -579,6 +638,7 @@
     const settingsModal = document.getElementById('settingsModal');
     const settingsOpenBtn = document.getElementById('btnOpenSettings');
     const settingsAddRevisionInput = document.getElementById('settingsAddRevision');
+    const settingsShowRawDataInput = document.getElementById('settingsShowRawData');
     const settingsSaveBtn = document.getElementById('saveSettingsBtn');
     const settingsCancelBtn = document.getElementById('cancelSettingsBtn');
     const settingsCloseBtn = document.getElementById('closeSettingsModalBtn');
@@ -587,13 +647,14 @@
     function loadSettings() {
       try {
         const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (!raw) return { addRevisionByDefault: false };
+        if (!raw) return { addRevisionByDefault: false, showRawPdfData: false };
         const parsed = JSON.parse(raw);
         return {
           addRevisionByDefault: parsed && typeof parsed.addRevisionByDefault === 'boolean' ? parsed.addRevisionByDefault : false,
+          showRawPdfData: parsed && typeof parsed.showRawPdfData === 'boolean' ? parsed.showRawPdfData : false,
         };
       } catch (_err) {
-        return { addRevisionByDefault: false };
+        return { addRevisionByDefault: false, showRawPdfData: false };
       }
     }
 
@@ -601,9 +662,15 @@
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings));
     }
 
+    function applyRawPdfDataVisibility(settings) {
+      document.body.classList.toggle('hide-raw-pdf-data', !settings.showRawPdfData);
+    }
+
     function applySettingsToUi() {
       const settings = loadSettings();
       if (settingsAddRevisionInput) settingsAddRevisionInput.checked = settings.addRevisionByDefault;
+      if (settingsShowRawDataInput) settingsShowRawDataInput.checked = settings.showRawPdfData;
+      applyRawPdfDataVisibility(settings);
       return settings;
     }
 
@@ -620,6 +687,8 @@
       settingsModal.setAttribute('aria-hidden', 'true');
     }
 
+    applyRawPdfDataVisibility(loadSettings());
+
     if (settingsOpenBtn) {
       settingsOpenBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -630,6 +699,7 @@
       settingsSaveBtn.addEventListener('click', () => {
         const nextSettings = {
           addRevisionByDefault: Boolean(settingsAddRevisionInput?.checked),
+          showRawPdfData: Boolean(settingsShowRawDataInput?.checked),
         };
         saveSettings(nextSettings);
         applySettingsToUi();
@@ -798,6 +868,8 @@
               panel.classList.add('section-panel-enter');
             }
           });
+          document.body.dataset.activeSection = target;
+          if (target !== 'signatures' && activeField) deselectActiveField();
           if (target !== 'revisions' && viewerDiffActive) exitDiffViewMode();
           if (target === 'metadata') renderMetaTree();
           if (target === 'revisions') loadRevisionsIfNeeded();
@@ -1001,6 +1073,9 @@
       const addSigPanelOverlay = document.getElementById('addSigPanelOverlay');
       const hasDocument = Boolean(pdfDoc);
 
+      const viewerControlsRow = document.querySelector('.viewer-controls-row');
+      if (viewerControlsRow) viewerControlsRow.hidden = !hasDocument;
+
       document.getElementById('btnPan').disabled = !hasDocument;
       document.getElementById('btnZoomOut').disabled = !hasDocument;
       document.getElementById('btnZoomIn').disabled = !hasDocument;
@@ -1096,9 +1171,11 @@
       documentMeta = null;
       documentRawInfo = null;
       documentRawObjects = null;
+      documentOverview = null;
       const metaSearchInput = document.getElementById('metaSearchInput');
       if (metaSearchInput) metaSearchInput.value = '';
       renderMetaTree();
+      renderMetaOverview();
     }
 
     async function processNewFile(file, options = {}) {
@@ -1145,6 +1222,7 @@
           documentMeta = data.metadata || null;
           documentRawInfo = data.rawInfo || null;
           documentRawObjects = data.rawObjects || null;
+          documentOverview = data.overview || null;
         }
 
         // 2. Render PDF
@@ -1165,6 +1243,7 @@
         // MetaData) showing its stale "no document" state until the user
         // clicked away to another section and back.
         renderMetaTree();
+        renderMetaOverview();
 
         document.getElementById('pageCount').textContent = pdfDoc.numPages;
         pageNum = Math.min(Math.max(targetPage, 1), pdfDoc.numPages);
@@ -1176,7 +1255,9 @@
         documentMeta = null;
         documentRawInfo = null;
         documentRawObjects = null;
+        documentOverview = null;
         renderMetaTree();
+        renderMetaOverview();
         updateViewerControlsState();
         showNotification('Error processing PDF: ' + err.message, 'error');
       } finally {
@@ -1184,22 +1265,29 @@
       }
     }
 
-    // Scale at which the given page fills the viewer panel edge-to-edge (in
-    // whichever dimension is the tighter fit) without needing to scroll.
-    function computeFitScale(page) {
+    // .pdf-container wraps the canvas in a 1px border (see .pdf-container in
+    // styles.css), which adds 2px on top of the canvas's own width/height.
+    // Fitting the canvas exactly to the available space left that border
+    // poking 2px past the container, just enough to trigger a phantom
+    // scrollbar at 100% zoom -- so it's subtracted here too, keeping the
+    // border/spacing intact while avoiding the overflow.
+    function computeAvailViewerSize() {
       const viewerScroll = document.querySelector('.viewer-column .viewer-scroll');
-      // .pdf-container wraps the canvas in a 1px border (see .pdf-container
-      // in styles.css), which adds 2px on top of the canvas's own width/
-      // height. Fitting the canvas exactly to the available space left that
-      // border poking 2px past the container, just enough to trigger a
-      // phantom scrollbar at 100% zoom -- so it's subtracted here too,
-      // keeping the border/spacing intact while avoiding the overflow.
       const PDF_CONTAINER_BORDER = 1; // px, must match .pdf-container's border-width
       const chrome = 8 + PDF_CONTAINER_BORDER * 2;
-      const availWidth = Math.max(1, viewerScroll.clientWidth - chrome);
-      const availHeight = Math.max(1, viewerScroll.clientHeight - chrome);
+      return {
+        width: Math.max(1, viewerScroll.clientWidth - chrome),
+        height: Math.max(1, viewerScroll.clientHeight - chrome),
+      };
+    }
+
+    // Scale at which the given page fills the viewer panel edge-to-edge (in
+    // whichever dimension is the tighter fit) without needing to scroll,
+    // preserving its aspect ratio.
+    function computeFitScale(page) {
+      const avail = computeAvailViewerSize();
       const baseViewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(availWidth / baseViewport.width, availHeight / baseViewport.height);
+      const scale = Math.min(avail.width / baseViewport.width, avail.height / baseViewport.height);
       return Math.max(0.1, scale);
     }
 
@@ -1208,14 +1296,15 @@
 
       const page = await pdfDoc.getPage(num);
 
-      // Unless the user has explicitly zoomed in/out, show the page at
-      // 100% zoom and let the viewer panel scroll internally.
+      // Unless the user has explicitly zoomed in/out: scale the page to fit
+      // the panel edge-to-edge (preserving aspect ratio).
       if (!userHasManuallyZoomed) {
-        currentScale = 1.0;
-        document.getElementById('zoomLevel').textContent = '100%';
+        currentScale = computeFitScale(page);
+        document.getElementById('zoomLevel').textContent = `${Math.round(currentScale * 100)}%`;
       }
-
       const viewport = page.getViewport({ scale: currentScale });
+      viewport.scaleX = currentScale;
+      viewport.scaleY = currentScale;
 
       await renderPageToSharedCanvas(page, viewport);
 
@@ -1242,7 +1331,8 @@
       canvas.height = viewport.height;
       canvas.width = viewport.width;
 
-      const renderTask = page.render({ canvasContext: ctx, viewport });
+      const renderParams = { canvasContext: ctx, viewport };
+      const renderTask = page.render(renderParams);
       currentRenderTask = renderTask;
 
       try {
@@ -1281,9 +1371,6 @@
         handle.className = 'resize-handle';
         div.appendChild(handle);
 
-        // Click (no drag) selects the field and populates the Edit panel
-        div.addEventListener('click', () => selectFieldOverlay(div, field));
-
         div.addEventListener('mouseenter', () => {
           overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
             if (el !== div) {
@@ -1302,20 +1389,24 @@
           }
         });
 
-        // Drag the body to reposition
+        // Drag the body to reposition. A plain click (no movement) on a field
+        // that's already selected toggles it off instead of re-selecting it.
         div.addEventListener('mousedown', (e) => {
           if (e.target === handle) return;
           if (isPanning) return; // let the pointerdown bubble up to the pan handler instead
           e.preventDefault();
+          const wasActive = activeField === field;
           selectFieldOverlay(div, field);
 
           const startX = e.clientX, startY = e.clientY;
           const startLeft = parseFloat(div.style.left);
           const startTop = parseFloat(div.style.top);
+          let moved = false;
 
           function onMove(ev) {
             const dx = ev.clientX - startX;
             const dy = ev.clientY - startY;
+            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
             let newLeft = startLeft + dx;
             let newTop = startTop + dy;
             newLeft = Math.max(0, Math.min(newLeft, canvas.width - div.offsetWidth));
@@ -1326,7 +1417,11 @@
           function onUp() {
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
-            commitOverlayToField(div, field);
+            if (moved) {
+              commitOverlayToField(div, field);
+            } else if (wasActive) {
+              deselectActiveField();
+            }
           }
           document.addEventListener('mousemove', onMove);
           document.addEventListener('mouseup', onUp);
@@ -1387,6 +1482,31 @@
       updateViewerControlsState();
     }
 
+    // Clears the current selection (a second click on the already-selected
+    // field, or navigating away from the Signatures section) and resets the
+    // Edit panel back to its empty state.
+    function deselectActiveField() {
+      if (activeFieldDiv) {
+        activeFieldDiv.classList.remove('active');
+        const label = activeFieldDiv.querySelector('.field-label');
+        if (label) label.style.display = 'none';
+      }
+      activeField = null;
+      activeFieldDiv = null;
+
+      const editForm = document.getElementById('editFieldForm');
+      if (editForm) {
+        editForm.reset();
+        document.getElementById('editOriginalName').value = '';
+      }
+      const detailsBody = document.getElementById('fieldDetailsBody');
+      const detailsBlock = document.getElementById('fieldDetailsBlock');
+      if (detailsBody) detailsBody.innerHTML = '<p class="field-details-empty">No details available.</p>';
+      if (detailsBlock) detailsBlock.open = false;
+
+      updateViewerControlsState();
+    }
+
     // After a drag/resize finishes: write the new screen rect back into PDF space
     // on the field object itself, and refresh the Edit panel's number inputs to match
     function commitOverlayToField(div, field) {
@@ -1432,26 +1552,29 @@
 
     // --- New Field Placement (click-to-drop, then drag/resize) ---
 
-    // Screen (canvas pixel) rect -> PDF-space rect, inverse of the transform in drawFieldOverlays
+    // Screen (canvas pixel) rect -> PDF-space rect, inverse of the transform in drawFieldOverlays.
+    // scaleY falls back to scaleX for any viewport that never set it.
     function screenRectToPdf(screenLeft, screenTop, screenWidth, screenHeight) {
-      const scale = currentViewport.scale;
+      const scaleX = currentViewport.scaleX ?? currentViewport.scale;
+      const scaleY = currentViewport.scaleY ?? scaleX;
       const pdfPageHeight = currentViewport.viewBox[3];
-      const width = screenWidth / scale;
-      const height = screenHeight / scale;
-      const x = screenLeft / scale;
-      const y = pdfPageHeight - (screenTop / scale) - height;
+      const width = screenWidth / scaleX;
+      const height = screenHeight / scaleY;
+      const x = screenLeft / scaleX;
+      const y = pdfPageHeight - (screenTop / scaleY) - height;
       return { x, y, width, height };
     }
 
     // PDF-space rect -> screen (canvas pixel) rect
     function pdfRectToScreen(pdfRect) {
-      const scale = currentViewport.scale;
+      const scaleX = currentViewport.scaleX ?? currentViewport.scale;
+      const scaleY = currentViewport.scaleY ?? scaleX;
       const pdfPageHeight = currentViewport.viewBox[3];
       return {
-        left: pdfRect.x * scale,
-        top: (pdfPageHeight - pdfRect.y - pdfRect.height) * scale,
-        width: pdfRect.width * scale,
-        height: pdfRect.height * scale,
+        left: pdfRect.x * scaleX,
+        top: (pdfPageHeight - pdfRect.y - pdfRect.height) * scaleY,
+        width: pdfRect.width * scaleX,
+        height: pdfRect.height * scaleY,
       };
     }
 
@@ -1482,10 +1605,11 @@
     function placeFieldAt(clickX, clickY) {
       const widthPdf = parseFloat(document.getElementById('sigWidth').value) || 200;
       const heightPdf = parseFloat(document.getElementById('sigHeight').value) || 60;
-      const scale = currentViewport.scale;
+      const scaleX = currentViewport.scaleX ?? currentViewport.scale;
+      const scaleY = currentViewport.scaleY ?? scaleX;
 
-      let screenW = widthPdf * scale;
-      let screenH = heightPdf * scale;
+      let screenW = widthPdf * scaleX;
+      let screenH = heightPdf * scaleY;
       let screenLeft = clickX - screenW / 2;
       let screenTop = clickY - screenH / 2;
 
@@ -1846,12 +1970,22 @@
 
     // --- Viewer Controls ---
     document.getElementById('btnPrev').addEventListener('click', () => {
+      if (revisionViewDoc) {
+        if (revisionViewPageNum <= 1) return;
+        renderRevisionViewPage(revisionViewPageNum - 1);
+        return;
+      }
       if (pageNum <= 1 || !pdfDoc) return;
       pageNum--;
       renderPage(pageNum);
     });
 
     document.getElementById('btnNext').addEventListener('click', () => {
+      if (revisionViewDoc) {
+        if (revisionViewPageNum >= revisionViewDoc.numPages) return;
+        renderRevisionViewPage(revisionViewPageNum + 1);
+        return;
+      }
       if (pageNum >= pdfDoc.numPages || !pdfDoc) return;
       pageNum++;
       renderPage(pageNum);
@@ -1933,18 +2067,28 @@
     // as long as the user hasn't manually zoomed (see renderPage/computeFitScale).
     let fitResizeTimer = null;
     window.addEventListener('resize', () => {
-      if (!pdfDoc || userHasManuallyZoomed) return;
+      if (userHasManuallyZoomed) return;
+      if (revisionViewDoc) {
+        clearTimeout(fitResizeTimer);
+        fitResizeTimer = setTimeout(() => renderRevisionViewPage(revisionViewPageNum), 120);
+        return;
+      }
+      if (!pdfDoc) return;
       clearTimeout(fitResizeTimer);
       fitResizeTimer = setTimeout(() => renderPage(pageNum), 120);
     });
 
     function changeScale(delta) {
-      if (!pdfDoc) return;
+      if (!pdfDoc && !revisionViewDoc) return;
       userHasManuallyZoomed = true;
       document.querySelector('.viewer-column .viewer-scroll').classList.add('is-zoomed');
       currentScale = Math.max(0.5, Math.min(3.0, currentScale + delta));
       document.getElementById('zoomLevel').textContent = `${Math.round(currentScale * 100)}%`;
-      renderPage(pageNum);
+      if (revisionViewDoc) {
+        renderRevisionViewPage(revisionViewPageNum);
+      } else {
+        renderPage(pageNum);
+      }
     }
 
     // Friendly labels for well-known signature field / widget dictionary keys
@@ -2086,6 +2230,24 @@ function formatMetaValue(value) {
   return String(value);
 }
 
+// Give a raw indirect object a short, human-readable label (used as the
+// tree key alongside its "<num> <gen> R" reference) instead of just its
+// ref, based on whatever /Type, /Subtype, /FT, or stream-ness it has.
+function friendlyObjectLabel(obj) {
+  if (!obj || typeof obj !== 'object') return 'Object';
+  if (Array.isArray(obj)) return 'Array';
+  if (obj.Type === 'Catalog') return 'Catalog';
+  if (obj.Type === 'Pages') return 'Page Tree';
+  if (obj.Type === 'Page') return 'Page';
+  if (obj.Type === 'Annot') return `Annotation${obj.Subtype ? ` (${obj.Subtype})` : ''}`;
+  if (obj.Type === 'Font') return 'Font';
+  if (obj.Type === 'XObject') return `XObject${obj.Subtype ? ` (${obj.Subtype})` : ''}`;
+  if (obj.Fields !== undefined && obj.SigFlags !== undefined) return 'AcroForm';
+  if (obj['@type'] === 'Stream') return `Stream${obj.Filter ? ` (${Array.isArray(obj.Filter) ? obj.Filter.join(', ') : obj.Filter})` : ''}`;
+  if (obj.Type) return String(obj.Type);
+  return 'Object';
+}
+
 // Assemble the full "Document" object -- everything the PDF exposes --
 // as a plain nested object: { branchName: { key: value, ... }, ... }
 function buildMetaTreeData() {
@@ -2105,18 +2267,17 @@ function buildMetaTreeData() {
     };
   }
 
-  if (documentRawInfo && Object.keys(documentRawInfo).length) {
-    const rawNode = {};
-    Object.entries(documentRawInfo).forEach(([key, value]) => {
-      rawNode[key] = formatMetaValue(value);
-    });
-    tree['Info Dictionary (raw)'] = rawNode;
-  }
+  // Refs already fully represented elsewhere in the tree (each form
+  // field's own dict/widgets below, and the Info dictionary above) --
+  // skipped when walking the raw object table further down so the same
+  // signature field/metadata doesn't show up twice under two names.
+  const shownRefs = new Set();
 
   if (documentFields && documentFields.length) {
     const fieldsNode = {};
     documentFields.forEach((field, i) => {
       const fieldName = field.name || `Field ${i + 1}`;
+      (field.objectRefs || []).forEach((ref) => shownRefs.add(ref));
       if (field.raw && Object.keys(field.raw).length) {
         const rawEntries = {};
         Object.entries(field.raw).forEach(([key, value]) => {
@@ -2130,17 +2291,34 @@ function buildMetaTreeData() {
     tree['Form Fields'] = fieldsNode;
   }
 
+  if (documentRawInfo && Object.keys(documentRawInfo).length) {
+    const rawNode = {};
+    Object.entries(documentRawInfo).forEach(([key, value]) => {
+      rawNode[key] = formatMetaValue(value);
+    });
+    tree['Info Dictionary (raw)'] = rawNode;
+  }
+  const infoRef = documentRawObjects && documentRawObjects.trailer && documentRawObjects.trailer.Info;
+  if (infoRef) shownRefs.add(infoRef);
+
   // The full raw PDF object table (trailer + every indirect object in the
   // file: Catalog, Pages, fonts, XObjects, annotations, AcroForm, embedded
-  // metadata streams, custom producer keys -- literally everything).
-  // These come pre-structured as plain JS (objects/arrays/primitives), so
-  // they're used as-is rather than run through formatMetaValue().
+  // metadata streams, custom producer keys -- literally everything except
+  // the form-field and Info-dictionary objects already shown above),
+  // labeled by object type rather than bare "<num> <gen> R" refs.
   if (documentRawObjects) {
     if (documentRawObjects.trailer && Object.keys(documentRawObjects.trailer).length) {
       tree['Trailer'] = documentRawObjects.trailer;
     }
-    if (documentRawObjects.objects && Object.keys(documentRawObjects.objects).length) {
-      tree['All PDF Objects (raw)'] = documentRawObjects.objects;
+    if (documentRawObjects.objects) {
+      const objectsNode = {};
+      Object.entries(documentRawObjects.objects).forEach(([ref, obj]) => {
+        if (shownRefs.has(ref)) return;
+        objectsNode[`${friendlyObjectLabel(obj)} — ${ref}`] = obj;
+      });
+      if (Object.keys(objectsNode).length) {
+        tree['All PDF Objects (raw)'] = objectsNode;
+      }
     }
   }
 
@@ -2239,6 +2417,236 @@ function renderMetaTree() {
   container.innerHTML = `<div class="meta-tree">${html}</div>`;
 }
 
+// ---------------------------------------------------------------
+// Metadata tab -- simplified overview cards (Document Information,
+// Document Features, Pages, Forms, Attachments, XMP Metadata,
+// Document IDs). The searchable raw tree above stays as-is under
+// "Advanced" for anyone who needs the full PDF object dump.
+// ---------------------------------------------------------------
+
+function formatFileSize(bytes) {
+  if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 100 ? Math.round(value) : Math.round(value * 10) / 10} ${units[unitIndex]}`;
+}
+
+function yesNoBadge(value) {
+  return `<span class="meta-badge ${value ? 'meta-badge-yes' : 'meta-badge-no'}">${value ? 'Yes' : 'No'}</span>`;
+}
+
+// Renders a label/value table, skipping rows whose value is empty
+// unless `keep` explicitly marks them as always-shown.
+function metaKvTable(rows) {
+  const visible = rows.filter((r) => r.keep || (r.value !== null && r.value !== undefined && r.value !== ''));
+  if (!visible.length) return '';
+  const body = visible.map((r) => {
+    const isEmpty = r.value === null || r.value === undefined || r.value === '';
+    const cell = r.html || escapeHtml(isEmpty ? '—' : String(r.value));
+    return `<tr><th>${escapeHtml(r.label)}</th><td>${cell}</td></tr>`;
+  }).join('');
+  return `<table class="field-details-table meta-kv-table">${body}</table>`;
+}
+
+function metaCard(title, bodyHtml, extraClass) {
+  if (!bodyHtml) return '';
+  return `<div class="meta-card${extraClass ? ` ${extraClass}` : ''}">
+    <h4 class="meta-card-title">${escapeHtml(title)}</h4>
+    ${bodyHtml}
+  </div>`;
+}
+
+function renderDocumentInfoCard(info) {
+  if (!info) return '';
+  const rows = [
+    { label: 'Title', value: info.title },
+    { label: 'Author', value: info.author },
+    { label: 'Subject', value: info.subject },
+    { label: 'Keywords', value: Array.isArray(info.keywords) ? info.keywords.join(', ') : info.keywords },
+    { label: 'Creator', value: info.creator },
+    { label: 'Producer', value: info.producer },
+    { label: 'Creation date', value: info.creationDate, html: info.creationDate ? escapeHtml(formatDisplayDate(info.creationDate)) : null },
+    { label: 'Modification date', value: info.modificationDate, html: info.modificationDate ? escapeHtml(formatDisplayDate(info.modificationDate)) : null },
+    { label: 'PDF version', value: info.pdfVersion, keep: true },
+    { label: 'File size', value: formatFileSize(info.fileSize), keep: true },
+    { label: 'Page count', value: info.pageCount, keep: true },
+  ];
+  return metaCard('Document Information', metaKvTable(rows));
+}
+
+function renderFeaturesCard(features) {
+  if (!features) return '';
+  const rows = [
+    { label: 'Encrypted', value: true, html: yesNoBadge(features.encrypted), keep: true },
+    { label: 'PDF/A', value: true, html: yesNoBadge(features.pdfA === 'Yes'), keep: true },
+    { label: 'Linearized', value: true, html: yesNoBadge(features.linearized), keep: true },
+    { label: 'XFA', value: true, html: yesNoBadge(features.xfa), keep: true },
+    { label: 'AcroForm', value: true, html: yesNoBadge(features.acroForm), keep: true },
+    { label: 'Signature fields', value: features.signatureFieldCount, keep: true },
+    { label: 'JavaScript', value: true, html: yesNoBadge(features.javascript), keep: true },
+    { label: 'Attachments', value: features.attachmentCount, keep: true },
+    { label: 'XMP metadata', value: true, html: yesNoBadge(features.xmpMetadata), keep: true },
+    { label: 'Incremental updates', value: features.incrementalUpdates ?? '—', keep: true },
+    { label: 'Signatures', value: features.signatureCount, keep: true },
+  ];
+  return metaCard('Document Features', metaKvTable(rows));
+}
+
+// Consecutive pages sharing the same size/orientation/rotation are folded
+// into one range row (e.g. "Pages 1-4  A4  Portrait") rather than repeated.
+function groupPages(pages) {
+  const groups = [];
+  pages.forEach((page) => {
+    const last = groups[groups.length - 1];
+    if (last && last.sizeName === page.sizeName && last.orientation === page.orientation && last.rotation === page.rotation) {
+      last.to = page.index;
+    } else {
+      groups.push({ from: page.index, to: page.index, sizeName: page.sizeName, orientation: page.orientation, rotation: page.rotation });
+    }
+  });
+  return groups;
+}
+
+function renderPagesCard(pages) {
+  if (!pages || !pages.length) return '';
+  const groups = groupPages(pages);
+  const rows = groups.map((g) => {
+    const label = g.from === g.to ? `Page ${g.from + 1}` : `Pages ${g.from + 1}–${g.to + 1}`;
+    const rotationNote = g.rotation ? ` · rotated ${g.rotation}°` : '';
+    return `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(g.sizeName)} · ${escapeHtml(g.orientation)}${escapeHtml(rotationNote)}</td></tr>`;
+  }).join('');
+  const body = `<p class="meta-card-subhead">${pages.length} page${pages.length === 1 ? '' : 's'}</p><table class="field-details-table meta-kv-table">${rows}</table>`;
+  return metaCard('Pages', body);
+}
+
+function fieldStateLabel(field) {
+  const raw = field.raw || {};
+  const isSignature = field.type === 'Signature';
+  if (isSignature) return raw.V ? 'Signed' : 'Empty';
+  if (field.type === 'CheckBox' || field.type === 'RadioGroup') {
+    const state = raw.AS || raw.V || '';
+    return state && state !== '/Off' && state !== 'Off' ? 'Checked' : 'Unchecked';
+  }
+  return raw.V ? 'Filled' : 'Empty';
+}
+
+function renderFormsCard(fields) {
+  const formFields = fields || [];
+  if (!formFields.length) return '';
+  const rows = formFields.map((f) => {
+    const state = fieldStateLabel(f);
+    const sigTag = f.type === 'Signature' ? ' <span class="meta-badge meta-badge-info">Signature</span>' : '';
+    return `<tr><th>${escapeHtml(f.name || '—')}</th><td>${escapeHtml(f.type)}</td><td>${escapeHtml(state)}${sigTag}</td></tr>`;
+  }).join('');
+  const body = `<p class="meta-card-subhead">${formFields.length} field${formFields.length === 1 ? '' : 's'}</p>
+    <table class="field-details-table meta-kv-table meta-forms-table"><thead><tr><th>Field</th><th>Type</th><th>State</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return metaCard('Forms', body);
+}
+
+function renderAttachmentsCard(attachments) {
+  if (!attachments || !attachments.length) return '';
+  const rows = attachments.map((a) => {
+    const size = formatFileSize(a.size);
+    return `<div class="meta-attachment-row">
+      <span class="meta-attachment-name">${escapeHtml(a.filename || 'attachment')}</span>
+      <span class="meta-attachment-meta">${escapeHtml([a.mimeType, size].filter(Boolean).join(' · ') || '—')}</span>
+    </div>`;
+  }).join('');
+  const body = `${rows}<p class="meta-card-subhead">Total: ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}</p>`;
+  return metaCard('Attachments', body);
+}
+
+function renderXmpCard(xmp) {
+  if (!xmp) return '';
+  const rows = [
+    { label: 'Title', value: xmp.title },
+    { label: 'Creator', value: xmp.creator },
+    { label: 'Creator tool', value: xmp.creatorTool },
+    { label: 'Create date', value: xmp.createDate, html: xmp.createDate ? escapeHtml(formatDisplayDate(xmp.createDate)) : null },
+    { label: 'Modify date', value: xmp.modifyDate, html: xmp.modifyDate ? escapeHtml(formatDisplayDate(xmp.modifyDate)) : null },
+    { label: 'Document ID', value: xmp.documentId },
+    { label: 'Instance ID', value: xmp.instanceId },
+  ];
+  const table = metaKvTable(rows);
+  if (!table) return '';
+  const body = `${table}<button type="button" class="btn btn-ghost meta-view-raw-btn" id="btnViewRawXmp">View raw XMP</button>`;
+  return metaCard('XMP Metadata', body);
+}
+
+function renderDocumentIdsCard(ids) {
+  if (!ids) return '';
+  const rows = [
+    { label: 'Permanent document ID', value: ids.permanent },
+    { label: 'Changing document ID', value: ids.changing },
+    { label: 'XMP document ID', value: ids.xmpDocumentId },
+    { label: 'XMP instance ID', value: ids.xmpInstanceId },
+  ];
+  return metaCard('Document IDs', metaKvTable(rows), 'meta-card-mono');
+}
+
+function renderMetaOverview() {
+  const container = document.getElementById('metaOverview');
+  if (!container) return;
+
+  if (!pdfDoc) {
+    container.innerHTML = '<p class="field-details-empty">No document loaded yet.</p>';
+    return;
+  }
+
+  if (!documentOverview) {
+    container.innerHTML = '<p class="field-details-empty">Detailed metadata isn\'t available for this document (it was loaded without a server round-trip).</p>';
+    return;
+  }
+
+  const cards = [
+    renderDocumentInfoCard(documentOverview.documentInfo),
+    renderFeaturesCard(documentOverview.features),
+    renderPagesCard(documentOverview.pages),
+    renderFormsCard(documentFields),
+    renderAttachmentsCard(documentOverview.attachments),
+    renderXmpCard(documentOverview.xmp),
+    renderDocumentIdsCard(documentOverview.documentIds),
+  ].filter(Boolean);
+
+  container.innerHTML = cards.length ? cards.join('') : '<p class="field-details-empty">No metadata available for this document.</p>';
+
+  const viewRawBtn = document.getElementById('btnViewRawXmp');
+  if (viewRawBtn) {
+    viewRawBtn.addEventListener('click', () => openXmpRawModal(documentOverview.xmp.raw || ''));
+  }
+}
+
+function openXmpRawModal(raw) {
+  const modal = document.getElementById('xmpRawModal');
+  const body = document.getElementById('xmpRawBody');
+  if (!modal || !body) return;
+  body.textContent = raw;
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeXmpRawModal() {
+  const modal = document.getElementById('xmpRawModal');
+  if (!modal) return;
+  modal.classList.remove('is-open');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+const closeXmpRawModalBtn = document.getElementById('closeXmpRawModalBtn');
+if (closeXmpRawModalBtn) closeXmpRawModalBtn.addEventListener('click', closeXmpRawModal);
+const xmpRawModalEl = document.getElementById('xmpRawModal');
+if (xmpRawModalEl) {
+  xmpRawModalEl.addEventListener('click', (e) => {
+    if (e.target === xmpRawModalEl) closeXmpRawModal();
+  });
+}
+
 const metaSearchInput = document.getElementById('metaSearchInput');
 if (metaSearchInput) {
   metaSearchInput.addEventListener('input', renderMetaTree);
@@ -2267,7 +2675,10 @@ if (fieldInfoModal) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeFieldInfoModal();
+  if (e.key === 'Escape') {
+    closeFieldInfoModal();
+    closeXmpRawModal();
+  }
 });
 
 // ---------------------------------------------------------------
@@ -3081,17 +3492,26 @@ function enterDiffViewMode() {
   if (banner) banner.hidden = false;
   overlayLayer.innerHTML = '';
   overlayLayer.style.pointerEvents = 'none';
+  // Page navigation only makes sense while a single revision's own pages
+  // are being shown (revisionViewDoc set) -- visual diffs and hovered-
+  // object previews are pinned to one page and manage btnPrev/btnNext
+  // themselves (or leave them disabled). Zoom/pan, however, are always
+  // safe since they just re-render whatever page is already showing.
   document.getElementById('btnPrev').disabled = true;
   document.getElementById('btnNext').disabled = true;
-  document.getElementById('btnPan').disabled = true;
-  document.getElementById('btnZoomOut').disabled = true;
-  document.getElementById('btnZoomIn').disabled = true;
+  document.getElementById('btnPan').disabled = false;
+  document.getElementById('btnZoomOut').disabled = false;
+  document.getElementById('btnZoomIn').disabled = false;
   emptyStateViewer.style.display = 'none';
   pdfContainer.style.display = 'inline-block';
 }
 
 function exitDiffViewMode() {
   viewerDiffActive = false;
+  if (revisionViewDoc) revisionViewDoc.destroy();
+  revisionViewDoc = null;
+  revisionViewIndex = null;
+  revisionViewPageNum = 1;
   const banner = document.getElementById('viewerDiffBanner');
   if (banner) banner.hidden = true;
   overlayLayer.style.pointerEvents = '';
@@ -3347,19 +3767,42 @@ async function viewRevisionInMainViewer(revIndex) {
   try {
     const doc = await fetchRevisionPdfDoc(revIndex, requestedFile);
     if (requestedFile !== activeFile) return; // a newer upload superseded this request
+    if (revisionViewDoc && revisionViewDoc !== doc) revisionViewDoc.destroy();
+    revisionViewDoc = doc;
+    revisionViewIndex = revIndex;
     enterDiffViewMode();
-    setDiffBannerText(`Viewing Revision ${revIndex} snapshot (read-only)`);
-    const page = await doc.getPage(1);
-    if (!userHasManuallyZoomed) {
-      currentScale = 1.0;
-      document.getElementById('zoomLevel').textContent = '100%';
-    }
-    const viewport = page.getViewport({ scale: currentScale });
-    currentViewport = viewport;
-    await renderPageToSharedCanvas(page, viewport);
+    await renderRevisionViewPage(1);
   } catch (err) {
     setStatus(`Could not open revision ${revIndex}: ${err.message}`, 'error');
   }
+}
+
+// Renders one page of the revision snapshot currently open in "View" mode
+// (revisionViewDoc) into the shared canvas, and keeps the page indicator /
+// prev-next buttons in sync -- the read-only counterpart to renderPage().
+async function renderRevisionViewPage(num) {
+  if (!revisionViewDoc) return;
+  const clamped = Math.min(Math.max(num, 1), revisionViewDoc.numPages);
+  revisionViewPageNum = clamped;
+
+  const page = await revisionViewDoc.getPage(clamped);
+
+  if (!userHasManuallyZoomed) {
+    currentScale = computeFitScale(page);
+    document.getElementById('zoomLevel').textContent = `${Math.round(currentScale * 100)}%`;
+  }
+  const viewport = page.getViewport({ scale: currentScale });
+  viewport.scaleX = currentScale;
+  viewport.scaleY = currentScale;
+  currentViewport = viewport;
+  const rendered = await renderPageToSharedCanvas(page, viewport);
+  if (rendered === false) return;
+
+  document.getElementById('pageNum').textContent = clamped;
+  document.getElementById('pageCount').textContent = revisionViewDoc.numPages;
+  document.getElementById('btnPrev').disabled = clamped <= 1;
+  document.getElementById('btnNext').disabled = clamped >= revisionViewDoc.numPages;
+  setDiffBannerText(`Viewing Revision ${revisionViewIndex} snapshot (read-only) — page ${clamped} / ${revisionViewDoc.numPages}`);
 }
 
 async function downloadRevisionFile(revIndex) {
@@ -3505,9 +3948,15 @@ function streamDiffHtml(streamDiff) {
     ...streamDiff.removed.map((line) => `<span class="diff-stream-line diff-stream-remove">- ${escapeHtml(line)}</span>`),
     ...streamDiff.added.map((line) => `<span class="diff-stream-line diff-stream-add">+ ${escapeHtml(line)}</span>`),
   ].join('\n');
+  const lineCount = streamDiff.removed.length + streamDiff.added.length;
+  const summaryLabel = `Content changes (${lineCount} line${lineCount === 1 ? '' : 's'} changed — click to expand)`;
+  // Collapsed by default: a content-stream diff can be a huge or
+  // near-binary blob of text, which otherwise floods the panel.
   return `<div class="diff-object-subsection">
-    <div class="diff-object-subsection-title">Content changes</div>
-    <pre class="diff-stream-diff">${lines}</pre>
+    <details class="diff-stream-details">
+      <summary class="diff-object-subsection-title">${escapeHtml(summaryLabel)}</summary>
+      <pre class="diff-stream-diff">${lines}</pre>
+    </details>
   </div>`;
 }
 
@@ -4028,6 +4477,12 @@ async function renderVisualDiffView() {
   if (pageLabel) pageLabel.textContent = `Page ${diffCurrentPage} / ${maxPages || 1}`;
   document.getElementById('btnVisualDiffPrevPage').disabled = diffCurrentPage <= 1;
   document.getElementById('btnVisualDiffNextPage').disabled = diffCurrentPage >= maxPages;
+
+  // Keep the main viewer's own page indicator (above the canvas) in sync
+  // too -- it otherwise sits frozen on whatever page was showing before
+  // the visual diff was opened, even though the canvas itself is moving.
+  document.getElementById('pageNum').textContent = diffCurrentPage;
+  document.getElementById('pageCount').textContent = maxPages || 1;
 
   setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — page ${diffCurrentPage} / ${maxPages}`);
 

@@ -177,12 +177,9 @@ app.post("/api/info", uploadLimiter, upload.single("pdfDocument"), async (req: R
   try {
     const safePath = resolveUploadPath(file.path);
     const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-    const result = {
-      metadata: tool.getMetadata(),
-      fields: tool.listFields(),
-    };
-
-    res.json(result);
+    const fileBytes = fs.readFileSync(safePath);
+    const incrementalUpdates = PdfRevisionTool.findRevisionBoundaries(fileBytes).length;
+    res.json(tool.getDocumentInfoSummary({ fileSize: file.size, incrementalUpdates }));
   } catch (error: any) {
     logError("api-info", error, { filePath: file.path });
     res.status(500).json({ error: error?.message ?? "Unexpected error" });
