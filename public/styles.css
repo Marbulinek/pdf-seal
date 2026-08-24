@@ -20,17 +20,70 @@
 
 * { box-sizing: border-box; }
 
-/* ---------- Icon system: inline SVG icons sized relative to the font-size
-   of whichever control hosts them (buttons, nav items, tags, ...), so one
-   rule covers every icon slot in the app without per-instance sizing. ---- */
-svg.icon {
+/* ---------- Icon system: icons are <span class="icon icon-<name>"> elements
+   masked with an external SVG file (background-color: currentColor clipped
+   by a mask-image), sized relative to the font-size of whichever control
+   hosts them (buttons, nav items, tags, ...), so one rule covers every icon
+   slot in the app without per-instance sizing, and icons still inherit
+   currentColor for theming/hover/dark-mode. ---- */
+.icon {
   width: 1em;
   height: 1em;
   display: inline-block;
   vertical-align: -0.15em;
   flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
-svg.icon-fill { fill: currentColor; stroke: none; }
+
+/* ---------- Icon catalog: one modifier class per unique icon shape, mapping
+   to its standalone SVG file under /assets/images/icons/. ---- */
+.icon-hamburger { -webkit-mask-image: url(/assets/images/icons/hamburger.svg); mask-image: url(/assets/images/icons/hamburger.svg); }
+.icon-info-circle { -webkit-mask-image: url(/assets/images/icons/info-circle.svg); mask-image: url(/assets/images/icons/info-circle.svg); }
+.icon-pen { -webkit-mask-image: url(/assets/images/icons/pen.svg); mask-image: url(/assets/images/icons/pen.svg); }
+.icon-clock { -webkit-mask-image: url(/assets/images/icons/clock.svg); mask-image: url(/assets/images/icons/clock.svg); }
+.icon-shield { -webkit-mask-image: url(/assets/images/icons/shield.svg); mask-image: url(/assets/images/icons/shield.svg); }
+.icon-shield-thin { -webkit-mask-image: url(/assets/images/icons/shield-thin.svg); mask-image: url(/assets/images/icons/shield-thin.svg); }
+.icon-settings-gear { -webkit-mask-image: url(/assets/images/icons/settings-gear.svg); mask-image: url(/assets/images/icons/settings-gear.svg); }
+.icon-chevron-down { -webkit-mask-image: url(/assets/images/icons/chevron-down.svg); mask-image: url(/assets/images/icons/chevron-down.svg); }
+.icon-chevron-up { -webkit-mask-image: url(/assets/images/icons/chevron-up.svg); mask-image: url(/assets/images/icons/chevron-up.svg); }
+.icon-chevron-left { -webkit-mask-image: url(/assets/images/icons/chevron-left.svg); mask-image: url(/assets/images/icons/chevron-left.svg); }
+.icon-chevron-right { -webkit-mask-image: url(/assets/images/icons/chevron-right.svg); mask-image: url(/assets/images/icons/chevron-right.svg); }
+.icon-upload-device { -webkit-mask-image: url(/assets/images/icons/upload-device.svg); mask-image: url(/assets/images/icons/upload-device.svg); }
+.icon-code { -webkit-mask-image: url(/assets/images/icons/code.svg); mask-image: url(/assets/images/icons/code.svg); }
+.icon-share { -webkit-mask-image: url(/assets/images/icons/share.svg); mask-image: url(/assets/images/icons/share.svg); }
+.icon-download { -webkit-mask-image: url(/assets/images/icons/download.svg); mask-image: url(/assets/images/icons/download.svg); }
+.icon-copy { -webkit-mask-image: url(/assets/images/icons/copy.svg); mask-image: url(/assets/images/icons/copy.svg); }
+.icon-close { -webkit-mask-image: url(/assets/images/icons/close.svg); mask-image: url(/assets/images/icons/close.svg); }
+.icon-file-simple { -webkit-mask-image: url(/assets/images/icons/file-simple.svg); mask-image: url(/assets/images/icons/file-simple.svg); }
+.icon-file-text { -webkit-mask-image: url(/assets/images/icons/file-text.svg); mask-image: url(/assets/images/icons/file-text.svg); }
+.icon-file-detailed { -webkit-mask-image: url(/assets/images/icons/file-detailed.svg); mask-image: url(/assets/images/icons/file-detailed.svg); }
+.icon-move { -webkit-mask-image: url(/assets/images/icons/move.svg); mask-image: url(/assets/images/icons/move.svg); }
+.icon-minus { -webkit-mask-image: url(/assets/images/icons/minus.svg); mask-image: url(/assets/images/icons/minus.svg); }
+.icon-plus { -webkit-mask-image: url(/assets/images/icons/plus.svg); mask-image: url(/assets/images/icons/plus.svg); }
+.icon-minus-bold { -webkit-mask-image: url(/assets/images/icons/minus-bold.svg); mask-image: url(/assets/images/icons/minus-bold.svg); }
+.icon-plus-bold { -webkit-mask-image: url(/assets/images/icons/plus-bold.svg); mask-image: url(/assets/images/icons/plus-bold.svg); }
+.icon-arrow-right { -webkit-mask-image: url(/assets/images/icons/arrow-right.svg); mask-image: url(/assets/images/icons/arrow-right.svg); }
+.icon-list { -webkit-mask-image: url(/assets/images/icons/list.svg); mask-image: url(/assets/images/icons/list.svg); }
+.icon-eye { -webkit-mask-image: url(/assets/images/icons/eye.svg); mask-image: url(/assets/images/icons/eye.svg); }
+.icon-repeat { -webkit-mask-image: url(/assets/images/icons/repeat.svg); mask-image: url(/assets/images/icons/repeat.svg); }
+.icon-lock { -webkit-mask-image: url(/assets/images/icons/lock.svg); mask-image: url(/assets/images/icons/lock.svg); }
+.icon-github { -webkit-mask-image: url(/assets/images/icons/github.svg); mask-image: url(/assets/images/icons/github.svg); }
+.icon-chat { -webkit-mask-image: url(/assets/images/icons/chat.svg); mask-image: url(/assets/images/icons/chat.svg); }
+.icon-heart { -webkit-mask-image: url(/assets/images/icons/heart.svg); mask-image: url(/assets/images/icons/heart.svg); }
+.icon-check { -webkit-mask-image: url(/assets/images/icons/check.svg); mask-image: url(/assets/images/icons/check.svg); }
+.icon-dot { -webkit-mask-image: url(/assets/images/icons/dot.svg); mask-image: url(/assets/images/icons/dot.svg); }
+.icon-alert-triangle { -webkit-mask-image: url(/assets/images/icons/alert-triangle.svg); mask-image: url(/assets/images/icons/alert-triangle.svg); }
+.icon-layers { -webkit-mask-image: url(/assets/images/icons/layers.svg); mask-image: url(/assets/images/icons/layers.svg); }
+.icon-edit2 { -webkit-mask-image: url(/assets/images/icons/edit2.svg); mask-image: url(/assets/images/icons/edit2.svg); }
+.icon-check-circle { -webkit-mask-image: url(/assets/images/icons/check-circle.svg); mask-image: url(/assets/images/icons/check-circle.svg); }
+.icon-alert-circle { -webkit-mask-image: url(/assets/images/icons/alert-circle.svg); mask-image: url(/assets/images/icons/alert-circle.svg); }
+.icon-info-circle-notif { -webkit-mask-image: url(/assets/images/icons/info-circle-notif.svg); mask-image: url(/assets/images/icons/info-circle-notif.svg); }
 
 body {
   font-family: var(--font-body);
@@ -655,6 +708,16 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   width: 16px;
   height: 16px;
   color: var(--coral);
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-image: url(/assets/images/icons/file-simple.svg);
+  mask-image: url(/assets/images/icons/file-simple.svg);
 }
 .viewer-file-name-text {
   font-family: var(--font-display);
@@ -991,7 +1054,19 @@ input[type="number"]:focus, input[type="text"]:focus {
   animation: bob 3s ease-in-out infinite;
 }
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-.empty-icon { width: 36px; height: 36px; color: var(--ocean); }
+.empty-icon {
+  width: 36px;
+  height: 36px;
+  color: var(--ocean);
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
 .empty-state-viewer h3 { margin: 0 0 8px 0; color: var(--navy); font-size: 1.2rem; font-weight: 600; }
 .empty-state-viewer p { margin: 0; font-size: 0.875rem; max-width: 350px; line-height: 1.6; }
 
@@ -1574,6 +1649,7 @@ mark.meta-highlight {
 }
 
 body.hide-raw-pdf-data #metaAdvancedDetails,
+body.hide-raw-pdf-data #fieldDetailsBlock,
 body.hide-raw-pdf-data .diff-raw-objects {
   display: none;
 }
@@ -1745,6 +1821,18 @@ body.hide-raw-pdf-data .diff-raw-objects {
 .heart-icon {
   color: #9ca3af;
   transition: color 0.2s ease, transform 0.2s ease;
+  width: 15px;
+  height: 15px;
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-image: url(/assets/images/icons/heart.svg);
+  mask-image: url(/assets/images/icons/heart.svg);
 }
 .footer-love:hover .heart-icon {
   color: var(--coral);
@@ -2245,7 +2333,7 @@ body.hide-raw-pdf-data .diff-raw-objects {
   background: var(--ice);
   color: var(--ocean-dark);
 }
-.diff-section-icon svg.icon { width: 13px; height: 13px; }
+.diff-section-icon .icon { width: 13px; height: 13px; }
 .diff-section-icon:empty { display: none; }
 .diff-empty-note { font-size: 0.8rem; color: var(--ocean-dark); opacity: 0.75; }
 

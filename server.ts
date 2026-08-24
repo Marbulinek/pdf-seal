@@ -600,6 +600,14 @@ function cleanupSocket(socket: WebSocket) {
     }
   } else if (membership.receiverId) {
     session.receivers.delete(membership.receiverId);
+    logShare('receiver-left', { sessionId: membership.sessionId, receiverId: membership.receiverId });
+    if (session.sender) {
+      sendJson(session.sender, {
+        type: 'receiver-left',
+        receiverId: membership.receiverId,
+        receiverCount: session.receivers.size,
+      });
+    }
   }
 
   if (!session.sender && session.receivers.size === 0 && !session.file) {

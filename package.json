@@ -1,6 +1,6 @@
 {
   "name": "pdf-seal",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "PDF Seal :: Browser-based PDF signature field editor",
   "license": "MIT",
   "author": {
@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "ts-node server.ts"
+    "dev": "tsx server.ts"
   },
   "dependencies": {
     "express": "^5.2.1",
@@ -27,7 +27,7 @@
     "@types/multer": "^2.1.0",
     "@types/node": "^26.1.0",
     "@types/ws": "^8.5.14",
-    "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
   }
 }
