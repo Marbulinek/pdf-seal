@@ -96,9 +96,6 @@
               </div>
             </div>
             <input type="file" id="mainFileInput" accept="application/pdf" style="display: none;">
-            <span id="loadingState" class="loading-pill" style="display: none;">
-              <span class="spinner" aria-hidden="true"></span>Processing...
-            </span>
           </div>
         </div>
         <div class="topbar-row topbar-row-tertiary">
@@ -195,6 +192,27 @@
     </div>
   </div>
 
+  <!-- Remove signature field confirmation modal -->
+  <div class="modal-backdrop" id="removeFieldModal">
+    <div class="modal-box remove-field-modal-box" role="dialog" aria-modal="true" aria-labelledby="removeFieldModalTitle">
+      <div class="modal-header">
+        <h3 id="removeFieldModalTitle">Remove Signature Field</h3>
+        <button type="button" class="modal-close" id="closeRemoveFieldModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <div class="remove-field-body">
+        <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <div class="remove-field-text">
+          <p class="remove-field-warning"><span class="icon icon-alert-triangle" aria-hidden="true"></span> This can't be undone!</p>
+          <p class="modal-hint remove-field-hint">Remove the signature field <strong id="removeFieldModalName"></strong> from this document?</p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelRemoveFieldBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmRemoveFieldBtn">Remove Field</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Raw XMP metadata viewer -->
   <div class="modal-backdrop" id="xmpRawModal" aria-hidden="true">
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="xmpRawModalTitle">
@@ -261,6 +279,9 @@
         <div class="panel-overlay" id="editPanelOverlay">
           <div class="panel-overlay-text">Upload a document first to edit fields</div>
         </div>
+        <div class="panel-overlay is-hidden" id="editPanelNoSelectionOverlay">
+          <div class="panel-overlay-text">Select a signature field on the document to edit it</div>
+        </div>
         <h3><span class="panel-dot dot-ocean"></span>Edit Selected Field</h3>
         <form id="editFieldForm">
           <input type="hidden" id="editOriginalName">
@@ -322,12 +343,16 @@
             <input type="checkbox" id="sigRequired">
             <label for="sigRequired">Required Field</label>
           </div>
-          <p class="placement-hint" id="placementHint">
-            Click <strong>Place on Document</strong>, then click anywhere on the PDF to drop the field. Drag it to reposition, or drag the coral handle to resize.
-          </p>
+          <div class="placement-hint" id="placementHint">
+            <span class="icon icon-info-circle-notif placement-hint-icon" aria-hidden="true"></span>
+            <span class="placement-hint-text" id="placementHintText">Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.</span>
+          </div>
 
-          <button type="button" id="btnPlaceField" class="btn btn-ghost btn-block" disabled>Place on Document</button>
-          <button type="submit" id="btnAddSig" class="btn btn-primary btn-block" disabled>Add to Document</button>
+          <button type="button" id="btnPlaceField" class="btn btn-primary btn-block" disabled><span class="icon icon-pen" aria-hidden="true"></span> Place on Document</button>
+          <div class="add-sig-actions" id="addSigActions" hidden>
+            <button type="submit" id="btnAddSig" class="btn btn-primary" disabled>Add to Document</button>
+            <button type="button" id="btnCancelPlace" class="btn btn-danger">Remove from Document</button>
+          </div>
         </form>
         <div id="actionStatus" class="status-text"></div>
       </div>
@@ -457,12 +482,32 @@
         <button type="button" class="modal-close" id="closeShareModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <div class="share-modal-hero-panel">
-        <div class="share-hero-row">
-          <div class="share-hero" aria-hidden="true"><span class="icon icon-repeat"></span></div>
-          <p class="modal-hint" id="shareDescription">Create a private link. The PDF is uploaded to the sharing server once and every person who opens the link can receive their own local copy. WebRTC direct transfer with an encrypted WebSocket fallback. The share session expires in 15 minutes.</p>
+        <img class="share-hero-seal" src="/assets/images/seal-sharing.jpg" alt="" aria-hidden="true">
+        <div class="share-modal-hero-copy">
+          <p class="modal-hint" id="shareDescription">Create a private link to this PDF. Only people you send it to can open it.</p>
+          <div class="share-security-note" id="shareSecurityNote"><span class="icon icon-lock" aria-hidden="true"></span> Encrypted · link expires in 15 minutes</div>
         </div>
-        <div class="share-security-note" id="shareSecurityNote"><span class="icon icon-lock" aria-hidden="true"></span> AES-256-GCM end-to-end encryption · the server stores only encrypted share data · 15-minute session</div>
       </div>
+
+      <div class="share-steps" id="shareStepsSender">
+        <div class="share-step is-active" data-step="prepare"><span class="share-step-badge">1</span><span class="share-step-label">Preparing</span></div>
+        <div class="share-step-connector"></div>
+        <div class="share-step" data-step="waiting"><span class="share-step-badge">2</span><span class="share-step-label">Waiting for recipient</span></div>
+        <div class="share-step-connector"></div>
+        <div class="share-step" data-step="sending"><span class="share-step-badge">3</span><span class="share-step-label">Sending</span></div>
+        <div class="share-step-connector"></div>
+        <div class="share-step" data-step="done"><span class="share-step-badge">4</span><span class="share-step-label">Sent</span></div>
+      </div>
+      <div class="share-steps" id="shareStepsReceiver" hidden>
+        <div class="share-step is-active" data-step="connecting"><span class="share-step-badge">1</span><span class="share-step-label">Connecting</span></div>
+        <div class="share-step-connector"></div>
+        <div class="share-step" data-step="waiting"><span class="share-step-badge">2</span><span class="share-step-label">Waiting for sender</span></div>
+        <div class="share-step-connector"></div>
+        <div class="share-step" data-step="receiving"><span class="share-step-badge">3</span><span class="share-step-label">Receiving</span></div>
+        <div class="share-step-connector"></div>
+        <div class="share-step" data-step="done"><span class="share-step-badge">4</span><span class="share-step-label">Received</span></div>
+      </div>
+
       <div class="share-link-row" id="shareLinkRow" hidden>
         <input class="modal-text-input share-link-input" id="shareLink" readonly aria-label="Share link">
         <div class="copy-share-wrap">
@@ -471,12 +516,12 @@
         </div>
       </div>
       <div class="share-progress-wrap" id="shareProgressWrap" hidden>
-        <div class="share-progress-label"><span id="shareProgressText">Preparing transfer…</span><strong id="shareProgressPercent">0%</strong></div>
+        <div class="share-progress-label"><span id="shareProgressText">Preparing…</span><strong id="shareProgressPercent">0%</strong></div>
         <div class="share-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="shareProgressBar"></span></div>
       </div>
       <div class="share-status" id="shareStatus" aria-live="polite"></div>
-      <div class="share-connected-users" id="shareConnectedUsersWrap" hidden>Connected users: <strong id="shareConnectedUsers">0</strong></div>
-      <p class="share-recipient-note" id="shareRecipientNote">Anyone with the complete link can receive the PDF until the 15-minute session expires. The decryption key remains in the URL fragment and is never sent to the server.</p>
+      <div class="share-connected-users" id="shareConnectedUsersWrap" hidden>Connected: <strong id="shareConnectedUsers">0</strong></div>
+      <p class="share-recipient-note" id="shareRecipientNote">Anyone with this link can open the PDF until the session expires.</p>
       <div class="modal-actions" id="shareActions">
         <button type="button" class="btn btn-ghost" id="cancelShareBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="startShareBtn">Create share link</button>
@@ -721,12 +766,17 @@
       success: '<span class="icon icon-check-circle" aria-hidden="true"></span>',
       error: '<span class="icon icon-alert-circle" aria-hidden="true"></span>',
       info: '<span class="icon icon-info-circle-notif" aria-hidden="true"></span>',
+      loading: '<span class="spinner notification-spinner" aria-hidden="true"></span>',
     };
 
+    // duration: ms before auto-dismiss, or 0 for a persistent notification
+    // (e.g. a "loading" toast) that the caller dismisses itself by calling
+    // the returned element's .dismissNotification().
     function showNotification(message, type = 'info', duration = 6000) {
       const stack = document.getElementById('notificationStack');
       if (!stack) return;
 
+      const persistent = duration <= 0;
       const el = document.createElement('div');
       el.className = `notification notification-${type}`;
       el.setAttribute('role', type === 'error' ? 'alert' : 'status');
@@ -739,7 +789,11 @@
       el.querySelector('.notification-message').textContent = message;
 
       const progressEl = el.querySelector('.notification-progress');
-      progressEl.style.animationDuration = `${duration}ms`;
+      if (persistent) {
+        progressEl.style.display = 'none';
+      } else {
+        progressEl.style.animationDuration = `${duration}ms`;
+      }
 
       let remaining = duration;
       let startedAt = Date.now();
@@ -753,12 +807,14 @@
       };
 
       const startCountdown = () => {
+        if (persistent) return;
         startedAt = Date.now();
         progressEl.style.animationPlayState = 'running';
         timer = setTimeout(dismiss, remaining);
       };
 
       const pauseCountdown = () => {
+        if (persistent) return;
         clearTimeout(timer);
         remaining -= Date.now() - startedAt;
         progressEl.style.animationPlayState = 'paused';
@@ -772,6 +828,7 @@
       requestAnimationFrame(() => el.classList.add('is-visible'));
       startCountdown();
 
+      el.dismissNotification = dismiss;
       return el;
     }
 
@@ -1080,14 +1137,19 @@
         fileNameEl.classList.toggle('is-visible', Boolean(displayName));
       }
 
+      const hasSelectedField = hasDocument && Boolean(activeField);
       if (editPanel) {
-        editPanel.style.opacity = hasDocument ? '1' : '0.5';
-        editPanel.style.pointerEvents = hasDocument ? 'auto' : 'none';
+        editPanel.style.opacity = hasSelectedField ? '1' : '0.5';
+        editPanel.style.pointerEvents = hasSelectedField ? 'auto' : 'none';
         if (editPanelOverlay) {
           editPanelOverlay.classList.toggle('is-hidden', hasDocument);
         }
+        const editPanelNoSelectionOverlay = document.getElementById('editPanelNoSelectionOverlay');
+        if (editPanelNoSelectionOverlay) {
+          editPanelNoSelectionOverlay.classList.toggle('is-hidden', !hasDocument || hasSelectedField);
+        }
         editPanel.querySelectorAll('input, select, textarea, button').forEach((el) => {
-          el.disabled = !hasDocument;
+          el.disabled = !hasSelectedField;
         });
       }
 
@@ -1096,10 +1158,8 @@
           addSigPanelOverlay.classList.toggle('is-hidden', hasDocument);
         }
         addSigForm.querySelectorAll('input, select, textarea, button').forEach((el) => {
-          if (el.id === 'btnAddSig') {
-            el.disabled = !hasDocument || !pendingField;
-          } else if (el.id === 'btnPlaceField') {
-            el.disabled = !hasDocument;
+          if (el.id === 'btnAddSig' || el.id === 'btnPlaceField') {
+            // handled below
           } else {
             el.disabled = !hasDocument;
           }
@@ -1107,7 +1167,8 @@
       }
 
       if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !activeField;
-      if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument;
+      const sigNameFilled = Boolean(document.getElementById('sigName').value.trim());
+      if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument || !sigNameFilled;
       if (addSigBtn) addSigBtn.disabled = !hasDocument || !pendingField;
 
       const docInfoPanelOverlay = document.getElementById('docInfoPanelOverlay');
@@ -1188,7 +1249,6 @@
       if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
         loadRevisionsIfNeeded();
       }
-      document.getElementById('loadingState').style.display = 'inline';
       updateViewerControlsState();
 
       // A brand new document means any previous pending placement/selection is stale
@@ -1249,8 +1309,6 @@
         renderMetaOverview();
         updateViewerControlsState();
         showNotification('Error processing PDF: ' + err.message, 'error');
-      } finally {
-        document.getElementById('loadingState').style.display = 'none';
       }
     }
 
@@ -1270,13 +1328,13 @@
       };
     }
 
-    // Scale at which the given page fills the viewer panel edge-to-edge (in
-    // whichever dimension is the tighter fit) without needing to scroll,
-    // preserving its aspect ratio.
+    // Scale at which the given page fills the viewer panel edge-to-edge
+    // horizontally, preserving its aspect ratio (the page may then scroll
+    // vertically if it's taller than the panel).
     function computeFitScale(page) {
       const avail = computeAvailViewerSize();
       const baseViewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(avail.width / baseViewport.width, avail.height / baseViewport.height);
+      const scale = avail.width / baseViewport.width;
       return Math.max(0.1, scale);
     }
 
@@ -1576,11 +1634,40 @@
       div.style.height = `${screenRect.height}px`;
     }
 
+    function setAddSigActionsVisible(visible) {
+      const placeFieldBtnEl = document.getElementById('btnPlaceField');
+      const addSigActionsEl = document.getElementById('addSigActions');
+      if (placeFieldBtnEl) placeFieldBtnEl.hidden = visible;
+      if (addSigActionsEl) addSigActionsEl.hidden = !visible;
+    }
+
+    // The placement hint doubles as a live progress indicator for the
+    // "place a signature field" flow, swapping its message and color as the
+    // user moves through: idle -> placing -> placed.
+    const PLACEMENT_HINT_IDLE = 'Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.';
+    const PLACEMENT_HINT_PLACING = 'Click anywhere on the PDF to drop the field.';
+    const PLACEMENT_HINT_PLACED = 'Field placed. Drag it to reposition, or drag the coral handle to resize — then click <strong>Add to Document</strong>.';
+
+    function setPlacementHint(html, state) {
+      const hintEl = document.getElementById('placementHint');
+      const textEl = document.getElementById('placementHintText');
+      if (textEl) textEl.innerHTML = html;
+      if (hintEl) hintEl.classList.toggle('is-active', state === 'placing');
+      if (hintEl) hintEl.classList.toggle('is-placed', state === 'placed');
+    }
+
+    document.getElementById('sigName').addEventListener('input', updateViewerControlsState);
+
     document.getElementById('btnPlaceField').addEventListener('click', () => {
       if (!pdfDoc) return;
       isPlacing = true;
       pdfContainer.classList.add('placing-mode');
-      setStatus('Click anywhere on the document to drop the field', 'loading');
+      setAddSigActionsVisible(true);
+      setPlacementHint(PLACEMENT_HINT_PLACING, 'placing');
+    });
+
+    document.getElementById('btnCancelPlace').addEventListener('click', () => {
+      clearPendingField();
     });
 
     pdfContainer.addEventListener('click', (e) => {
@@ -1612,7 +1699,7 @@
       isPlacing = false;
       pdfContainer.classList.remove('placing-mode');
       document.getElementById('btnAddSig').disabled = false;
-      setStatus('Field placed — drag to reposition, resize, or click "Add to Document"', 'success');
+      setPlacementHint(PLACEMENT_HINT_PLACED, 'placed');
 
       drawPendingOverlay();
     }
@@ -1635,23 +1722,13 @@
       label.textContent = ghostName;
       ghost.appendChild(label);
 
-      const removeBtn = document.createElement('div');
-      removeBtn.className = 'pending-remove';
-      removeBtn.innerHTML = ICONS.x;
-      removeBtn.title = 'Remove';
-      removeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        clearPendingField();
-      });
-      ghost.appendChild(removeBtn);
-
       const handle = document.createElement('div');
       handle.className = 'resize-handle';
       ghost.appendChild(handle);
 
       // Drag to move
       ghost.addEventListener('mousedown', (e) => {
-        if (e.target === handle || e.target === removeBtn) return;
+        if (e.target === handle) return;
         if (isPanning) return;
         e.preventDefault();
         const startX = e.clientX;
@@ -1746,15 +1823,16 @@
       pdfContainer.classList.remove('placing-mode');
       const existing = overlayLayer.querySelector('.field-overlay.pending');
       if (existing) existing.remove();
+      setAddSigActionsVisible(false);
+      setPlacementHint(PLACEMENT_HINT_IDLE, 'idle');
       updateViewerControlsState();
     }
 
     // Replace the current active file with the API response, then re-render
     async function handleApiUpdate(endpoint, formData) {
-      setStatus('Processing document...', 'loading');
+      const loadingToast = showNotification('Processing document…', 'loading', 0);
       isDocumentUpdating = true;
       updateViewerControlsState();
-      document.getElementById('loadingState').style.display = 'inline';
 
       try {
         const response = await fetch(endpoint, { method: 'POST', body: formData });
@@ -1765,8 +1843,10 @@
         const updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
 
         await processNewFile(updatedFile, { preservePage: true });
+        loadingToast?.dismissNotification();
         showNotification('Update successful.', 'success');
       } catch (err) {
+        loadingToast?.dismissNotification();
         showNotification(`Error: ${err.message}`, 'error');
       } finally {
         isDocumentUpdating = false;
@@ -1822,23 +1902,51 @@
       await handleApiUpdate('/api/edit-field', formData);
     });
 
+    const removeFieldModal = document.getElementById('removeFieldModal');
+    const removeFieldModalName = document.getElementById('removeFieldModalName');
+    let pendingRemoveFieldName = null;
+
+    function openRemoveFieldModal(fieldName) {
+      pendingRemoveFieldName = fieldName;
+      removeFieldModalName.textContent = fieldName;
+      removeFieldModal.classList.add('is-open');
+    }
+
+    function closeRemoveFieldModal() {
+      removeFieldModal.classList.remove('is-open');
+      pendingRemoveFieldName = null;
+    }
+
     if (removeFieldBtn) {
-      removeFieldBtn.addEventListener('click', async () => {
+      removeFieldBtn.addEventListener('click', () => {
         if (!activeFile || !activeField) return;
 
         const fieldName = activeField.name || document.getElementById('editOriginalName').value;
         if (!fieldName) return;
 
-        const confirmed = window.confirm(`Remove the signature field "${fieldName}" from this document?`);
-        if (!confirmed) return;
-
-        const formData = new FormData();
-        formData.append('pdfDocument', activeFile);
-        formData.append('name', fieldName);
-
-        await handleApiUpdate('/api/remove-field', formData);
+        openRemoveFieldModal(fieldName);
       });
     }
+
+    document.getElementById('closeRemoveFieldModalBtn').addEventListener('click', closeRemoveFieldModal);
+    document.getElementById('cancelRemoveFieldBtn').addEventListener('click', closeRemoveFieldModal);
+    removeFieldModal.addEventListener('click', (e) => {
+      if (e.target === removeFieldModal) closeRemoveFieldModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && removeFieldModal.classList.contains('is-open')) closeRemoveFieldModal();
+    });
+    document.getElementById('confirmRemoveFieldBtn').addEventListener('click', async () => {
+      if (!activeFile || !pendingRemoveFieldName) return;
+      const fieldName = pendingRemoveFieldName;
+      closeRemoveFieldModal();
+
+      const formData = new FormData();
+      formData.append('pdfDocument', activeFile);
+      formData.append('name', fieldName);
+
+      await handleApiUpdate('/api/remove-field', formData);
+    });
 
     // --- Export Actions ---
     const saveAsModal = document.getElementById('saveAsModal');
@@ -2690,6 +2798,33 @@ const shareProgressWrap = document.getElementById('shareProgressWrap');
 const shareProgressText = document.getElementById('shareProgressText');
 const shareProgressPercent = document.getElementById('shareProgressPercent');
 const shareProgressBar = document.getElementById('shareProgressBar');
+const shareStepsSender = document.getElementById('shareStepsSender');
+const shareStepsReceiver = document.getElementById('shareStepsReceiver');
+const SENDER_STEP_ORDER = ['prepare', 'waiting', 'sending', 'done'];
+const RECEIVER_STEP_ORDER = ['connecting', 'waiting', 'receiving', 'done'];
+
+function setShareStep(key) {
+  const order = shareRole === 'receiver' ? RECEIVER_STEP_ORDER : SENDER_STEP_ORDER;
+  const container = shareRole === 'receiver' ? shareStepsReceiver : shareStepsSender;
+  const idx = order.indexOf(key);
+  if (!container || idx === -1) return;
+  container.querySelectorAll('.share-step').forEach((el, i) => {
+    el.classList.remove('is-active', 'is-done');
+    if (i < idx) el.classList.add('is-done');
+    else if (i === idx) el.classList.add('is-active');
+  });
+  container.querySelectorAll('.share-step-connector').forEach((el, i) => el.classList.toggle('is-done', i < idx));
+}
+
+function resetShareSteps() {
+  [shareStepsSender, shareStepsReceiver].forEach(container => {
+    container.querySelectorAll('.share-step').forEach((el, i) => {
+      el.classList.remove('is-active', 'is-done');
+      if (i === 0) el.classList.add('is-active');
+    });
+    container.querySelectorAll('.share-step-connector').forEach(el => el.classList.remove('is-done'));
+  });
+}
 
 let shareSocket = null;
 let sharePeerConnections = new Map();
@@ -2745,14 +2880,14 @@ function setShareProgress(current, total, label) {
 
 function resetShareProgress() {
   shareProgressWrap.hidden = true;
-  shareProgressText.textContent = 'Preparing secure transfer…';
+  shareProgressText.textContent = 'Preparing…';
   shareProgressPercent.textContent = '0%';
   shareProgressBar.style.width = '0%';
   shareProgressBar.classList.remove('is-complete');
   shareProgressBar.parentElement.setAttribute('aria-valuenow', '0');
 }
 
-function showIdleShareProgress(label = 'Waiting for receiver…') {
+function showIdleShareProgress(label = 'Waiting for recipient…') {
   shareProgressWrap.hidden = false;
   shareProgressText.textContent = label;
   shareProgressPercent.textContent = '0%';
@@ -2763,7 +2898,7 @@ function showIdleShareProgress(label = 'Waiting for receiver…') {
 
 function hideShareProgress() {
   shareProgressWrap.hidden = true;
-  shareProgressText.textContent = 'Preparing secure transfer…';
+  shareProgressText.textContent = 'Preparing…';
   shareProgressPercent.textContent = '0%';
   shareProgressBar.style.width = '0%';
   shareProgressBar.classList.remove('is-complete');
@@ -2911,6 +3046,7 @@ function teardownShareSession(statusMessage) {
   document.getElementById('shareLinkRow').hidden = true;
   setConnectedUserCount(0);
   resetShareProgress();
+  resetShareSteps();
   if (statusMessage) setShareStatus(statusMessage, 'waiting');
 }
 
@@ -2919,13 +3055,16 @@ function openShareModal() {
   shareModal.setAttribute('aria-hidden', 'false');
   if (!shareRole) {
     shareModal.querySelector('.share-modal-box').classList.remove('is-receiver');
-    document.getElementById('shareModalTitle').textContent = 'Share PDF securely';
-    document.getElementById('shareDescription').textContent = 'Create an end-to-end encrypted link. WebRTC tries a direct browser-to-browser transfer first; an encrypted WebSocket relay automatically takes over when VPNs, firewalls or network changes block it.';
-    document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' AES-256-GCM end-to-end encryption · the server stores only encrypted PDF data · 15-minute session';
-    document.getElementById('shareRecipientNote').textContent = 'Anyone with the complete link can receive the PDF while the share session is active. The decryption key stays in the link fragment and is never sent to the server.';
+    document.getElementById('shareModalTitle').textContent = 'Share this PDF';
+    document.getElementById('shareDescription').textContent = 'Create a private link to this PDF. Only people you send it to can open it.';
+    document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' Encrypted · link expires in 15 minutes';
+    document.getElementById('shareRecipientNote').textContent = 'Anyone with this link can open the PDF until the session expires.';
     document.getElementById('shareRecipientNote').hidden = false;
     document.getElementById('startShareBtn').hidden = false;
     document.getElementById('cancelShareBtn').textContent = 'Cancel';
+    shareStepsSender.hidden = false;
+    shareStepsReceiver.hidden = true;
+    resetShareSteps();
     setShareStatus('', '');
   }
 }
@@ -2957,7 +3096,11 @@ function connectToShareSession() {
   shareSocket.onopen = () => {
     shareSocketReconnectAttempt = 0;
     shareSocket.send(JSON.stringify({ type: 'join', sessionId: shareSessionId, role: shareRole, receiverId }));
-    setShareStatus(shareRole === 'sender' ? 'Secure share session connected.' : 'Connected to the share session. Trying direct transfer…', 'waiting');
+    if (shareRole === 'sender') {
+      setShareStatus('Waiting for someone to open your link…', 'waiting');
+    } else {
+      setShareStatus('Connected. Looking for the sender…', 'waiting');
+    }
   };
 
   shareSocket.onmessage = async (event) => {
@@ -2975,14 +3118,17 @@ function connectToShareSession() {
             // before this socket dropped -- resume it directly instead of
             // re-running the WebRTC handshake and fallback timer from
             // scratch, which would just waste time with no data flowing.
-            setShareStatus('Reconnected. Resuming the encrypted transfer…', 'waiting');
+            setShareStatus('Reconnected — resuming…', 'waiting');
+            setShareStep('receiving');
             startEncryptedRelayDownload(receiveBytes);
           } else {
-            setShareStatus('Encrypted PDF is available. Trying WebRTC direct transfer…', 'waiting');
+            setShareStatus('Sender is ready. Connecting…', 'waiting');
+            setShareStep('receiving');
             startReceiverFallbackTimer();
           }
         } else if (!message.fileReady && message.role === 'receiver') {
-          setShareStatus('Waiting for the sender to finish preparing the encrypted PDF…', 'waiting');
+          setShareStatus('Waiting for the sender…', 'waiting');
+          setShareStep('waiting');
         }
       } else {
         setConnectedUserCount(message.receiverCount || 0);
@@ -2992,7 +3138,7 @@ function connectToShareSession() {
           // The sender's own socket reconnected mid-upload; the server told
           // us exactly how many bytes it already has, so resume from there
           // instead of leaving the upload stalled.
-          showIdleShareProgress('Reconnected. Resuming encrypted upload…');
+          showIdleShareProgress('Reconnected — resuming…');
           continueRelayUpload(message.relayReceivedBytes);
         }
       }
@@ -3009,7 +3155,9 @@ function connectToShareSession() {
       // no recipient is receiving it yet, so do not show a completed progress bar.
       hideShareProgress();
       setConnectedUserCount(message.receiverCount || 0);
-      setShareStatus(`Encrypted share is ready. ${message.receiverCount || 0} recipient(s) connected.`, 'success');
+      const count = message.receiverCount || 0;
+      setShareStatus(count > 0 ? `${count} connected — sending…` : 'Waiting for someone to open your link…', 'success');
+      setShareStep(count > 0 ? 'sending' : 'waiting');
       return;
     }
 
@@ -3017,18 +3165,21 @@ function connectToShareSession() {
       setConnectedUserCount(message.receiverCount || 0);
       if (!shareTransferStarted && shareEncryptedData && shareMeta && shareSocket?.readyState === WebSocket.OPEN) {
         shareTransferStarted = true;
-        showIdleShareProgress('Receiver connected. Preparing transfer…');
+        showIdleShareProgress('Preparing to send…');
         shareSocket.send(JSON.stringify({ type: 'file-meta', ...shareMeta }));
       }
       createPeerConnectionForReceiver(message.receiverId);
-      setShareStatus(`Encrypted share is ready. ${message.receiverCount || 0} recipient(s) connected.`, 'success');
+      setShareStatus(`${message.receiverCount || 0} connected — sending…`, 'success');
+      setShareStep('sending');
       return;
     }
 
     if (message.type === 'receiver-left' && shareRole === 'sender') {
       if (message.receiverId) closePeerConnection(message.receiverId);
       setConnectedUserCount(message.receiverCount || 0);
-      setShareStatus(`Encrypted share is ready. ${message.receiverCount || 0} recipient(s) connected.`, 'success');
+      const count = message.receiverCount || 0;
+      setShareStatus(count > 0 ? `${count} connected — sending…` : 'Waiting for someone to open your link…', 'success');
+      setShareStep(count > 0 ? 'sending' : 'waiting');
       return;
     }
 
@@ -3052,13 +3203,14 @@ function connectToShareSession() {
     }
 
     if (message.type === 'sender-left' && shareRole === 'receiver') {
-      setShareStatus('The sender disconnected. The encrypted relay will continue automatically.', 'waiting');
+      setShareStatus('Sender disconnected — finishing up…', 'waiting');
       startEncryptedRelayDownload(receiveBytes);
       return;
     }
 
     if (message.type === 'waiting-for-file') {
-      setShareStatus('The encrypted PDF is not ready yet. Waiting for the sender…', 'waiting');
+      setShareStatus('Waiting for the sender…', 'waiting');
+      setShareStep('waiting');
       return;
     }
 
@@ -3068,12 +3220,12 @@ function connectToShareSession() {
     }
 
     if (message.type === 'error') {
-      setShareStatus(message.message || 'Sharing error.', 'error');
+      setShareStatus(message.message || 'Something went wrong.', 'error');
     }
   };
 
   shareSocket.onerror = () => {
-    if (!shareClosedByUser) setShareStatus('Network connection interrupted. Reconnecting…', 'waiting');
+    if (!shareClosedByUser) setShareStatus('Reconnecting…', 'waiting');
   };
 
   shareSocket.onclose = () => {
@@ -3109,13 +3261,13 @@ async function continueRelayUpload(offset) {
   shareUploadInFlight = true;
   try {
     const safeOffset = Math.max(0, Math.min(offset, shareEncryptedData.byteLength));
-    setShareProgress(safeOffset, shareEncryptedData.byteLength, 'Uploading encrypted share…');
+    setShareProgress(safeOffset, shareEncryptedData.byteLength, 'Uploading…');
     for (let cursor = safeOffset; cursor < shareEncryptedData.byteLength; cursor += SHARE_CHUNK_BYTES) {
       await waitForSocketSpace();
       if (!shareSocket || shareSocket.readyState !== WebSocket.OPEN) return;
       const end = Math.min(cursor + SHARE_CHUNK_BYTES, shareEncryptedData.byteLength);
       shareSocket.send(shareEncryptedData.slice(cursor, end));
-      setShareProgress(end, shareEncryptedData.byteLength, 'Uploading encrypted share…');
+      setShareProgress(end, shareEncryptedData.byteLength, 'Uploading…');
     }
     if (shareSocket?.readyState === WebSocket.OPEN) shareSocket.send(JSON.stringify({ type: 'file-complete', sessionId: shareSessionId }));
   } finally {
@@ -3129,8 +3281,9 @@ async function receiveRelayControl(message) {
     if (offset === 0) receiveChunks = [];
     receiveMeta = message;
     receiveBytes = offset;
-    setShareProgress(receiveBytes, message.encryptedSize, `Receiving encrypted PDF…`);
-    setShareStatus('Using encrypted WebSocket fallback. The server can only relay ciphertext.', 'waiting');
+    setShareProgress(receiveBytes, message.encryptedSize, `Receiving…`);
+    setShareStatus('Using a backup secure connection…', 'waiting');
+    setShareStep('receiving');
     return;
   }
   if (message.type === 'relay-complete') {
@@ -3144,13 +3297,13 @@ async function receiveRelayChunk(data) {
   const chunk = data instanceof ArrayBuffer ? data : await data.arrayBuffer();
   receiveChunks.push(chunk);
   receiveBytes += chunk.byteLength;
-  if (receiveBytes > receiveMeta.encryptedSize) return setShareStatus('The encrypted transfer exceeded the expected size.', 'error');
-  setShareProgress(receiveBytes, receiveMeta.encryptedSize, 'Receiving encrypted PDF…');
+  if (receiveBytes > receiveMeta.encryptedSize) return setShareStatus('Something went wrong with the transfer. Please try again.', 'error');
+  setShareProgress(receiveBytes, receiveMeta.encryptedSize, 'Receiving…');
 }
 
 async function finishReceivedFile() {
   if (!receiveMeta || receiveBytes !== receiveMeta.encryptedSize) {
-    setShareStatus('The encrypted transfer ended before the whole PDF arrived. Resuming…', 'waiting');
+    setShareStatus('Connection dropped — resuming…', 'waiting');
     // Actually resume from where we left off instead of just saying so.
     startEncryptedRelayDownload(receiveBytes);
     return;
@@ -3160,17 +3313,18 @@ async function finishReceivedFile() {
     receiveCiphertext = ciphertext;
     const plaintext = await decryptReceivedFile(ciphertext, receiveMeta);
     const actualHash = await sha256Hex(plaintext);
-    if (actualHash !== receiveMeta.sha256) throw new Error('Integrity verification failed. The PDF was not opened.');
+    if (actualHash !== receiveMeta.sha256) throw new Error('Integrity check failed. The PDF was not opened.');
     receiveCompleted = true;
-    setShareProgress(receiveMeta.encryptedSize, receiveMeta.encryptedSize, 'Decrypted and verified');
-    setShareStatus('PDF received securely, verified and opened locally.', 'success');
+    setShareProgress(receiveMeta.encryptedSize, receiveMeta.encryptedSize, 'Done');
+    setShareStatus('PDF received and opened.', 'success');
+    setShareStep('done');
     await processNewFile(new File([plaintext], receiveMeta.name, { type: 'application/pdf' }), {
       skipServerInfo: true,
       transferredFields: receiveMeta.fields,
     });
     history.replaceState({}, '', location.pathname);
   } catch (error) {
-    setShareStatus(error.message || 'Could not decrypt the received PDF.', 'error');
+    setShareStatus(error.message ? `Could not open the received PDF: ${error.message}` : 'Could not open the received PDF. Ask for a new link.', 'error');
   }
 }
 
@@ -3220,7 +3374,7 @@ async function createPeerConnectionForReceiver(peerId) {
       const timer = shareWebRtcTimers.get(peerId);
       if (timer) clearTimeout(timer);
       shareWebRtcTimers.delete(peerId);
-      setShareStatus('Direct encrypted browser-to-browser transfer is active.', 'success');
+      setShareStatus('Connected directly to your recipient.', 'success');
     } else if (state === 'failed') {
       restartOrFallbackPeer(peerId);
     }
@@ -3240,19 +3394,22 @@ function setupSenderDataChannel(peerId, channel) {
   shareChannels.set(peerId, channel);
   channel.onopen = async () => {
     if (!shareEncryptedData || !shareMeta) return;
-    setShareProgress(0, shareEncryptedData.byteLength, 'Sending encrypted PDF directly…');
-    setShareStatus('Direct encrypted transfer connected. Sending PDF…', 'success');
+    setShareProgress(0, shareEncryptedData.byteLength, 'Sending…');
+    setShareStatus('Connected. Sending your PDF…', 'success');
+    setShareStep('sending');
     channel.send(JSON.stringify({ type: 'file-meta', ...shareMeta }));
     for (let offset = 0; offset < shareEncryptedData.byteLength; offset += SHARE_CHUNK_BYTES) {
       await waitForDataChannelSpace(channel);
       if (channel.readyState !== 'open') return restartOrFallbackPeer(peerId);
       const end = Math.min(offset + SHARE_CHUNK_BYTES, shareEncryptedData.byteLength);
       channel.send(shareEncryptedData.slice(offset, end));
-      setShareProgress(end, shareEncryptedData.byteLength, 'Sending encrypted PDF directly…');
+      setShareProgress(end, shareEncryptedData.byteLength, 'Sending…');
     }
     if (channel.readyState === 'open') {
       channel.send(JSON.stringify({ type: 'file-complete' }));
-      setShareProgress(shareEncryptedData.byteLength, shareEncryptedData.byteLength, 'Transfer complete');
+      setShareProgress(shareEncryptedData.byteLength, shareEncryptedData.byteLength, 'Sent');
+      setShareStatus('Your PDF was sent successfully.', 'success');
+      setShareStep('done');
     }
   };
   channel.onerror = () => restartOrFallbackPeer(peerId);
@@ -3279,13 +3436,13 @@ async function restartOrFallbackPeer(peerId) {
     const offer = await peer.createOffer({ iceRestart: true });
     await peer.setLocalDescription(offer);
     sendSignal({ receiverId: peerId, payload: { description: peer.localDescription } });
-    setShareStatus('Network changed. Retrying the direct connection…', 'waiting');
+    setShareStatus('Network changed — reconnecting…', 'waiting');
     setTimeout(() => {
-      if (peer.connectionState !== 'connected') setShareStatus('Direct connection unavailable. The encrypted WebSocket fallback is ready for this recipient.', 'waiting');
+      if (peer.connectionState !== 'connected') setShareStatus('Switched to a backup secure connection.', 'waiting');
       sharePeerFailed.delete(peerId);
     }, ICE_RESTART_DELAY_MS);
   } catch (_) {
-    setShareStatus('Direct connection unavailable. The encrypted WebSocket fallback is ready for this recipient.', 'waiting');
+    setShareStatus('Switched to a backup secure connection.', 'waiting');
   }
 }
 
@@ -3319,7 +3476,7 @@ async function createReceiverPeer() {
   peer.onconnectionstatechange = () => {
     if (['failed', 'disconnected'].includes(peer.connectionState) && !receiveCompleted) {
       try { peer.restartIce(); } catch (_) {}
-      setShareStatus('VPN/network change detected. Switching to the encrypted relay if direct transfer cannot recover…', 'waiting');
+      setShareStatus('Network changed — reconnecting…', 'waiting');
       setTimeout(() => {
         if (peer.connectionState !== 'connected' && !receiveCompleted) startEncryptedRelayDownload(receiveBytes);
       }, ICE_RESTART_DELAY_MS);
@@ -3355,7 +3512,8 @@ function setupReceiverDataChannel(channel) {
       return;
     }
     receiveUsingRelay = false;
-    setShareStatus('Direct encrypted browser-to-browser transfer is active.', 'success');
+    setShareStatus('Connected directly to the sender.', 'success');
+    setShareStep('receiving');
   };
   channel.onmessage = async event => {
     if (receiveUsingRelay || receiveCompleted) return;
@@ -3367,7 +3525,7 @@ function setupReceiverDataChannel(channel) {
         receiveMeta = message;
         receiveChunks = [];
         receiveBytes = 0;
-        setShareProgress(0, message.encryptedSize, 'Receiving encrypted PDF directly…');
+        setShareProgress(0, message.encryptedSize, 'Receiving…');
       } else if (message.type === 'file-complete') {
         await finishReceivedFile();
       }
@@ -3389,7 +3547,7 @@ function sendSignal({ receiverId: targetReceiverId, payload }) {
 
 async function startSendingShare() {
   if (!activeFile || !crypto.subtle || !window.RTCPeerConnection) {
-    return setShareStatus('This browser does not support the secure sharing features required by PDF Seal.', 'error');
+    return setShareStatus('Your browser doesn’t support secure sharing. Try Chrome, Firefox, or Edge.', 'error');
   }
   showIdleShareProgress();
   shareClosedByUser = false;
@@ -3397,8 +3555,9 @@ async function startSendingShare() {
   shareSessionId = createSessionId();
   shareStarted = true;
   shareTransferStarted = false;
+  setShareStep('prepare');
   try {
-    setShareStatus('Encrypting the PDF in your browser…', 'waiting');
+    setShareStatus('Encrypting your PDF…', 'waiting');
     const shareToken = createCompactShareToken();
     const keyBytes = await deriveShareKeyBytes(shareToken);
     const encrypted = await encryptShareFile(activeFile, keyBytes);
@@ -3407,7 +3566,8 @@ async function startSendingShare() {
     document.getElementById('startShareBtn').hidden = true;
     document.getElementById('shareLinkRow').hidden = false;
     document.getElementById('shareLink').value = `${location.origin}/share/${shareSessionId}?k=${shareToken}`;
-    setShareStatus('PDF encrypted locally. Connecting to the secure sharing service…', 'waiting');
+    setShareStatus('Link ready. Share it with your recipient.', 'waiting');
+    setShareStep('waiting');
     connectToShareSession();
   } catch (error) {
     setShareStatus(error.message || 'Could not prepare secure sharing.', 'error');
@@ -3421,17 +3581,21 @@ async function startReceivingShare(sessionId) {
   shareStarted = true;
   resetShareProgress();
   shareModal.querySelector('.share-modal-box').classList.add('is-receiver');
-  document.getElementById('shareModalTitle').textContent = 'Receive PDF securely';
-  document.getElementById('shareDescription').textContent = 'Your browser will try a direct encrypted WebRTC transfer first. If the VPN, firewall or network changes interrupt it, PDF Seal automatically switches to an encrypted WebSocket relay.';
-  document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' AES-256-GCM end-to-end encryption · the server never receives the decryption key or plaintext PDF';
-  document.getElementById('shareRecipientNote').textContent = 'The encryption key is contained in this URL fragment and is not sent to the server. The share session expires after 15 minutes.';
+  document.getElementById('shareModalTitle').textContent = 'Receiving a PDF';
+  document.getElementById('shareDescription').textContent = 'Someone shared a PDF with you. It downloads securely and opens automatically once the transfer finishes.';
+  document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' Encrypted transfer';
+  document.getElementById('shareRecipientNote').textContent = 'This link works for 15 minutes.';
   document.getElementById('shareRecipientNote').hidden = false;
   document.getElementById('startShareBtn').hidden = true;
   document.getElementById('cancelShareBtn').textContent = 'Close';
+  shareStepsSender.hidden = true;
+  shareStepsReceiver.hidden = false;
+  resetShareSteps();
+  setShareStep('connecting');
   openShareModal();
   try {
     await importReceiveKey();
-    setShareStatus('Joining the encrypted share session…', 'waiting');
+    setShareStatus('Connecting…', 'waiting');
     connectToShareSession();
   } catch (error) {
     setShareStatus(error.message || 'This share link is invalid.', 'error');
