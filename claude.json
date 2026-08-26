@@ -2,13 +2,6 @@
   "name": "pdf-seal",
   "description": "PDF editor for preparing documents for signing workflows",
   "version": "1.0.0",
-  "instructions": ".claude/instructions.md",
-  "agents": {
-    "pdf-editing": ".claude/agents/pdf-editing.md",
-    "server-routes": ".claude/agents/server-routes.md",
-    "ui-features": ".claude/agents/ui-features.md",
-    "sharing": ".claude/agents/sharing.md"
-  },
   "build": {
     "command": "npm run build",
     "outputDir": "dist"
