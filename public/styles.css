@@ -267,6 +267,25 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   border-radius: 999px;
   text-transform: uppercase;
 }
+.raw-panel-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--coral);
+  background: rgba(255, 99, 92, 0.1);
+  color: var(--coral);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  animation: rawPanelBadgeIn 0.25s ease;
+}
+@keyframes rawPanelBadgeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
 
 @media (max-width: 1180px) {
   .section-nav-label { display: none; }
@@ -2620,14 +2639,6 @@ body.hide-raw-pdf-data .diff-raw-objects {
   border-radius: 4px;
   animation: marchingAnts 0.45s linear infinite;
   z-index: 3;
-}
-
-.diff-object-text-highlight {
-  position: absolute;
-  border: 1.5px solid rgba(69, 123, 157, 0.75);
-  background: rgba(69, 123, 157, 0.18);
-  border-radius: 3px;
-  z-index: 4;
 }
 
 @keyframes marchingAnts {

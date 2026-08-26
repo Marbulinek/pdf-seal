@@ -164,7 +164,7 @@
           <input type="checkbox" id="settingsShowRawData">
           <span>Show advanced PDF raw data</span>
         </div>
-        <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions.</p>
+        <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions — each marked with a "Raw" badge, and opened automatically.</p>
       </label>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelSettingsBtn">Cancel</button>
@@ -304,7 +304,7 @@
             <label for="editRequired">Required Field</label>
           </div>
           <details class="field-details" id="fieldDetailsBlock">
-            <summary>Field Details (raw PDF properties)</summary>
+            <summary>Field Details (raw PDF properties) <span class="raw-panel-badge">Raw</span></summary>
             <div class="field-details-body" id="fieldDetailsBody"></div>
           </details>
 
@@ -375,7 +375,7 @@
           </div>
 
           <details class="meta-advanced" id="metaAdvancedDetails">
-            <summary>Advanced — raw PDF structure</summary>
+            <summary>Advanced — raw PDF structure <span class="raw-panel-badge">Raw</span></summary>
             <div class="meta-advanced-body">
               <div class="meta-search-wrap">
                 <label for="metaSearchInput" class="sr-only">Search document metadata</label>
@@ -733,6 +733,7 @@
     }
     if (settingsSaveBtn) {
       settingsSaveBtn.addEventListener('click', () => {
+        const previousSettings = loadSettings();
         const nextSettings = {
           addRevisionByDefault: Boolean(settingsAddRevisionInput?.checked),
           showRawPdfData: Boolean(settingsShowRawDataInput?.checked),
@@ -740,6 +741,30 @@
         saveSettings(nextSettings);
         applySettingsToUi();
         closeSettingsModal();
+
+        if (nextSettings.addRevisionByDefault !== previousSettings.addRevisionByDefault) {
+          showNotification(
+            nextSettings.addRevisionByDefault
+              ? 'Enabled: a revision entry will be added automatically for changes.'
+              : 'Disabled: revision entries will no longer be added automatically for changes.',
+            'info',
+            6000,
+          );
+        }
+
+        if (nextSettings.showRawPdfData !== previousSettings.showRawPdfData) {
+          if (nextSettings.showRawPdfData) {
+            document.getElementById('metaAdvancedDetails')?.setAttribute('open', '');
+            document.getElementById('fieldDetailsBlock')?.setAttribute('open', '');
+          }
+          showNotification(
+            nextSettings.showRawPdfData
+              ? 'Enabled advanced raw PDF data panels — look for the "Raw" badge in MetaData, Signatures, and Revisions.'
+              : 'Disabled advanced raw PDF data panels.',
+            'info',
+            8000,
+          );
+        }
       });
     }
     [settingsCancelBtn, settingsCloseBtn].forEach((btn) => {
@@ -4288,11 +4313,7 @@ function parsePreviewRects(rawRects) {
     .filter(Boolean);
 }
 
-function rectsIntersect(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-}
-
-async function drawHoveredDiffObjectOverlay(page, pdfRects) {
+async function drawHoveredDiffObjectOverlay(pdfRects) {
   if (!Array.isArray(pdfRects) || !pdfRects.length || !currentViewport) return;
   overlayLayer.innerHTML = '';
 
@@ -4302,36 +4323,6 @@ async function drawHoveredDiffObjectOverlay(page, pdfRects) {
     applyRectToOverlay(overlay, pdfRect);
     overlayLayer.appendChild(overlay);
   });
-
-  if (!page) return;
-
-  try {
-    const textContent = await page.getTextContent({ normalizeWhitespace: false });
-    textContent.items.forEach((item) => {
-      const itemText = typeof item.str === 'string' ? item.str : '';
-      if (!itemText || !itemText.trim()) return;
-
-      const transform = Array.isArray(item.transform) ? item.transform : [1, 0, 0, 1, 0, 0];
-      const x = transform[4] ?? 0;
-      const y = transform[5] ?? 0;
-      const width = Number.isFinite(item.width) && item.width > 0
-        ? item.width
-        : Math.max(8, Math.min(240, itemText.length * Math.max(5, Math.abs(transform[0] || 1))));
-      const height = Number.isFinite(item.height) && item.height > 0
-        ? item.height
-        : Math.max(8, Math.abs(transform[3] || 1));
-      const rect = { x, y: y - height, width, height };
-
-      if (!pdfRects.some((pdfRect) => rectsIntersect(pdfRect, rect))) return;
-
-      const textOverlay = document.createElement('div');
-      textOverlay.className = 'diff-object-text-highlight';
-      applyRectToOverlay(textOverlay, rect);
-      overlayLayer.appendChild(textOverlay);
-    });
-  } catch (_err) {
-    // Ignore text-layer failures and keep the box highlight visible.
-  }
 }
 
 async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects) {
@@ -4359,7 +4350,7 @@ async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects) {
   if (rendered === false) return;
   if (hoveredDiffObjectKey !== previewedObjectKey) return;
   setDiffBannerText(`Previewing ${previewedObjectKey} on Revision ${currentDiffToRevIndex} — page ${pageIndex + 1}`);
-  await drawHoveredDiffObjectOverlay(page, pdfRects);
+  await drawHoveredDiffObjectOverlay(pdfRects);
 }
 
 async function renderHoveredDiffVisualPagePreview(objectKey, pageIndex) {
@@ -4542,7 +4533,7 @@ function renderDiffResults(diff, fromRev, toRev) {
   const objectCount = diff.objectChanges.added.length + diff.objectChanges.removed.length + diff.objectChanges.modified.length;
   const objectsHtml = `
     <details class="diff-section diff-raw-objects">
-      <summary class="diff-section-title">${sectionTitleHtml(ICONS.layers, 'Raw PDF objects')} <span class="diff-empty-note">(${objectCount})</span></summary>
+      <summary class="diff-section-title">${sectionTitleHtml(ICONS.layers, 'Raw PDF objects')} <span class="diff-empty-note">(${objectCount})</span> <span class="raw-panel-badge">Raw</span></summary>
       ${
         !objectCount
           ? '<p class="diff-empty-note">No changes.</p>'
