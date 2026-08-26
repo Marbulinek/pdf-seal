@@ -128,10 +128,12 @@
         <h3>Upload as Base64</h3>
         <button type="button" class="modal-close" id="closeBase64ModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
-      <p class="modal-hint">Paste a Base64-encoded PDF below — with or without the <code>data:application/pdf;base64,</code> prefix.</p>
+      <p class="modal-hint">Paste a Base64-encoded PDF below — with or without the <code>data:application/pdf;base64,</code> prefix. Leading/trailing <code>"</code> or <code>'</code> characters are removed automatically.</p>
       <div class="modal-textarea-toolbar">
-        <button type="button" class="icon-btn modal-nav-btn" id="base64JumpTopBtn" aria-label="Jump to top"><span class="icon icon-chevron-up" aria-hidden="true"></span></button>
-        <button type="button" class="icon-btn modal-nav-btn" id="base64JumpBottomBtn" aria-label="Jump to bottom"><span class="icon icon-chevron-down" aria-hidden="true"></span></button>
+        <span class="base64-validity is-idle" id="base64Validity">
+          <span class="icon icon-info-circle base64-validity-icon" aria-hidden="true"></span>
+          <span class="base64-validity-text">Insert base64 string to validate</span>
+        </span>
       </div>
       <textarea class="modal-textarea" id="base64Input" placeholder="JVBERi0xLjQK..." spellcheck="false"></textarea>
       <div class="modal-status" id="base64ModalStatus"></div>
@@ -162,7 +164,7 @@
           <input type="checkbox" id="settingsShowRawData">
           <span>Show advanced PDF raw data</span>
         </div>
-        <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions.</p>
+        <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions — each marked with a "Raw" badge, and opened automatically.</p>
       </label>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelSettingsBtn">Cancel</button>
@@ -302,7 +304,7 @@
             <label for="editRequired">Required Field</label>
           </div>
           <details class="field-details" id="fieldDetailsBlock">
-            <summary>Field Details (raw PDF properties)</summary>
+            <summary>Field Details (raw PDF properties) <span class="raw-panel-badge">Raw</span></summary>
             <div class="field-details-body" id="fieldDetailsBody"></div>
           </details>
 
@@ -373,7 +375,7 @@
           </div>
 
           <details class="meta-advanced" id="metaAdvancedDetails">
-            <summary>Advanced — raw PDF structure</summary>
+            <summary>Advanced — raw PDF structure <span class="raw-panel-badge">Raw</span></summary>
             <div class="meta-advanced-body">
               <div class="meta-search-wrap">
                 <label for="metaSearchInput" class="sr-only">Search document metadata</label>
@@ -485,7 +487,7 @@
         <img class="share-hero-seal" src="/assets/images/seal-sharing.jpg" alt="" aria-hidden="true">
         <div class="share-modal-hero-copy">
           <p class="modal-hint" id="shareDescription">Create a private link to this PDF. Only people you send it to can open it.</p>
-          <div class="share-security-note" id="shareSecurityNote"><span class="icon icon-lock" aria-hidden="true"></span> Encrypted · link expires in 15 minutes</div>
+          <div class="share-security-note" id="shareSecurityNote"><span class="icon icon-lock" aria-hidden="true"></span> Encrypted · link expires automatically</div>
         </div>
       </div>
 
@@ -731,6 +733,7 @@
     }
     if (settingsSaveBtn) {
       settingsSaveBtn.addEventListener('click', () => {
+        const previousSettings = loadSettings();
         const nextSettings = {
           addRevisionByDefault: Boolean(settingsAddRevisionInput?.checked),
           showRawPdfData: Boolean(settingsShowRawDataInput?.checked),
@@ -738,6 +741,30 @@
         saveSettings(nextSettings);
         applySettingsToUi();
         closeSettingsModal();
+
+        if (nextSettings.addRevisionByDefault !== previousSettings.addRevisionByDefault) {
+          showNotification(
+            nextSettings.addRevisionByDefault
+              ? 'Enabled: a revision entry will be added automatically for changes.'
+              : 'Disabled: revision entries will no longer be added automatically for changes.',
+            'info',
+            6000,
+          );
+        }
+
+        if (nextSettings.showRawPdfData !== previousSettings.showRawPdfData) {
+          if (nextSettings.showRawPdfData) {
+            document.getElementById('metaAdvancedDetails')?.setAttribute('open', '');
+            document.getElementById('fieldDetailsBlock')?.setAttribute('open', '');
+          }
+          showNotification(
+            nextSettings.showRawPdfData
+              ? 'Enabled advanced raw PDF data panels — look for the "Raw" badge in MetaData, Signatures, and Revisions.'
+              : 'Disabled advanced raw PDF data panels.',
+            'info',
+            8000,
+          );
+        }
       });
     }
     [settingsCancelBtn, settingsCloseBtn].forEach((btn) => {
@@ -768,6 +795,18 @@
       info: '<span class="icon icon-info-circle-notif" aria-hidden="true"></span>',
       loading: '<span class="spinner notification-spinner" aria-hidden="true"></span>',
     };
+
+    // Server error responses are JSON (`{ "error": "..." }`); surface just the
+    // message text instead of dumping the raw JSON body into a toast.
+    async function extractErrorMessage(response) {
+      const text = await response.text();
+      try {
+        const parsed = JSON.parse(text);
+        return parsed?.error || text;
+      } catch {
+        return text;
+      }
+    }
 
     // duration: ms before auto-dismiss, or 0 for a persistent notification
     // (e.g. a "loading" toast) that the caller dismisses itself by calling
@@ -1009,14 +1048,38 @@
     const base64Modal = document.getElementById('base64UploadModal');
     const base64Input = document.getElementById('base64Input');
     const base64ModalStatus = document.getElementById('base64ModalStatus');
+    const base64Validity = document.getElementById('base64Validity');
+    const base64ValidityIcon = base64Validity.querySelector('.base64-validity-icon');
+    const base64ValidityText = base64Validity.querySelector('.base64-validity-text');
 
     function setBase64ModalStatus(msg, type = 'error') {
       base64ModalStatus.textContent = msg;
       base64ModalStatus.className = `modal-status ${type}`;
     }
 
+    const BASE64_VALIDITY_COPY = {
+      idle: { icon: 'icon-info-circle', text: 'Insert base64 string to validate' },
+      valid: { icon: 'icon-check-circle', text: 'Valid Base64 PDF' },
+      invalid: { icon: 'icon-alert-circle', text: 'Not a valid PDF' },
+    };
+
+    // state: 'idle' | 'valid' | 'invalid'
+    function setBase64Validity(state) {
+      const { icon, text } = BASE64_VALIDITY_COPY[state] || BASE64_VALIDITY_COPY.idle;
+      base64Validity.className = `base64-validity is-${state}`;
+      base64ValidityIcon.className = `icon base64-validity-icon ${icon}`;
+      base64ValidityText.textContent = text;
+    }
+
+    // Copying a Base64 string from some sources (e.g. a JSON value or a
+    // quoted shell variable) brings along a leading/trailing " or ' --
+    // strip those before trying to parse it.
+    function stripSurroundingQuotes(value) {
+      return value.replace(/^["']+/, '').replace(/["']+$/, '');
+    }
+
     function formatBase64Text(rawValue) {
-      const trimmed = String(rawValue || '').trim();
+      const trimmed = stripSurroundingQuotes(String(rawValue || '').trim());
       if (!trimmed) return '';
 
       const hasPrefix = /^data:application\/pdf;base64,/i.test(trimmed);
@@ -1032,6 +1095,7 @@
     function openBase64Modal() {
       base64Input.value = '';
       setBase64ModalStatus('');
+      setBase64Validity('idle');
       base64Modal.classList.add('is-open');
       setTimeout(() => base64Input.focus(), 50);
     }
@@ -1051,33 +1115,49 @@
     });
 
     function base64ToBytes(rawInput) {
-      // Strip an optional data: URL prefix and any surrounding whitespace/newlines
-      const cleaned = rawInput.trim().replace(/^data:application\/pdf;base64,/i, '').replace(/\s+/g, '');
+      // Strip an optional data: URL prefix, surrounding quotes, and any whitespace/newlines
+      const cleaned = stripSurroundingQuotes(rawInput.trim()).replace(/^data:application\/pdf;base64,/i, '').replace(/\s+/g, '');
       const binary = atob(cleaned);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       return bytes;
     }
 
+    // Decodes rawInput and checks for the "%PDF-" magic bytes. Throws if the
+    // text isn't valid Base64 at all; otherwise reports whether it's a PDF.
+    function analyzeBase64Pdf(rawInput) {
+      const bytes = base64ToBytes(rawInput);
+      const header = String.fromCharCode(...bytes.slice(0, 5));
+      return { bytes, isPdf: header === '%PDF-' };
+    }
+
+    let base64ValidityTimer = null;
+    function checkBase64Validity() {
+      const raw = base64Input.value;
+      if (!raw || !raw.trim()) {
+        setBase64Validity('idle');
+        return;
+      }
+      try {
+        setBase64Validity(analyzeBase64Pdf(raw).isPdf ? 'valid' : 'invalid');
+      } catch (err) {
+        setBase64Validity('invalid');
+      }
+    }
+    function scheduleBase64Validation() {
+      clearTimeout(base64ValidityTimer);
+      base64ValidityTimer = setTimeout(checkBase64Validity, 200);
+    }
+
+    base64Input.addEventListener('input', scheduleBase64Validation);
+
     base64Input.addEventListener('paste', () => {
       setTimeout(() => {
         base64Input.value = formatBase64Text(base64Input.value);
         const end = base64Input.value.length;
         base64Input.setSelectionRange(end, end);
+        checkBase64Validity();
       }, 0);
-    });
-
-    document.getElementById('base64JumpTopBtn').addEventListener('click', () => {
-      base64Input.focus();
-      base64Input.setSelectionRange(0, 0);
-      base64Input.scrollTop = 0;
-    });
-
-    document.getElementById('base64JumpBottomBtn').addEventListener('click', () => {
-      base64Input.focus();
-      const end = base64Input.value.length;
-      base64Input.setSelectionRange(end, end);
-      base64Input.scrollTop = base64Input.scrollHeight;
     });
 
     document.getElementById('loadBase64Btn').addEventListener('click', () => {
@@ -1087,22 +1167,20 @@
         return;
       }
 
-      let bytes;
+      let result;
       try {
-        bytes = base64ToBytes(raw);
+        result = analyzeBase64Pdf(raw);
       } catch (err) {
         setBase64ModalStatus('That doesn\'t look like valid Base64.', 'error');
         return;
       }
 
-      // Quick sanity check: PDFs start with the "%PDF-" magic bytes
-      const header = String.fromCharCode(...bytes.slice(0, 5));
-      if (header !== '%PDF-') {
+      if (!result.isPdf) {
         setBase64ModalStatus('Decoded data does not look like a PDF file.', 'error');
         return;
       }
 
-      const file = new File([bytes], 'uploaded-document.pdf', { type: 'application/pdf' });
+      const file = new File([result.bytes], 'uploaded-document.pdf', { type: 'application/pdf' });
       setBase64ModalStatus('Loading document...', 'success');
       closeBase64Modal();
       processNewFile(file);
@@ -1236,6 +1314,22 @@
 
       if (viewerDiffActive) exitDiffViewMode();
       const documentChanged = Boolean(activeFile && activeFile !== file);
+      // Snapshot the currently-loaded (valid) document so a failed upload
+      // (wrong password, corrupt file, etc.) can fall back to it instead of
+      // leaving the viewer showing stale pages while the side panels reset
+      // to their "no document" state.
+      const previousDocumentState = pdfDoc ? {
+        file: activeFile,
+        pdfDoc,
+        pageNum,
+        documentFields,
+        documentMeta,
+        documentRawInfo,
+        documentRawObjects,
+        documentOverview,
+        revisionsData,
+        revisionsLoadedForFile,
+      } : null;
       activeFile = file;
       if (documentChanged) resetShareForChangedDocument();
       if (documentChanged && !preservePage) {
@@ -1300,14 +1394,47 @@
         await renderPage(pageNum);
 
       } catch (err) {
-        pdfDoc = null;
-        documentMeta = null;
-        documentRawInfo = null;
-        documentRawObjects = null;
-        documentOverview = null;
-        renderMetaTree();
-        renderMetaOverview();
-        updateViewerControlsState();
+        if (previousDocumentState) {
+          // Roll back to the last valid document instead of leaving the
+          // viewer showing its stale canvas while the side panels reset.
+          activeFile = previousDocumentState.file;
+          pdfDoc = previousDocumentState.pdfDoc;
+          pageNum = previousDocumentState.pageNum;
+          documentFields = previousDocumentState.documentFields;
+          documentMeta = previousDocumentState.documentMeta;
+          documentRawInfo = previousDocumentState.documentRawInfo;
+          documentRawObjects = previousDocumentState.documentRawObjects;
+          documentOverview = previousDocumentState.documentOverview;
+          revisionsData = previousDocumentState.revisionsData;
+          revisionsLoadedForFile = previousDocumentState.revisionsLoadedForFile;
+          renderMetaTree();
+          renderMetaOverview();
+          document.getElementById('pageCount').textContent = pdfDoc.numPages;
+          updateViewerControlsState();
+          await renderPage(pageNum);
+          // The failed upload may have already fetched (and rendered) revision
+          // data for the bad file before this rollback ran -- re-sync the
+          // panel to the restored document instead of leaving it showing
+          // revisions for a file the viewer no longer displays.
+          if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+            loadRevisionsIfNeeded();
+          }
+        } else {
+          activeFile = null;
+          pdfDoc = null;
+          documentMeta = null;
+          documentRawInfo = null;
+          documentRawObjects = null;
+          documentOverview = null;
+          renderMetaTree();
+          renderMetaOverview();
+          updateViewerControlsState();
+          document.getElementById('pdfContainer').style.display = 'none';
+          document.getElementById('emptyStateViewer').style.display = 'flex';
+          if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+            loadRevisionsIfNeeded();
+          }
+        }
         showNotification('Error processing PDF: ' + err.message, 'error');
       }
     }
@@ -1836,7 +1963,7 @@
 
       try {
         const response = await fetch(endpoint, { method: 'POST', body: formData });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await extractErrorMessage(response));
 
         // Get updated PDF as a Blob and convert back to File object
         const blob = await response.blob();
@@ -3057,7 +3184,7 @@ function openShareModal() {
     shareModal.querySelector('.share-modal-box').classList.remove('is-receiver');
     document.getElementById('shareModalTitle').textContent = 'Share this PDF';
     document.getElementById('shareDescription').textContent = 'Create a private link to this PDF. Only people you send it to can open it.';
-    document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' Encrypted · link expires in 15 minutes';
+    document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' Encrypted · link expires automatically';
     document.getElementById('shareRecipientNote').textContent = 'Anyone with this link can open the PDF until the session expires.';
     document.getElementById('shareRecipientNote').hidden = false;
     document.getElementById('startShareBtn').hidden = false;
@@ -3584,7 +3711,7 @@ async function startReceivingShare(sessionId) {
   document.getElementById('shareModalTitle').textContent = 'Receiving a PDF';
   document.getElementById('shareDescription').textContent = 'Someone shared a PDF with you. It downloads securely and opens automatically once the transfer finishes.';
   document.getElementById('shareSecurityNote').innerHTML = ICONS.lock + ' Encrypted transfer';
-  document.getElementById('shareRecipientNote').textContent = 'This link works for 15 minutes.';
+  document.getElementById('shareRecipientNote').textContent = 'This link works until the sender\'s session expires.';
   document.getElementById('shareRecipientNote').hidden = false;
   document.getElementById('startShareBtn').hidden = true;
   document.getElementById('cancelShareBtn').textContent = 'Close';
@@ -4186,11 +4313,7 @@ function parsePreviewRects(rawRects) {
     .filter(Boolean);
 }
 
-function rectsIntersect(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-}
-
-async function drawHoveredDiffObjectOverlay(page, pdfRects) {
+async function drawHoveredDiffObjectOverlay(pdfRects) {
   if (!Array.isArray(pdfRects) || !pdfRects.length || !currentViewport) return;
   overlayLayer.innerHTML = '';
 
@@ -4200,36 +4323,6 @@ async function drawHoveredDiffObjectOverlay(page, pdfRects) {
     applyRectToOverlay(overlay, pdfRect);
     overlayLayer.appendChild(overlay);
   });
-
-  if (!page) return;
-
-  try {
-    const textContent = await page.getTextContent({ normalizeWhitespace: false });
-    textContent.items.forEach((item) => {
-      const itemText = typeof item.str === 'string' ? item.str : '';
-      if (!itemText || !itemText.trim()) return;
-
-      const transform = Array.isArray(item.transform) ? item.transform : [1, 0, 0, 1, 0, 0];
-      const x = transform[4] ?? 0;
-      const y = transform[5] ?? 0;
-      const width = Number.isFinite(item.width) && item.width > 0
-        ? item.width
-        : Math.max(8, Math.min(240, itemText.length * Math.max(5, Math.abs(transform[0] || 1))));
-      const height = Number.isFinite(item.height) && item.height > 0
-        ? item.height
-        : Math.max(8, Math.abs(transform[3] || 1));
-      const rect = { x, y: y - height, width, height };
-
-      if (!pdfRects.some((pdfRect) => rectsIntersect(pdfRect, rect))) return;
-
-      const textOverlay = document.createElement('div');
-      textOverlay.className = 'diff-object-text-highlight';
-      applyRectToOverlay(textOverlay, rect);
-      overlayLayer.appendChild(textOverlay);
-    });
-  } catch (_err) {
-    // Ignore text-layer failures and keep the box highlight visible.
-  }
 }
 
 async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects) {
@@ -4257,7 +4350,7 @@ async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects) {
   if (rendered === false) return;
   if (hoveredDiffObjectKey !== previewedObjectKey) return;
   setDiffBannerText(`Previewing ${previewedObjectKey} on Revision ${currentDiffToRevIndex} — page ${pageIndex + 1}`);
-  await drawHoveredDiffObjectOverlay(page, pdfRects);
+  await drawHoveredDiffObjectOverlay(pdfRects);
 }
 
 async function renderHoveredDiffVisualPagePreview(objectKey, pageIndex) {
@@ -4440,7 +4533,7 @@ function renderDiffResults(diff, fromRev, toRev) {
   const objectCount = diff.objectChanges.added.length + diff.objectChanges.removed.length + diff.objectChanges.modified.length;
   const objectsHtml = `
     <details class="diff-section diff-raw-objects">
-      <summary class="diff-section-title">${sectionTitleHtml(ICONS.layers, 'Raw PDF objects')} <span class="diff-empty-note">(${objectCount})</span></summary>
+      <summary class="diff-section-title">${sectionTitleHtml(ICONS.layers, 'Raw PDF objects')} <span class="diff-empty-note">(${objectCount})</span> <span class="raw-panel-badge">Raw</span></summary>
       ${
         !objectCount
           ? '<p class="diff-empty-note">No changes.</p>'

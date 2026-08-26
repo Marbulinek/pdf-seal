@@ -267,6 +267,25 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   border-radius: 999px;
   text-transform: uppercase;
 }
+.raw-panel-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--coral);
+  background: rgba(255, 99, 92, 0.1);
+  color: var(--coral);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  animation: rawPanelBadgeIn 0.25s ease;
+}
+@keyframes rawPanelBadgeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
 
 @media (max-width: 1180px) {
   .section-nav-label { display: none; }
@@ -803,13 +822,39 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   display: flex;
   gap: 8px;
   margin-bottom: 10px;
+  min-height: 30px;
 }
 
-.modal-nav-btn {
-  width: 32px;
-  height: 32px;
-  font-size: 0.95rem;
-  box-shadow: none;
+.base64-validity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  animation: base64ValidityPop 0.15s ease;
+}
+.base64-validity.is-idle {
+  background: var(--cream);
+  color: var(--ocean-dark);
+  border: 1.5px solid var(--ice);
+  font-weight: 600;
+}
+.base64-validity.is-valid {
+  background: rgba(42, 157, 143, 0.15);
+  color: var(--success-dark);
+  border: 1.5px solid var(--success);
+}
+.base64-validity.is-invalid {
+  background: rgba(230, 57, 70, 0.1);
+  color: var(--coral-dark);
+  border: 1.5px solid var(--coral);
+}
+@keyframes base64ValidityPop {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .modal-actions {
@@ -1022,8 +1067,6 @@ input[type="number"]:focus, input[type="text"]:focus {
   font-size: 0.66rem;
   line-height: 1.45;
   color: var(--ocean-dark);
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 8px;
   padding-top: 5px;
   padding-bottom: 5px;
   width: 100%;
@@ -2598,14 +2641,6 @@ body.hide-raw-pdf-data .diff-raw-objects {
   z-index: 3;
 }
 
-.diff-object-text-highlight {
-  position: absolute;
-  border: 1.5px solid rgba(69, 123, 157, 0.75);
-  background: rgba(69, 123, 157, 0.18);
-  border-radius: 3px;
-  z-index: 4;
-}
-
 @keyframes marchingAnts {
   0%   { background-position:   0 0,   0 100%, 0   0,   100% 0; }
   100% { background-position: 20px 0, -20px 100%, 0 -20px, 100% 20px; }
@@ -2777,13 +2812,15 @@ body.hide-raw-pdf-data .diff-raw-objects {
 .diff-raw-objects > *:not(summary) { margin-top: 10px; }
 
 /* ---------- Global notification bar ---------- */
+/* Anchored bottom-right so toasts never sit over the topbar's Upload/
+   Download dropdown menus, regardless of topbar height or dropdown state. */
 .notification-stack {
   position: fixed;
-  top: 66px;
+  bottom: 16px;
   right: 16px;
   z-index: 999;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   gap: 10px;
   width: min(360px, calc(100vw - 32px));
   pointer-events: none;
@@ -2881,5 +2918,5 @@ body.hide-raw-pdf-data .diff-raw-objects {
 }
 
 @media (max-width: 640px) {
-  .notification-stack { top: auto; bottom: 12px; right: 8px; left: 8px; width: auto; }
+  .notification-stack { bottom: 12px; right: 8px; left: 8px; width: auto; }
 }
