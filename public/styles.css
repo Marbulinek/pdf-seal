@@ -803,13 +803,39 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   display: flex;
   gap: 8px;
   margin-bottom: 10px;
+  min-height: 30px;
 }
 
-.modal-nav-btn {
-  width: 32px;
-  height: 32px;
-  font-size: 0.95rem;
-  box-shadow: none;
+.base64-validity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  animation: base64ValidityPop 0.15s ease;
+}
+.base64-validity.is-idle {
+  background: var(--cream);
+  color: var(--ocean-dark);
+  border: 1.5px solid var(--ice);
+  font-weight: 600;
+}
+.base64-validity.is-valid {
+  background: rgba(42, 157, 143, 0.15);
+  color: var(--success-dark);
+  border: 1.5px solid var(--success);
+}
+.base64-validity.is-invalid {
+  background: rgba(230, 57, 70, 0.1);
+  color: var(--coral-dark);
+  border: 1.5px solid var(--coral);
+}
+@keyframes base64ValidityPop {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .modal-actions {
@@ -1022,8 +1048,6 @@ input[type="number"]:focus, input[type="text"]:focus {
   font-size: 0.66rem;
   line-height: 1.45;
   color: var(--ocean-dark);
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 8px;
   padding-top: 5px;
   padding-bottom: 5px;
   width: 100%;
@@ -2777,13 +2801,15 @@ body.hide-raw-pdf-data .diff-raw-objects {
 .diff-raw-objects > *:not(summary) { margin-top: 10px; }
 
 /* ---------- Global notification bar ---------- */
+/* Anchored bottom-right so toasts never sit over the topbar's Upload/
+   Download dropdown menus, regardless of topbar height or dropdown state. */
 .notification-stack {
   position: fixed;
-  top: 66px;
+  bottom: 16px;
   right: 16px;
   z-index: 999;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   gap: 10px;
   width: min(360px, calc(100vw - 32px));
   pointer-events: none;
@@ -2881,5 +2907,5 @@ body.hide-raw-pdf-data .diff-raw-objects {
 }
 
 @media (max-width: 640px) {
-  .notification-stack { top: auto; bottom: 12px; right: 8px; left: 8px; width: auto; }
+  .notification-stack { bottom: 12px; right: 8px; left: 8px; width: auto; }
 }
