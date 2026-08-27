@@ -59,7 +59,16 @@ type ShareRole = "sender" | "receiver";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
 const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES } });
 
-// Serve static files from the 'public' directory
+// Serve the self-hosted pdf.js vendor bundle (~1.3MB) with a long,
+// immutable cache: on a slow/constrained host, letting every colleague's
+// browser cache it across visits instead of re-fetching it each time saves
+// real bandwidth and avoids one more big synchronous read+send per request.
+// Scoped to /vendor only -- unlike index.html/styles.css, these files don't
+// change between deploys of the app itself.
+app.use("/vendor", express.static("public/vendor", { maxAge: "30d", immutable: true }));
+
+// Everything else in 'public' (index.html, styles.css, app JS) is served
+// without aggressive caching so a new deploy is picked up immediately.
 app.use(express.static("public"));
 app.use(express.json());
 
@@ -97,6 +106,35 @@ if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
+// Every route below cleans up its own temp files on completion (see
+// cleanupFiles()), but a hard crash mid-request -- a killed process, an
+// OOM abort -- skips that cleanup entirely, leaving the upload and/or
+// `modified_*.pdf` behind. On a host with a small, shared disk quota
+// those orphans just accumulate across restarts. Sweep anything stale on
+// boot rather than trying to guarantee cleanup runs on every exit path.
+const STALE_UPLOAD_AGE_MS = 60 * 60 * 1000; // 1 hour
+function sweepStaleUploads() {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(UPLOADS_DIR);
+  } catch (error) {
+    return logError("uploads-sweep", error);
+  }
+  const now = Date.now();
+  for (const entry of entries) {
+    try {
+      const fullPath = resolveUploadPath(entry);
+      const stats = fs.statSync(fullPath);
+      if (stats.isFile() && now - stats.mtimeMs >= STALE_UPLOAD_AGE_MS) {
+        fs.unlinkSync(fullPath);
+      }
+    } catch (error) {
+      logError("uploads-sweep", error, { entry });
+    }
+  }
+}
+sweepStaleUploads();
+
 app.get("/api/version", (req: Request, res: Response) => {
   try {
     const packageJsonPath = path.resolve(process.cwd(), "package.json");
@@ -131,17 +169,30 @@ function cleanupFiles(...paths: Array<string | null | undefined>) {
   }
 }
 
-async function persistRevisionSnapshot(tool: PdfSignatureTool, currentBytes: Uint8Array, nextBytes: Uint8Array) {
-  const existingChain = tool.getRevisionSnapshotChain();
-
+/**
+ * Append one more entry to the PDF's embedded revision-snapshot chain.
+ *
+ * `existingChain` must be read from `tool` BEFORE the caller clears it
+ * (see PdfSignatureTool.clearRevisionSnapshotChain()), and `leanBytes`
+ * must be a re-serialization of `tool` taken AFTER clearing it -- i.e.
+ * bytes that do NOT themselves contain the chain-so-far. Passing bytes
+ * that still embed the old chain would nest a full copy of every prior
+ * entry inside this new one, compounding on every future revision.
+ */
+async function persistRevisionSnapshot(
+  tool: PdfSignatureTool,
+  existingChain: Array<{ index: number; bytes: string }>,
+  originalBytes: Uint8Array,
+  leanBytes: Uint8Array,
+) {
   const baseEntries = existingChain.length
-    ? existingChain.map((entry: any) => ({ index: entry.index, bytes: entry.bytes }))
+    ? existingChain.map((entry) => ({ index: entry.index, bytes: entry.bytes }))
     : [];
 
   if (!baseEntries.length) {
-    const existingRevisions = await PdfRevisionTool.listRevisions(currentBytes);
+    const existingRevisions = await PdfRevisionTool.listRevisions(originalBytes);
     for (const revision of existingRevisions) {
-      const revisionBytes = await PdfRevisionTool.getRevisionBytes(currentBytes, revision.index);
+      const revisionBytes = await PdfRevisionTool.getRevisionBytes(originalBytes, revision.index);
       if (revisionBytes?.length) {
         baseEntries.push({ index: revision.index, bytes: Buffer.from(revisionBytes).toString('base64') });
       }
@@ -149,12 +200,12 @@ async function persistRevisionSnapshot(tool: PdfSignatureTool, currentBytes: Uin
   }
 
   if (!baseEntries.length) {
-    baseEntries.push({ index: 1, bytes: Buffer.from(currentBytes).toString('base64') });
+    baseEntries.push({ index: 1, bytes: Buffer.from(originalBytes).toString('base64') });
   }
 
   const nextEntry = {
     index: baseEntries[baseEntries.length - 1].index + 1,
-    bytes: Buffer.from(nextBytes).toString('base64'),
+    bytes: Buffer.from(leanBytes).toString('base64'),
   };
   baseEntries.push(nextEntry);
 
@@ -203,6 +254,7 @@ app.post(
       const safePath = resolveUploadPath(file.path);
       const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
       const originalBytes = fs.readFileSync(safePath);
+      const existingChain = tool.getRevisionSnapshotChain();
 
       // Parse incoming form data
       const page = parseInt(req.body.page, 10) || 0;
@@ -223,9 +275,10 @@ app.post(
 
       tool.addSignatureField(page, name, { x, y, width, height, required });
 
-      const updatedBytes = await tool.toBytes();
       if (addRevision) {
-        await persistRevisionSnapshot(tool, originalBytes, updatedBytes);
+        tool.clearRevisionSnapshotChain();
+        const leanBytes = await tool.toBytes();
+        await persistRevisionSnapshot(tool, existingChain, originalBytes, leanBytes);
       }
 
       outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
@@ -255,6 +308,7 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
     const safePath = resolveUploadPath(file.path);
     const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
     const originalBytes = fs.readFileSync(safePath);
+    const existingChain = tool.getRevisionSnapshotChain();
 
     const originalName = req.body.originalName || req.body.name;
     const newName = req.body.name || originalName;
@@ -278,8 +332,9 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
 
     tool.setFieldRequired(newName, required);
 
-    const updatedBytes = await tool.toBytes();
-    await persistRevisionSnapshot(tool, originalBytes, updatedBytes);
+    tool.clearRevisionSnapshotChain();
+    const leanBytes = await tool.toBytes();
+    await persistRevisionSnapshot(tool, existingChain, originalBytes, leanBytes);
 
     outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath, { baseDir: UPLOADS_DIR });
@@ -305,6 +360,7 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
     const safePath = resolveUploadPath(file.path);
     const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
     const originalBytes = fs.readFileSync(safePath);
+    const existingChain = tool.getRevisionSnapshotChain();
     const name = req.body.name || req.body.originalName;
 
     if (!name) {
@@ -313,8 +369,9 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
 
     tool.removeField(name);
 
-    const updatedBytes = await tool.toBytes();
-    await persistRevisionSnapshot(tool, originalBytes, updatedBytes);
+    tool.clearRevisionSnapshotChain();
+    const leanBytes = await tool.toBytes();
+    await persistRevisionSnapshot(tool, existingChain, originalBytes, leanBytes);
 
     outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath, { baseDir: UPLOADS_DIR });
@@ -423,7 +480,15 @@ const server = http.createServer(app);
 const MAX_SHARE_BYTES = 25 * 1024 * 1024;
 const SHARE_CHUNK_BYTES = 64 * 1024;
 const WS_HIGH_WATER_MARK = 512 * 1024;
-const SHARE_MAX_SESSIONS_MEMORY_BYTES = 200 * 1024 * 1024;
+// Total in-memory budget for ALL concurrently-buffered share files combined
+// (each is a raw Buffer held in RAM for up to SHARE_SESSION_TTL_MS -- see
+// ShareFile.data below). The old 200MB default assumed a host with several
+// GB of headroom; on a constrained box (e.g. a 512MB container) that alone
+// can account for the majority of available RAM before Node's own heap or
+// concurrent PDF processing get a look-in. Override via env if the host has
+// more room to spare.
+const SHARE_MAX_SESSIONS_MEMORY_BYTES =
+  Number.parseInt(process.env.SHARE_MAX_SESSIONS_MEMORY_BYTES || '', 10) || 64 * 1024 * 1024;
 let shareMemoryBytes = 0;
 
 function configuredStunUrls(): string[] {
