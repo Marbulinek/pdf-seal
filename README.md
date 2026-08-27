@@ -64,6 +64,23 @@ Then open:
 http://localhost:3000
 ```
 
+### Run with Docker
+
+Build and run with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Or plain Docker:
+
+```bash
+docker build -t pdf-seal .
+docker run -p 3000:3000 pdf-seal
+```
+
+Then open the same `http://localhost:3000`. The image is a multi-stage build (Node 24, Alpine) that ships only production dependencies and the compiled `dist/` output.
+
 ## Tech stack
 
 - Express for the web server

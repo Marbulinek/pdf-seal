@@ -1,0 +1,10 @@
+node_modules
+dist
+uploads
+.git
+.github
+.claude
+.DS_Store
+npm-debug.log
+*.md
+claude.json
