@@ -716,6 +716,29 @@ class PdfSignatureTool {
     this.setCustomInfoEntry('PdfSealRevisionChainV1', JSON.stringify(entries));
   }
 
+  /**
+   * Remove the embedded revision-chain entry from the Info dictionary.
+   *
+   * Must be called -- and the document re-serialized -- before computing
+   * the byte snapshot that will become the chain's NEXT entry. Otherwise
+   * that snapshot would itself contain the entire chain-so-far (since it's
+   * just another Info dict entry, included in every save()), which then
+   * gets pushed into the chain array alongside the very entries it
+   * already duplicates internally. Each subsequent revision would repeat
+   * this, roughly doubling the document's size every time a field is
+   * added/edited/removed -- runaway growth that has no relationship to
+   * the PDF's actual content size.
+   */
+  clearRevisionSnapshotChain() {
+    const context = this.pdfDoc.context;
+    const infoRef = context.trailerInfo.Info;
+    if (!infoRef) return;
+    const info = context.lookup(infoRef, PDFDict);
+    if (!info) return;
+    info.delete(PDFName.of('PdfSealRevisionChainV1'));
+    info.delete(PDFName.of('PdfSealRevisionChain'));
+  }
+
   /** Append one more revision snapshot to the embedded chain. */
   addRevisionSnapshot(snapshotBytes: Uint8Array) {
     const entries = this.getRevisionSnapshotChain().map((entry: any) => ({
