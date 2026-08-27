@@ -7,6 +7,9 @@ on:
       - "package.json"
       - "Dockerfile"
 
+permissions:
+  contents: read
+
 jobs:
   push_to_docker_hub:
     name: Build and Push Docker Image
