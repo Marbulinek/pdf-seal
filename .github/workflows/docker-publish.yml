@@ -40,5 +40,4 @@ jobs:
           # Tags the image with the package.json version, the commit SHA, and 'latest'.
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/pdf-seal:${{ steps.package_version.outputs.version }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/pdf-seal:${{ github.sha }}
             ${{ secrets.DOCKERHUB_USERNAME }}/pdf-seal:latest
