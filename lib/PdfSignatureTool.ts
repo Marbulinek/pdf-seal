@@ -739,18 +739,6 @@ class PdfSignatureTool {
     info.delete(PDFName.of('PdfSealRevisionChain'));
   }
 
-  /** Append one more revision snapshot to the embedded chain. */
-  addRevisionSnapshot(snapshotBytes: Uint8Array) {
-    const entries = this.getRevisionSnapshotChain().map((entry: any) => ({
-      index: entry.index,
-      bytes: entry.bytes,
-    }));
-    const nextIndex = entries.length ? entries[entries.length - 1].index + 1 : 1;
-    entries.push({ index: nextIndex, bytes: Buffer.from(snapshotBytes).toString('base64') });
-    this.setRevisionSnapshotChain(entries);
-    return entries;
-  }
-
   /** Write an arbitrary/custom key into the Info dictionary (e.g. a tracking ID). */
   setCustomInfoEntry(key: string, value: string) {
     const context = this.pdfDoc.context;
@@ -1061,7 +1049,18 @@ class PdfSignatureTool {
    *   const info = tool.getDocumentInfoSummary();
    *   res.json({ fields: info.fields, metadata: info.metadata, rawInfo: info.rawInfo, rawObjects: info.rawObjects });
    */
-  getDocumentInfoSummary(options: { fileSize?: number | null; incrementalUpdates?: number | null } = {}) {
+  getDocumentInfoSummary(
+    options: { fileSize?: number | null; incrementalUpdates?: number | null; fieldsOnly?: boolean } = {},
+  ) {
+    // `fieldsOnly` skips getFullRawDump() (a walk of every object in the
+    // PDF) and the metadata/overview lookups -- callers that only need form
+    // fields for canvas rendering (i.e. every document load and edit) hit
+    // this path so that work isn't repeated on every keystroke of a signing
+    // session; the full summary is fetched separately, on demand, only when
+    // a view that actually shows it (Metadata) is opened.
+    if (options.fieldsOnly) {
+      return { fields: this.listFields() };
+    }
     return {
       metadata: this.getMetadata(),
       rawInfo: this.getRawInfoDict(),

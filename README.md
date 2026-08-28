@@ -37,6 +37,8 @@ Share sessions exist only in server memory and expire after 15 minutes.
 
 Open the revision panel to compare two versions of a PDF at the raw-object level. It reports added, removed, and modified signature fields as well as metadata changes between the two documents.
 
+Revision history is kept locally in your browser (IndexedDB), not on the server or embedded in the PDF, so every edit stays fast and the server only ever handles the current, lean document. Enable "Include revisions when exporting / sharing document" in Settings if you want the history bundled into a downloaded or shared file.
+
 ## Run the app
 
 Install dependencies:
@@ -45,7 +47,7 @@ Install dependencies:
 npm install
 ```
 
-Run locally in development (via ts-node, no build step):
+Run locally in development (via tsx, no build step):
 
 ```bash
 npm run dev
@@ -85,8 +87,11 @@ Then open the same `http://localhost:3000`. The image is a multi-stage build (No
 
 - Express for the web server
 - Multer for PDF uploads
+- ws for WebSocket share signaling
 - pdf-lib for reading and editing PDF form fields
-- TypeScript with ts-node for the app runtime
+- pdf.js (self-hosted, no CDN) for in-browser PDF preview
+- TypeScript with tsx for the app runtime
+- IndexedDB in the browser for local revision history
 
 ## Notes
 
