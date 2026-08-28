@@ -3056,8 +3056,9 @@ async function loadMetadataIfNeeded() {
     renderMetaOverview();
   } catch (err) {
     if (requestedFile !== activeFile) return;
-    if (overviewEl) overviewEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${err.message}</p>`;
-    if (treeEl) treeEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${err.message}</p>`;
+    const safeMessage = escapeHtml(err.message);
+    if (overviewEl) overviewEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
+    if (treeEl) treeEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
   } finally {
     if (requestedFile === activeFile) metadataLoading = false;
   }
