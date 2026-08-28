@@ -169,49 +169,6 @@ function cleanupFiles(...paths: Array<string | null | undefined>) {
   }
 }
 
-/**
- * Append one more entry to the PDF's embedded revision-snapshot chain.
- *
- * `existingChain` must be read from `tool` BEFORE the caller clears it
- * (see PdfSignatureTool.clearRevisionSnapshotChain()), and `leanBytes`
- * must be a re-serialization of `tool` taken AFTER clearing it -- i.e.
- * bytes that do NOT themselves contain the chain-so-far. Passing bytes
- * that still embed the old chain would nest a full copy of every prior
- * entry inside this new one, compounding on every future revision.
- */
-async function persistRevisionSnapshot(
-  tool: PdfSignatureTool,
-  existingChain: Array<{ index: number; bytes: string }>,
-  originalBytes: Uint8Array,
-  leanBytes: Uint8Array,
-) {
-  const baseEntries = existingChain.length
-    ? existingChain.map((entry) => ({ index: entry.index, bytes: entry.bytes }))
-    : [];
-
-  if (!baseEntries.length) {
-    const existingRevisions = await PdfRevisionTool.listRevisions(originalBytes);
-    for (const revision of existingRevisions) {
-      const revisionBytes = await PdfRevisionTool.getRevisionBytes(originalBytes, revision.index);
-      if (revisionBytes?.length) {
-        baseEntries.push({ index: revision.index, bytes: Buffer.from(revisionBytes).toString('base64') });
-      }
-    }
-  }
-
-  if (!baseEntries.length) {
-    baseEntries.push({ index: 1, bytes: Buffer.from(originalBytes).toString('base64') });
-  }
-
-  const nextEntry = {
-    index: baseEntries[baseEntries.length - 1].index + 1,
-    bytes: Buffer.from(leanBytes).toString('base64'),
-  };
-  baseEntries.push(nextEntry);
-
-  tool.setRevisionSnapshotChain(baseEntries);
-}
-
 function logShare(event: string, details?: Record<string, unknown>) {
   console.log(`[share] ${event}`, details ?? {});
 }
@@ -227,7 +184,12 @@ app.post("/api/info", uploadLimiter, upload.single("pdfDocument"), async (req: R
 
   try {
     const safePath = resolveUploadPath(file.path);
+    const fieldsOnly = req.body.fieldsOnly === "true";
     const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+    if (fieldsOnly) {
+      res.json(tool.getDocumentInfoSummary({ fieldsOnly: true }));
+      return;
+    }
     const fileBytes = fs.readFileSync(safePath);
     const incrementalUpdates = PdfRevisionTool.findRevisionBoundaries(fileBytes).length;
     res.json(tool.getDocumentInfoSummary({ fileSize: file.size, incrementalUpdates }));
@@ -253,8 +215,6 @@ app.post(
     try {
       const safePath = resolveUploadPath(file.path);
       const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-      const originalBytes = fs.readFileSync(safePath);
-      const existingChain = tool.getRevisionSnapshotChain();
 
       // Parse incoming form data
       const page = parseInt(req.body.page, 10) || 0;
@@ -264,22 +224,11 @@ app.post(
       const width = parseFloat(req.body.width) || 200;
       const height = parseFloat(req.body.height) || 60;
       const required = req.body.required === "true";
-      const addRevision = (() => {
-        const rawValue = req.body.addRevision;
-        if (rawValue === undefined || rawValue === null || rawValue === "") return true;
-        if (typeof rawValue === "string") {
-          return rawValue !== "false" && rawValue !== "0" && rawValue !== "no";
-        }
-        return Boolean(rawValue);
-      })();
 
       tool.addSignatureField(page, name, { x, y, width, height, required });
-
-      if (addRevision) {
-        tool.clearRevisionSnapshotChain();
-        const leanBytes = await tool.toBytes();
-        await persistRevisionSnapshot(tool, existingChain, originalBytes, leanBytes);
-      }
+      // Always strip any revision-history chain that may have been embedded
+      // in the uploaded file, so the output stays lean regardless of input.
+      tool.clearRevisionSnapshotChain();
 
       outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
       await tool.save(outputPath, { baseDir: UPLOADS_DIR });
@@ -307,8 +256,6 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
   try {
     const safePath = resolveUploadPath(file.path);
     const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-    const originalBytes = fs.readFileSync(safePath);
-    const existingChain = tool.getRevisionSnapshotChain();
 
     const originalName = req.body.originalName || req.body.name;
     const newName = req.body.name || originalName;
@@ -333,8 +280,6 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
     tool.setFieldRequired(newName, required);
 
     tool.clearRevisionSnapshotChain();
-    const leanBytes = await tool.toBytes();
-    await persistRevisionSnapshot(tool, existingChain, originalBytes, leanBytes);
 
     outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath, { baseDir: UPLOADS_DIR });
@@ -359,8 +304,6 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
   try {
     const safePath = resolveUploadPath(file.path);
     const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-    const originalBytes = fs.readFileSync(safePath);
-    const existingChain = tool.getRevisionSnapshotChain();
     const name = req.body.name || req.body.originalName;
 
     if (!name) {
@@ -370,8 +313,6 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
     tool.removeField(name);
 
     tool.clearRevisionSnapshotChain();
-    const leanBytes = await tool.toBytes();
-    await persistRevisionSnapshot(tool, existingChain, originalBytes, leanBytes);
 
     outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath, { baseDir: UPLOADS_DIR });
@@ -386,77 +327,145 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
   }
 });
 
-// --- API Endpoint: List PDF Revisions ---
-// Reads the uploaded PDF's own incremental-update history (see
-// lib/PdfRevisionTool.ts) and returns a summary of every revision found.
-// Stateless like every other route here: nothing is persisted, the same
-// file is simply re-uploaded by the client for the diff endpoint below.
-app.post("/api/revisions", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+// --- API Endpoint: Read a PDF's Embedded/Native Revision History ---
+// A file can carry its prior revisions in two different ways, and the
+// client hydrates its local IndexedDB revision store from whichever one
+// applies so the Revisions panel reflects what the file actually
+// contains instead of treating every upload as a single fresh document:
+//
+//   1. A PDF exported by this app with "Include revision history" has its
+//      history baked into its own Info dictionary (see
+//      PdfSignatureTool.setRevisionSnapshotChain) -- checked first.
+//   2. Any PDF that has been incrementally updated (the normal way a file
+//      gains a signature/annotation/form-fill after its first save, in
+//      Acrobat or any other tool -- see PdfRevisionTool's module doc)
+//      carries genuine `startxref ... %%EOF` revision boundaries. When
+//      there's no chain but more than one such boundary, each boundary's
+//      byte-range prefix is a complete, independently valid snapshot of
+//      the file as it existed at that point -- used as a fallback so
+//      revision history isn't only recognized for this app's own exports.
+//
+// Returns an empty array for a file with neither (the common case).
+app.post("/api/revisions/embedded", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   try {
     const safePath = resolveUploadPath(file.path);
-    const bytes = fs.readFileSync(safePath);
-    const revisions = await PdfRevisionTool.listRevisions(bytes);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+    let revisions = tool.getRevisionSnapshotChain();
+
+    if (revisions.length < 2) {
+      const fileBytes = fs.readFileSync(safePath);
+      const boundaries = PdfRevisionTool.findRevisionBoundaries(fileBytes);
+      if (boundaries.length > 1) {
+        revisions = boundaries.map((boundary, i) => ({
+          index: i + 1,
+          bytes: Buffer.from(fileBytes.subarray(0, boundary.endOffset)).toString("base64"),
+        }));
+      }
+    }
+
     res.json({ revisions });
   } catch (error: any) {
-    logError("api-revisions", error, { filePath: file.path });
+    logError("api-revisions-embedded", error, { filePath: file.path });
     res.status(500).json({ error: error?.message ?? "Unexpected error" });
   } finally {
     cleanupFiles(file.path);
+  }
+});
+
+// --- API Endpoint: Summarize PDF Revisions ---
+// The client now keeps each edit's snapshot locally (IndexedDB) rather than
+// embedding them in the PDF, so this takes N independent PDF buffers --
+// oldest first -- and summarizes each one. Stateless like every other route
+// here: nothing is persisted or correlated across requests.
+app.post("/api/revisions", uploadLimiter, upload.array("pdfDocument"), async (req: Request, res: Response) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  if (!files.length) return res.status(400).json({ error: "No files uploaded" });
+
+  try {
+    const byteArrays = files.map((f) => fs.readFileSync(resolveUploadPath(f.path)));
+    const revisions = await PdfRevisionTool.summarizeIndependentSnapshots(byteArrays);
+    res.json({ revisions });
+  } catch (error: any) {
+    logError("api-revisions", error);
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  } finally {
+    cleanupFiles(...files.map((f) => f.path));
   }
 });
 
 // --- API Endpoint: Diff Two PDF Revisions ---
-app.post("/api/revisions/diff", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
+// Diffs two independently-supplied PDF buffers directly against each other.
+app.post(
+  "/api/revisions/diff",
+  uploadLimiter,
+  upload.fields([{ name: "from", maxCount: 1 }, { name: "to", maxCount: 1 }]),
+  async (req: Request, res: Response) => {
+    const filesByField = (req.files || {}) as Record<string, Express.Multer.File[]>;
+    const fromFile = filesByField.from?.[0];
+    const toFile = filesByField.to?.[0];
+    if (!fromFile || !toFile) return res.status(400).json({ error: "Both 'from' and 'to' files are required." });
 
-  try {
-    const from = parseInt(req.body.from, 10);
-    const to = parseInt(req.body.to, 10);
-    if (!Number.isInteger(from) || !Number.isInteger(to)) {
-      throw new Error("Both 'from' and 'to' revision indices are required.");
+    try {
+      const fromBytes = fs.readFileSync(resolveUploadPath(fromFile.path));
+      const toBytes = fs.readFileSync(resolveUploadPath(toFile.path));
+      const diff = await PdfRevisionTool.diffSnapshotBytes(fromBytes, toBytes);
+      res.json({ diff });
+    } catch (error: any) {
+      logError("api-revisions-diff", error);
+      res.status(500).json({ error: error?.message ?? "Unexpected error" });
+    } finally {
+      cleanupFiles(fromFile.path, toFile.path);
     }
+  },
+);
 
-    const safePath = resolveUploadPath(file.path);
-    const bytes = fs.readFileSync(safePath);
-    const diff = await PdfRevisionTool.diffRevisions(bytes, from, to);
-    res.json({ diff });
-  } catch (error: any) {
-    logError("api-revisions-diff", error, { filePath: file.path });
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  } finally {
-    cleanupFiles(file.path);
-  }
-});
+// --- API Endpoint: Bundle Revision History Into a PDF ---
+// Export-time only: embeds the client's locally-stored revision snapshots
+// (oldest first) plus the current document into the PDF's revision-snapshot
+// chain, in one shot, and returns the resulting file. Everyday edits never
+// hit this route -- see the filesystem-safety and clearRevisionSnapshotChain
+// pattern shared with /api/add-signature etc.
+app.post(
+  "/api/revisions/bundle",
+  uploadLimiter,
+  upload.fields([{ name: "pdfDocument", maxCount: 1 }, { name: "priorRevisions", maxCount: 200 }]),
+  async (req: Request, res: Response) => {
+    const filesByField = (req.files || {}) as Record<string, Express.Multer.File[]>;
+    const file = filesByField.pdfDocument?.[0];
+    const priorFiles = filesByField.priorRevisions || [];
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
 
-// --- API Endpoint: Get PDF Byte Slice for a Specific Revision ---
-app.post("/api/revisions/snapshot", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
+    let outputPath: string | null = null;
 
-  try {
-    const revisionIndex = parseInt(req.body.revision, 10);
-    if (!Number.isInteger(revisionIndex) || revisionIndex < 1) {
-      throw new Error("A valid 'revision' index is required.");
+    try {
+      const safePath = resolveUploadPath(file.path);
+      const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+      tool.clearRevisionSnapshotChain();
+
+      const entries = priorFiles.map((f, i) => ({
+        index: i + 1,
+        bytes: fs.readFileSync(resolveUploadPath(f.path)).toString("base64"),
+      }));
+      const leanBytes = await tool.toBytes();
+      entries.push({ index: entries.length + 1, bytes: Buffer.from(leanBytes).toString("base64") });
+      tool.setRevisionSnapshotChain(entries);
+
+      outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+      await tool.save(outputPath, { baseDir: UPLOADS_DIR });
+
+      res.download(outputPath, "signed-document.pdf", () => {
+        cleanupFiles(file.path, ...priorFiles.map((f) => f.path), outputPath);
+      });
+    } catch (error: any) {
+      logError("api-revisions-bundle", error, { filePath: file.path });
+      cleanupFiles(file.path, ...priorFiles.map((f) => f.path), outputPath);
+      res.status(500).json({ error: error?.message ?? "Unexpected error" });
     }
-
-    const safePath = resolveUploadPath(file.path);
-    const bytes = fs.readFileSync(safePath);
-    const snapshotBytes = await PdfRevisionTool.getRevisionBytes(bytes, revisionIndex);
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="revision-${revisionIndex}.pdf"`);
-    res.send(Buffer.from(snapshotBytes));
-  } catch (error: any) {
-    logError("api-revisions-snapshot", error, { filePath: file.path });
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  } finally {
-    cleanupFiles(file.path);
-  }
-});
+  },
+);
 
 // Multer errors (e.g. file too large) land here instead of inside the route handlers.
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
@@ -467,6 +476,13 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
       });
     }
     return res.status(400).json({ error: err.message });
+  }
+  // busboy throws this when the request body ends before the closing
+  // multipart boundary arrives -- i.e. the client's upload was interrupted
+  // (tab closed, connection dropped, browser cut the stream short), not a
+  // server-side fault. Surface it as a plain 400 instead of a 500 stack trace.
+  if (err instanceof Error && err.message === "Unexpected end of form") {
+    return res.status(400).json({ error: "Upload was interrupted before it finished. Please try again." });
   }
   if (err) {
     logError("request-handler", err, { method: req.method, path: req.path });

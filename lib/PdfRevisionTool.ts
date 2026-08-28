@@ -61,21 +61,6 @@ function findRevisionBoundaries(bytes: Uint8Array): RevisionBoundary[] {
   return boundaries;
 }
 
-/** Byte slice for one revision, given its boundary (or the whole file for the final one). */
-function snapshotBytesFor(bytes: Uint8Array, boundaries: RevisionBoundary[], revisionIndex: number): Uint8Array {
-  if (boundaries.length === 0) {
-    if (revisionIndex !== 1) throw new Error(`Revision ${revisionIndex} does not exist.`);
-    return bytes;
-  }
-  const boundary = boundaries.find((b) => b.index === revisionIndex);
-  if (!boundary) throw new Error(`Revision ${revisionIndex} does not exist.`);
-  const isFinal = boundary.index === boundaries[boundaries.length - 1].index;
-  // Use the full original buffer for the final revision (rather than
-  // slicing at its own boundary) so any trailing bytes after the very
-  // last %%EOF -- stray whitespace, a final newline -- are never dropped.
-  return isFinal ? bytes : bytes.subarray(0, boundary.endOffset);
-}
-
 async function summarizeSnapshot(bytes: Uint8Array, revisionIndex: number, isFinal: boolean, boundary: RevisionBoundary | null) {
   const base = {
     index: revisionIndex,
@@ -126,57 +111,16 @@ async function summarizeSnapshot(bytes: Uint8Array, revisionIndex: number, isFin
 }
 
 /**
- * List every revision found in the file, oldest first, each with enough
- * summary data (metadata, fields, signatures, byte size) to render a
- * revision history UI without a second round-trip.
+ * Summarize a set of independently-stored revision snapshots (e.g. the
+ * client's local IndexedDB history), oldest first, each with enough summary
+ * data (metadata, fields, signatures, byte size) to render a revision
+ * history UI. Unlike the old embedded-chain approach, these snapshots are
+ * unrelated buffers -- there's no shared file to slice boundaries out of.
  */
-async function readEmbeddedSnapshots(bytes: Uint8Array) {
-  try {
-    const tool = await PdfSignatureTool.fromBytes(bytes);
-    const chain = tool.getRevisionSnapshotChain();
-    if (!Array.isArray(chain) || !chain.length) return null;
-
-    const snapshots: Array<{ index: number; bytes: Uint8Array }> = [];
-    for (const entry of chain) {
-      const snapshotBytes = Buffer.from(entry.bytes, 'base64');
-      if (!snapshotBytes.length) continue;
-      snapshots.push({
-        index: Number.isInteger(entry.index) ? entry.index : 1,
-        bytes: snapshotBytes,
-      });
-    }
-    return snapshots;
-  } catch (_err) {
-    return null;
-  }
-}
-
-async function listRevisions(bytes: Uint8Array) {
-  const embeddedSnapshots = await readEmbeddedSnapshots(bytes);
-  if (embeddedSnapshots?.length) {
-    const revisions = [];
-    for (let i = 0; i < embeddedSnapshots.length; i++) {
-      const snapshot = embeddedSnapshots[i];
-      if (!snapshot) continue;
-      revisions.push(await summarizeSnapshot(snapshot.bytes, snapshot.index, i === embeddedSnapshots.length - 1, null));
-    }
-    return revisions;
-  }
-
-  const boundaries = findRevisionBoundaries(bytes);
-
-  if (boundaries.length === 0) {
-    // No incremental updates detected -- report the whole file as a
-    // single revision so the UI has something consistent to render.
-    return [await summarizeSnapshot(bytes, 1, true, null)];
-  }
-
+async function summarizeIndependentSnapshots(byteArrays: Uint8Array[]) {
   const revisions = [];
-  for (let i = 0; i < boundaries.length; i++) {
-    const boundary = boundaries[i];
-    const isFinal = i === boundaries.length - 1;
-    const snapshotBytes = isFinal ? bytes : bytes.subarray(0, boundary.endOffset);
-    revisions.push(await summarizeSnapshot(snapshotBytes, boundary.index, isFinal, boundary));
+  for (let i = 0; i < byteArrays.length; i++) {
+    revisions.push(await summarizeSnapshot(byteArrays[i], i + 1, i === byteArrays.length - 1, null));
   }
   return revisions;
 }
@@ -1290,40 +1234,8 @@ async function diffSnapshotBytes(bytesA: Uint8Array, bytesB: Uint8Array) {
   };
 }
 
-/**
- * Diff two revisions of the same uploaded file by their 1-based revision
- * index (as returned by listRevisions()).
- */
-async function diffRevisions(bytes: Uint8Array, fromIndex: number, toIndex: number) {
-  const embeddedSnapshots = await readEmbeddedSnapshots(bytes);
-  if (embeddedSnapshots?.length) {
-    const bytesA = embeddedSnapshots.find((snapshot) => snapshot?.index === fromIndex)?.bytes;
-    const bytesB = embeddedSnapshots.find((snapshot) => snapshot?.index === toIndex)?.bytes;
-    if (bytesA && bytesB) {
-      return diffSnapshotBytes(bytesA, bytesB);
-    }
-  }
-
-  const boundaries = findRevisionBoundaries(bytes);
-  const bytesA = snapshotBytesFor(bytes, boundaries, fromIndex);
-  const bytesB = snapshotBytesFor(bytes, boundaries, toIndex);
-  return diffSnapshotBytes(bytesA, bytesB);
-}
-
-async function getRevisionBytes(bytes: Uint8Array, revisionIndex: number): Promise<Uint8Array> {
-  const embeddedSnapshots = await readEmbeddedSnapshots(bytes);
-  if (embeddedSnapshots?.length) {
-    const snapshot = embeddedSnapshots.find((entry) => entry?.index === revisionIndex);
-    if (snapshot) return snapshot.bytes;
-  }
-
-  const boundaries = findRevisionBoundaries(bytes);
-  return snapshotBytesFor(bytes, boundaries, revisionIndex);
-}
-
 export default {
-  listRevisions,
-  diffRevisions,
+  summarizeIndependentSnapshots,
+  diffSnapshotBytes,
   findRevisionBoundaries,
-  getRevisionBytes,
 };

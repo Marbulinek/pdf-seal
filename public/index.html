@@ -152,12 +152,12 @@
         <button type="button" class="modal-close" id="closeSettingsModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <p class="modal-hint">Choose the default behavior for document changes.</p>
-      <label class="checkbox-group checkbox-group-block" for="settingsAddRevision">
+      <label class="checkbox-group checkbox-group-block" for="settingsIncludeRevisionHistory">
         <div class="checkbox-group-main">
-          <input type="checkbox" id="settingsAddRevision">
-          <span>For changes, add revision entry</span>
+          <input type="checkbox" id="settingsIncludeRevisionHistory">
+          <span>Include revisions when exporting / sharing document</span>
         </div>
-        <p class="modal-hint settings-hint">If enabled, a new revision entry will be inserted into the document when you add a signature field.</p>
+        <p class="modal-hint settings-hint">Bundles your document's revision history into exported and shared files. Takes a bit longer to prepare, since every past revision is included.</p>
       </label>
       <label class="checkbox-group checkbox-group-block" for="settingsShowRawData">
         <div class="checkbox-group-main">
@@ -186,6 +186,7 @@
         <input type="text" class="modal-text-input" id="saveAsFileName" spellcheck="false" autocomplete="off">
         <span class="save-as-ext">.pdf</span>
       </div>
+      <p class="modal-hint settings-hint settings-hint-flush" id="saveAsHistoryHint">Whether revision history is bundled into this export is controlled by "Include revisions when exporting / sharing document" in Settings.</p>
       <div class="modal-status" id="saveAsModalStatus"></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelSaveAsBtn">Cancel</button>
@@ -601,14 +602,19 @@
     let documentRawInfo = null;    // raw/custom Info dictionary entries, from /api/info
     let documentRawObjects = null; // { trailer, objects } -- the entire raw PDF object table, from /api/info
     let documentOverview = null;   // simplified Metadata-panel overview (documentInfo/features/pages/attachments/xmp/documentIds), from /api/info
+    let documentMetaLoadedFor = null; // "<documentSessionId>:<revisionCount>" the above four fields correspond to (cache-invalidation key)
+    let metadataLoading = false;
     let currentViewport = null; // viewport of the currently rendered page
     let isPanning = false;
     let panDrag = null;
 
     // Revisions tool state
-    let revisionsData = null;        // array from /api/revisions, for the currently loaded activeFile
-    let revisionsLoadedForFile = null; // which activeFile revisionsData corresponds to (cache-invalidation key)
+    let documentSessionId = null;    // groups this document's revision snapshots in IndexedDB (see revisionStore below)
+    let documentRevisionCount = 0;   // how many revisions are stored under documentSessionId so far
+    let revisionsData = null;        // array from /api/revisions, for documentSessionId's current revision count
+    let revisionsLoadedForFile = null; // "<documentSessionId>:<revisionCount>" revisionsData corresponds to (cache-invalidation key)
     let revisionsLoading = false;
+    let revisionsReloadPending = false; // another load was requested while one was already in flight -- rerun once it settles
 
     // Visual Diff state
     let diffDocA = null;
@@ -638,6 +644,223 @@
     // Currently selected existing field (for the Edit panel + drag/resize)
     let activeField = null;
     let activeFieldDiv = null;
+
+    // ---------------------------------------------------------------
+    // Local revision store (IndexedDB)
+    // ---------------------------------------------------------------
+    // Every edit's resulting PDF is cached here, per document session, so
+    // the server never has to hold or re-transmit growing revision history
+    // -- it only sees the current, lean document on every edit. History is
+    // only ever bundled back into a PDF on explicit export (see the Save
+    // As / Copy Base64 flows), and lives only in this browser.
+    const REVISION_DB_NAME = 'pdfseal-revisions';
+    const REVISION_STORE_NAME = 'revisions';
+    let revisionDbPromise = null;
+
+    function openRevisionDb() {
+      if (revisionDbPromise) return revisionDbPromise;
+      revisionDbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(REVISION_DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(REVISION_STORE_NAME)) {
+            const store = db.createObjectStore(REVISION_STORE_NAME, { keyPath: ['sessionId', 'index'] });
+            store.createIndex('bySession', 'sessionId');
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('Could not open the local revision store.'));
+      }).catch((err) => {
+        // Don't cache a failed open forever -- a transient failure (e.g. a
+        // storage quota hiccup) would otherwise permanently disable local
+        // revision tracking for the rest of the page's life.
+        revisionDbPromise = null;
+        throw err;
+      });
+      return revisionDbPromise;
+    }
+
+    async function putRevision(sessionId, index, source) {
+      // Stored as an ArrayBuffer rather than the Blob/File itself -- Safari
+      // (particularly in Private Browsing) is known to fail to structured-clone
+      // Blob values into IndexedDB, which silently drops the write. A plain
+      // ArrayBuffer clones reliably everywhere.
+      const buffer = await source.arrayBuffer();
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
+        // savedAt backs sweepStaleRevisionSessions() below -- a session with
+        // no writes for a long time is one whose tab was closed (or crashed)
+        // without ever getting a chance to clean up after itself.
+        tx.objectStore(REVISION_STORE_NAME).put({ sessionId, index, buffer, savedAt: Date.now() });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('Could not store the revision locally.'));
+      });
+    }
+
+    function revisionToBlob(rev) {
+      return new Blob([rev.buffer], { type: 'application/pdf' });
+    }
+
+    async function deleteRevision(sessionId, index) {
+      if (!sessionId) return;
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
+        tx.objectStore(REVISION_STORE_NAME).delete([sessionId, index]);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('Could not remove that local revision.'));
+      });
+    }
+
+    async function listRevisionsForSession(sessionId) {
+      if (!sessionId) return [];
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
+        const req = tx.objectStore(REVISION_STORE_NAME).index('bySession').getAll(IDBKeyRange.only(sessionId));
+        req.onsuccess = () => resolve((req.result || []).sort((a, b) => a.index - b.index));
+        req.onerror = () => reject(req.error || new Error('Could not read local revisions.'));
+      });
+    }
+
+    async function getRevision(sessionId, index) {
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
+        const req = tx.objectStore(REVISION_STORE_NAME).get([sessionId, index]);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error || new Error('Could not read that revision.'));
+      });
+    }
+
+    async function clearRevisionSession(sessionId) {
+      if (!sessionId) return;
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(REVISION_STORE_NAME);
+        const idx = store.index('bySession');
+        const cursorReq = idx.openCursor(IDBKeyRange.only(sessionId));
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (cursor) {
+            cursor.delete();
+            cursor.continue();
+          }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('Could not clear local revisions.'));
+      });
+    }
+
+    // A session's data is only ever explicitly cleared while its own tab is
+    // still alive (on document replace, or the pagehide handler below) --
+    // a tab that's closed, crashed, or killed leaves its session's rows
+    // behind with no code path left to reach them. Since nothing renews
+    // `savedAt` once a session stops being edited, this sweep (run once on
+    // startup, before any new session exists) finds every session whose
+    // newest row is older than STALE_SESSION_MS and deletes it, so storage
+    // doesn't grow forever across browser/tab restarts.
+    const STALE_SESSION_MS = 6 * 60 * 60 * 1000; // 6 hours
+    async function sweepStaleRevisionSessions() {
+      const db = await openRevisionDb();
+      const lastSavedBySession = await new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
+        const req = tx.objectStore(REVISION_STORE_NAME).openCursor();
+        const result = new Map();
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (cursor) {
+            const { sessionId, savedAt } = cursor.value;
+            const prev = result.get(sessionId) || 0;
+            if ((savedAt || 0) > prev) result.set(sessionId, savedAt || 0);
+            cursor.continue();
+          } else {
+            resolve(result);
+          }
+        };
+        req.onerror = () => reject(req.error || new Error('Could not scan local revisions.'));
+      }).catch(() => new Map());
+
+      const cutoff = Date.now() - STALE_SESSION_MS;
+      const staleSessions = Array.from(lastSavedBySession.entries())
+        .filter(([, savedAt]) => savedAt < cutoff)
+        .map(([sessionId]) => sessionId);
+      for (const sessionId of staleSessions) {
+        await clearRevisionSession(sessionId).catch(() => {});
+      }
+    }
+    sweepStaleRevisionSessions().catch(() => {});
+
+    // Best-effort: attempt to clear the active session's data the moment
+    // this tab is closed/navigated away from or the browser quits. Not
+    // guaranteed to finish (the page can be torn down mid-transaction) --
+    // sweepStaleRevisionSessions() above is the reliable backstop for
+    // whatever this doesn't catch in time.
+    window.addEventListener('pagehide', () => {
+      if (documentSessionId) clearRevisionSession(documentSessionId).catch(() => {});
+    });
+
+    // Client-side counterpart to hydrateEmbeddedRevisions below, for a P2P-received
+    // file (which never gets sent to the server, see the skipServerInfo path in
+    // processNewFile). This app's own revision-chain format is stored as a custom
+    // Info dict entry, which pdf.js already exposes locally via getMetadata()'s
+    // info.Custom -- so the chain can be unpacked without any server round trip.
+    // Only understands this app's own bundle format, not a native incremental-update
+    // chain from another tool (that fallback requires the server-side parser below).
+    async function hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId) {
+      const meta = await pdfJsDoc.getMetadata().catch(() => null);
+      const custom = meta && meta.info && meta.info.Custom;
+      const rawChain = custom && (custom.PdfSealRevisionChainV1 || custom.PdfSealRevisionChain);
+      if (!rawChain) return;
+
+      let chain;
+      try {
+        chain = JSON.parse(rawChain);
+      } catch (_err) {
+        return;
+      }
+      if (!Array.isArray(chain)) return;
+      chain = chain.filter((entry) => entry && typeof entry === 'object' && typeof entry.bytes === 'string');
+      if (chain.length < 2) return;
+      if (sessionId !== documentSessionId) return; // a newer upload superseded this one
+
+      const sorted = chain.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const bytes = base64ToBytes(sorted[i].bytes);
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        await putRevision(sessionId, i + 1, blob);
+      }
+      if (sessionId !== documentSessionId) return;
+      await putRevision(sessionId, sorted.length, file);
+      documentRevisionCount = sorted.length;
+    }
+
+    // Unpacks a PDF's embedded revision chain (see /api/revisions/embedded)
+    // into local IndexedDB revisions 1..N-1, leaving revision N -- the
+    // already-stored current file -- untouched. Does nothing for a file with
+    // no embedded chain (i.e. one revision or fewer reported).
+    async function hydrateEmbeddedRevisions(file, sessionId) {
+      const formData = new FormData();
+      formData.append('pdfDocument', file);
+      const res = await fetch('/api/revisions/embedded', { method: 'POST', body: formData });
+      if (!res.ok) return;
+      const data = await res.json();
+      const chain = Array.isArray(data.revisions) ? data.revisions : [];
+      if (chain.length < 2) return;
+      if (sessionId !== documentSessionId) return; // a newer upload superseded this one
+
+      const sorted = chain.slice().sort((a, b) => a.index - b.index);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const bytes = base64ToBytes(sorted[i].bytes);
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        await putRevision(sessionId, i + 1, blob);
+      }
+      if (sessionId !== documentSessionId) return;
+      await putRevision(sessionId, sorted.length, file);
+      documentRevisionCount = sorted.length;
+    }
 
     // ---------------------------------------------------------------
     // Icon set (inline SVG, feather-style) used by markup generated in JS --
@@ -673,8 +896,8 @@
     const removeFieldBtn = document.getElementById('btnRemoveField');
     const settingsModal = document.getElementById('settingsModal');
     const settingsOpenBtn = document.getElementById('btnOpenSettings');
-    const settingsAddRevisionInput = document.getElementById('settingsAddRevision');
     const settingsShowRawDataInput = document.getElementById('settingsShowRawData');
+    const settingsIncludeRevisionHistoryInput = document.getElementById('settingsIncludeRevisionHistory');
     const settingsSaveBtn = document.getElementById('saveSettingsBtn');
     const settingsCancelBtn = document.getElementById('cancelSettingsBtn');
     const settingsCloseBtn = document.getElementById('closeSettingsModalBtn');
@@ -683,14 +906,15 @@
     function loadSettings() {
       try {
         const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (!raw) return { addRevisionByDefault: false, showRawPdfData: false };
+        if (!raw) return { showRawPdfData: false, includeRevisionHistoryByDefault: false };
         const parsed = JSON.parse(raw);
         return {
-          addRevisionByDefault: parsed && typeof parsed.addRevisionByDefault === 'boolean' ? parsed.addRevisionByDefault : false,
           showRawPdfData: parsed && typeof parsed.showRawPdfData === 'boolean' ? parsed.showRawPdfData : false,
+          includeRevisionHistoryByDefault:
+            parsed && typeof parsed.includeRevisionHistoryByDefault === 'boolean' ? parsed.includeRevisionHistoryByDefault : false,
         };
       } catch (_err) {
-        return { addRevisionByDefault: false, showRawPdfData: false };
+        return { showRawPdfData: false, includeRevisionHistoryByDefault: false };
       }
     }
 
@@ -704,8 +928,8 @@
 
     function applySettingsToUi() {
       const settings = loadSettings();
-      if (settingsAddRevisionInput) settingsAddRevisionInput.checked = settings.addRevisionByDefault;
       if (settingsShowRawDataInput) settingsShowRawDataInput.checked = settings.showRawPdfData;
+      if (settingsIncludeRevisionHistoryInput) settingsIncludeRevisionHistoryInput.checked = settings.includeRevisionHistoryByDefault;
       applyRawPdfDataVisibility(settings);
       return settings;
     }
@@ -735,22 +959,12 @@
       settingsSaveBtn.addEventListener('click', () => {
         const previousSettings = loadSettings();
         const nextSettings = {
-          addRevisionByDefault: Boolean(settingsAddRevisionInput?.checked),
           showRawPdfData: Boolean(settingsShowRawDataInput?.checked),
+          includeRevisionHistoryByDefault: Boolean(settingsIncludeRevisionHistoryInput?.checked),
         };
         saveSettings(nextSettings);
         applySettingsToUi();
         closeSettingsModal();
-
-        if (nextSettings.addRevisionByDefault !== previousSettings.addRevisionByDefault) {
-          showNotification(
-            nextSettings.addRevisionByDefault
-              ? 'Enabled: a revision entry will be added automatically for changes.'
-              : 'Disabled: revision entries will no longer be added automatically for changes.',
-            'info',
-            6000,
-          );
-        }
 
         if (nextSettings.showRawPdfData !== previousSettings.showRawPdfData) {
           if (nextSettings.showRawPdfData) {
@@ -811,7 +1025,10 @@
     // duration: ms before auto-dismiss, or 0 for a persistent notification
     // (e.g. a "loading" toast) that the caller dismisses itself by calling
     // the returned element's .dismissNotification().
-    function showNotification(message, type = 'info', duration = 6000) {
+    // closable: false hides the dismiss button, for notifications tied to an
+    // in-flight operation the user shouldn't be able to close early (e.g.
+    // exporting revisions before a download/copy completes).
+    function showNotification(message, type = 'info', duration = 6000, closable = true) {
       const stack = document.getElementById('notificationStack');
       if (!stack) return;
 
@@ -822,7 +1039,7 @@
       el.innerHTML = `
         <span class="notification-icon">${NOTIFICATION_ICONS[type] || NOTIFICATION_ICONS.info}</span>
         <span class="notification-message"></span>
-        <button type="button" class="notification-close" aria-label="Dismiss notification">&times;</button>
+        ${closable ? '<button type="button" class="notification-close" aria-label="Dismiss notification">&times;</button>' : ''}
         <span class="notification-progress"></span>
       `;
       el.querySelector('.notification-message').textContent = message;
@@ -861,7 +1078,7 @@
 
       el.addEventListener('mouseenter', pauseCountdown);
       el.addEventListener('mouseleave', startCountdown);
-      el.querySelector('.notification-close').addEventListener('click', dismiss);
+      el.querySelector('.notification-close')?.addEventListener('click', dismiss);
 
       stack.appendChild(el);
       requestAnimationFrame(() => el.classList.add('is-visible'));
@@ -956,7 +1173,7 @@
           document.body.dataset.activeSection = target;
           if (target !== 'signatures' && activeField) deselectActiveField();
           if (target !== 'revisions' && viewerDiffActive) exitDiffViewMode();
-          if (target === 'metadata') renderMetaTree();
+          if (target === 'metadata') loadMetadataIfNeeded();
           if (target === 'revisions') loadRevisionsIfNeeded();
           closeSectionNav();
         });
@@ -1327,8 +1544,11 @@
         documentRawInfo,
         documentRawObjects,
         documentOverview,
+        documentMetaLoadedFor,
         revisionsData,
         revisionsLoadedForFile,
+        documentSessionId,
+        documentRevisionCount,
       } : null;
       activeFile = file;
       if (documentChanged) resetShareForChangedDocument();
@@ -1336,6 +1556,44 @@
         userHasManuallyZoomed = false;
         document.querySelector('.viewer-column .viewer-scroll').classList.remove('is-zoomed');
       }
+
+      // Track this file as a local revision snapshot. An edit (isEdit)
+      // appends to the current session; anything else (a fresh upload,
+      // base64 paste, or an incoming P2P share) starts a new one and
+      // drops the previous session's now-orphaned snapshots.
+      const isEdit = Boolean(options.isEdit);
+      // What to undo in IndexedDB if this attempt fails below (wrong
+      // password, corrupt file, network drop) -- without this, a failed
+      // load/edit leaves its speculatively-stored revision (or whole new
+      // session) as a permanent orphan, since nothing else ever references
+      // it again once the in-memory state rolls back.
+      let pendingRevisionCleanup = null;
+      // The old session isn't dropped until this new load actually
+      // succeeds below -- clearing it up front would permanently lose the
+      // previous document's history the moment a *replacement* upload
+      // turns out to be a bad/corrupt file, even though the rollback path
+      // puts the old document itself right back on screen.
+      let previousSessionIdToClear = null;
+      if (isEdit && documentSessionId) {
+        documentRevisionCount += 1;
+        pendingRevisionCleanup = { type: 'index', sessionId: documentSessionId, index: documentRevisionCount };
+        await putRevision(documentSessionId, documentRevisionCount, file).catch(() => {});
+      } else {
+        previousSessionIdToClear = documentSessionId;
+        documentSessionId = createSessionId();
+        documentRevisionCount = 1;
+        pendingRevisionCleanup = { type: 'session', sessionId: documentSessionId };
+        await putRevision(documentSessionId, 1, file).catch(() => {});
+        // A file exported earlier with "Include revision history" carries
+        // its full prior history baked into its own Info dict -- unpack it
+        // into local revisions 1..N-1 (the just-stored single revision above
+        // stays as N) so the panel shows the file's actual history instead
+        // of treating it as a single fresh document. No-ops for a lean file.
+        if (!skipServerInfo) {
+          await hydrateEmbeddedRevisions(file, documentSessionId).catch(() => {});
+        }
+      }
+
       revisionsData = null;
       revisionsLoadedForFile = null;
       revisionsLoading = false;
@@ -1357,16 +1615,22 @@
         // A received P2P file must not be sent back to the server merely to
         // populate metadata. Local preview remains fully browser-side.
         if (!skipServerInfo) {
+          // Only form fields are needed to render the Signatures view (the
+          // default view on every load/edit) -- the full metadata/raw-object
+          // dump is expensive to compute and is fetched separately, lazily,
+          // only if/when the MetaData section is actually opened.
           const formData = new FormData();
           formData.append('pdfDocument', file);
+          formData.append('fieldsOnly', 'true');
           const res = await fetch('/api/info', { method: 'POST', body: formData });
           const data = await res.json();
           documentFields = data.fields || [];
-          documentMeta = data.metadata || null;
-          documentRawInfo = data.rawInfo || null;
-          documentRawObjects = data.rawObjects || null;
-          documentOverview = data.overview || null;
         }
+        documentMeta = null;
+        documentRawInfo = null;
+        documentRawObjects = null;
+        documentOverview = null;
+        documentMetaLoadedFor = null;
 
         // 2. Render PDF
         const arrayBuffer = await file.arrayBuffer();
@@ -1380,20 +1644,49 @@
         }
         pdfDoc = nextPdfDoc;
 
+        // A P2P-received file skipped hydrateEmbeddedRevisions() above (it requires
+        // a server round trip) -- recover its bundled revision history, if any, now
+        // that pdf.js has parsed the Info dict locally.
+        if (skipServerInfo) {
+          await hydrateEmbeddedRevisionsFromPdfDoc(nextPdfDoc, file, documentSessionId).catch(() => {});
+          revisionsData = null;
+          revisionsLoadedForFile = null;
+          if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+            loadRevisionsIfNeeded();
+          }
+        }
+
         // Metadata (and any other panel keyed off `pdfDoc`) can only render
         // correctly once `pdfDoc` itself is assigned above -- doing this any
         // earlier left whichever right-hand section was already active (e.g.
         // MetaData) showing its stale "no document" state until the user
-        // clicked away to another section and back.
-        renderMetaTree();
-        renderMetaOverview();
+        // clicked away to another section and back. The heavy metadata
+        // fetch itself only runs if that section is actually open right now.
+        if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
+          loadMetadataIfNeeded();
+        } else {
+          renderMetaTree();
+          renderMetaOverview();
+        }
 
         document.getElementById('pageCount').textContent = pdfDoc.numPages;
         pageNum = Math.min(Math.max(targetPage, 1), pdfDoc.numPages);
         updateViewerControlsState();
         await renderPage(pageNum);
 
+        // Only now that the replacement document has fully loaded is the
+        // previous document's local history actually unreachable -- safe
+        // to drop it.
+        if (previousSessionIdToClear) clearRevisionSession(previousSessionIdToClear).catch(() => {});
+
       } catch (err) {
+        if (pendingRevisionCleanup) {
+          if (pendingRevisionCleanup.type === 'session') {
+            clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
+          } else {
+            deleteRevision(pendingRevisionCleanup.sessionId, pendingRevisionCleanup.index).catch(() => {});
+          }
+        }
         if (previousDocumentState) {
           // Roll back to the last valid document instead of leaving the
           // viewer showing its stale canvas while the side panels reset.
@@ -1405,19 +1698,25 @@
           documentRawInfo = previousDocumentState.documentRawInfo;
           documentRawObjects = previousDocumentState.documentRawObjects;
           documentOverview = previousDocumentState.documentOverview;
+          documentMetaLoadedFor = previousDocumentState.documentMetaLoadedFor;
           revisionsData = previousDocumentState.revisionsData;
           revisionsLoadedForFile = previousDocumentState.revisionsLoadedForFile;
+          documentSessionId = previousDocumentState.documentSessionId;
+          documentRevisionCount = previousDocumentState.documentRevisionCount;
           renderMetaTree();
           renderMetaOverview();
           document.getElementById('pageCount').textContent = pdfDoc.numPages;
           updateViewerControlsState();
           await renderPage(pageNum);
-          // The failed upload may have already fetched (and rendered) revision
-          // data for the bad file before this rollback ran -- re-sync the
-          // panel to the restored document instead of leaving it showing
-          // revisions for a file the viewer no longer displays.
+          // The failed upload may have already fetched (and rendered) revision/
+          // metadata data for the bad file before this rollback ran -- re-sync
+          // the panel to the restored document instead of leaving it showing
+          // data for a file the viewer no longer displays.
           if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
             loadRevisionsIfNeeded();
+          }
+          if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
+            loadMetadataIfNeeded();
           }
         } else {
           activeFile = null;
@@ -1426,6 +1725,9 @@
           documentRawInfo = null;
           documentRawObjects = null;
           documentOverview = null;
+          documentMetaLoadedFor = null;
+          documentSessionId = null;
+          documentRevisionCount = 0;
           renderMetaTree();
           renderMetaOverview();
           updateViewerControlsState();
@@ -1969,7 +2271,7 @@
         const blob = await response.blob();
         const updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
 
-        await processNewFile(updatedFile, { preservePage: true });
+        await processNewFile(updatedFile, { preservePage: true, isEdit: true });
         loadingToast?.dismissNotification();
         showNotification('Update successful.', 'success');
       } catch (err) {
@@ -2001,7 +2303,6 @@
       formData.append('width', pendingField.width.toFixed(2));
       formData.append('height', pendingField.height.toFixed(2));
       formData.append('required', document.getElementById('sigRequired').checked);
-      formData.append('addRevision', loadSettings().addRevisionByDefault ? 'true' : 'false');
 
       await handleApiUpdate('/api/add-signature', formData);
       clearPendingField();
@@ -2079,19 +2380,75 @@
     const saveAsModal = document.getElementById('saveAsModal');
     const saveAsFileNameInput = document.getElementById('saveAsFileName');
     const saveAsModalStatus = document.getElementById('saveAsModalStatus');
+    const confirmSaveAsBtn = document.getElementById('confirmSaveAsBtn');
 
     function stripPdfExt(name) {
       return name.replace(/\.pdf$/i, '');
     }
 
-    function setSaveAsModalStatus(msg, type = 'error') {
-      saveAsModalStatus.textContent = msg;
-      saveAsModalStatus.className = `modal-status ${msg ? type : ''}`;
+    function setModalStatus(el, msg, type = 'error') {
+      el.textContent = msg;
+      el.className = `modal-status ${msg ? type : ''}`;
+    }
+
+    // Bundles every locally-stored revision (see the IndexedDB revision
+    // store above) plus the current document into one PDF via
+    // /api/revisions/bundle, so the exported/copied file carries its own
+    // history. Uses XMLHttpRequest (rather than fetch) specifically for
+    // upload.onprogress, which drives the "preparing export" notification.
+    async function bundleRevisionHistoryPdf(onProgress) {
+      const localRevisions = await listRevisionsForSession(documentSessionId);
+      const priorRevisions = localRevisions.filter((rev) => rev.index < documentRevisionCount);
+
+      const formData = new FormData();
+      formData.append('pdfDocument', activeFile);
+      for (const rev of priorRevisions) {
+        formData.append('priorRevisions', revisionToBlob(rev), `revision-${rev.index}.pdf`);
+      }
+
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/revisions/bundle');
+        xhr.responseType = 'blob';
+        xhr.upload.onprogress = (e) => {
+          if (!e.lengthComputable) return;
+          onProgress?.(e.loaded, e.total);
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.response);
+          } else {
+            reject(new Error(`Bundling failed (status ${xhr.status}).`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Network error while bundling revision history.'));
+        xhr.send(formData);
+      });
+    }
+
+    // Bundles revision history behind a persistent, non-closable notification
+    // (instead of a progress bar in the modal) since bundling can take a
+    // while and the user shouldn't be able to dismiss it mid-export.
+    async function bundleRevisionHistoryPdfWithNotification() {
+      const label = 'Preparing export — bundling revisions';
+      const toast = showNotification(`${label}…`, 'loading', 0, false);
+      const messageEl = toast?.querySelector('.notification-message');
+      try {
+        const blob = await bundleRevisionHistoryPdf((loaded, total) => {
+          if (!messageEl) return;
+          const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+          messageEl.textContent = `${label}… ${percent}%`;
+        });
+        return { blob, toast };
+      } catch (err) {
+        toast?.dismissNotification();
+        throw err;
+      }
     }
 
     function openSaveAsModal() {
       if (!activeFile) return;
-      setSaveAsModalStatus('');
+      setModalStatus(saveAsModalStatus, '');
       const defaultName = stripPdfExt(`updated_${activeFile.name}`);
       saveAsFileNameInput.value = defaultName;
       saveAsModal.classList.add('is-open');
@@ -2105,20 +2462,36 @@
       saveAsModal.classList.remove('is-open');
     }
 
-    function doSaveAs() {
+    async function doSaveAs() {
       let name = saveAsFileNameInput.value.trim();
       if (!name) {
-        setSaveAsModalStatus('Please enter a file name.', 'error');
+        setModalStatus(saveAsModalStatus, 'Please enter a file name.', 'error');
         return;
       }
       // Strip any characters unsafe for file names, and a trailing .pdf if the user typed one.
       name = stripPdfExt(name).replace(/[\\/:*?"<>|]/g, '').trim();
       if (!name) {
-        setSaveAsModalStatus('Please enter a valid file name.', 'error');
+        setModalStatus(saveAsModalStatus, 'Please enter a valid file name.', 'error');
         return;
       }
 
-      const downloadUrl = window.URL.createObjectURL(activeFile);
+      let fileToSave = activeFile;
+      const includeHistory = Boolean(loadSettings().includeRevisionHistoryByDefault);
+      let toast = null;
+      if (includeHistory) {
+        setModalStatus(saveAsModalStatus, '');
+        confirmSaveAsBtn.disabled = true;
+        try {
+          ({ blob: fileToSave, toast } = await bundleRevisionHistoryPdfWithNotification());
+        } catch (err) {
+          setModalStatus(saveAsModalStatus, `Could not include revision history: ${err.message}`, 'error');
+          confirmSaveAsBtn.disabled = false;
+          return;
+        }
+        confirmSaveAsBtn.disabled = false;
+      }
+
+      const downloadUrl = window.URL.createObjectURL(fileToSave);
       const a = document.createElement('a');
       a.href = downloadUrl;
       a.download = `${name}.pdf`;
@@ -2126,6 +2499,7 @@
       a.click();
       a.remove();
       window.URL.revokeObjectURL(downloadUrl);
+      toast?.dismissNotification();
       closeSaveAsModal();
       showNotification('PDF downloaded!', 'success');
     }
@@ -2133,7 +2507,7 @@
     document.getElementById('exportPdfBtn').addEventListener('click', openSaveAsModal);
     document.getElementById('closeSaveAsModalBtn').addEventListener('click', closeSaveAsModal);
     document.getElementById('cancelSaveAsBtn').addEventListener('click', closeSaveAsModal);
-    document.getElementById('confirmSaveAsBtn').addEventListener('click', doSaveAs);
+    confirmSaveAsBtn.addEventListener('click', doSaveAs);
     saveAsModal.addEventListener('click', (e) => {
       if (e.target === saveAsModal) closeSaveAsModal();
     });
@@ -2147,24 +2521,35 @@
       if (e.key === 'Escape' && saveAsModal.classList.contains('is-open')) closeSaveAsModal();
     });
 
-    document.getElementById('copyBase64Btn').addEventListener('click', async () => {
+    // Copies the document straight to the clipboard as Base64 -- no
+    // confirmation modal, since there's nothing to input. If revision
+    // history needs bundling first, a persistent notification stands in for
+    // what used to be a modal progress bar.
+    async function doCopyBase64() {
       if (!activeFile) return;
+      let fileToCopy = activeFile;
+      const includeHistory = Boolean(loadSettings().includeRevisionHistoryByDefault);
+      let toast = null;
 
       try {
-        // 1. Wrap the asynchronous FileReader in a Promise
-        // This preserves the browser's "user activated" state across the await
+        if (includeHistory) {
+          ({ blob: fileToCopy, toast } = await bundleRevisionHistoryPdfWithNotification());
+        }
+
+        // Wrap the asynchronous FileReader in a Promise -- this preserves
+        // the browser's "user activated" state across the await, which the
+        // Clipboard API below needs.
         const base64data = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result.split(',')[1]);
           reader.onerror = () => reject(new Error("Failed to read file"));
-          reader.readAsDataURL(activeFile);
+          reader.readAsDataURL(fileToCopy);
         });
 
-        // 2. Try the modern, secure Clipboard API first
         if (navigator.clipboard && window.isSecureContext) {
           await navigator.clipboard.writeText(base64data);
         } else {
-          // 3. Fallback for older browsers or non-HTTPS local environments (like 192.168.x.x)
+          // Fallback for older browsers or non-HTTPS local environments (like 192.168.x.x)
           const textArea = document.createElement("textarea");
           textArea.value = base64data;
 
@@ -2185,12 +2570,16 @@
           }
         }
 
+        toast?.dismissNotification();
         showNotification('Copied to clipboard!', 'success');
       } catch (err) {
         console.error(err);
+        toast?.dismissNotification();
         showNotification('Copy failed: ' + err.message, 'error');
       }
-    });
+    }
+
+    document.getElementById('copyBase64Btn').addEventListener('click', doCopyBase64);
 
     // --- Viewer Controls ---
     document.getElementById('btnPrev').addEventListener('click', () => {
@@ -2613,6 +3002,66 @@ function filterMetaTree(node, term) {
   });
 
   return result;
+}
+
+// Fetches the full metadata/raw-object summary for `activeFile` from
+// /api/info (the fieldsOnly=false path), the same lazy-on-demand pattern
+// used by loadRevisionsIfNeeded: every upload/edit only fetches form
+// fields eagerly (cheap, needed for canvas rendering everywhere), and this
+// heavier computation only runs when the MetaData section is actually open.
+async function loadMetadataIfNeeded() {
+  const overviewEl = document.getElementById('metaOverview');
+  const treeEl = document.getElementById('metaTreeContainer');
+
+  if (!activeFile || !pdfDoc) {
+    documentMeta = null;
+    documentRawInfo = null;
+    documentRawObjects = null;
+    documentOverview = null;
+    documentMetaLoadedFor = null;
+    renderMetaTree();
+    renderMetaOverview();
+    return;
+  }
+
+  const cacheKey = `${documentSessionId}:${documentRevisionCount}`;
+  if (documentMetaLoadedFor === cacheKey) {
+    renderMetaTree();
+    renderMetaOverview();
+    return;
+  }
+
+  if (metadataLoading) return;
+  metadataLoading = true;
+
+  const requestedFile = activeFile; // guards against a stale response landing after a newer upload/edit
+
+  if (overviewEl) overviewEl.innerHTML = '<p class="field-details-empty">Loading metadata…</p>';
+  if (treeEl) treeEl.innerHTML = '<p class="field-details-empty">Loading metadata…</p>';
+
+  try {
+    const formData = new FormData();
+    formData.append('pdfDocument', requestedFile);
+    const res = await fetch('/api/info', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'Could not load document metadata.');
+    if (requestedFile !== activeFile) return; // a newer upload/edit superseded this request
+
+    documentMeta = data.metadata || null;
+    documentRawInfo = data.rawInfo || null;
+    documentRawObjects = data.rawObjects || null;
+    documentOverview = data.overview || null;
+    documentMetaLoadedFor = cacheKey;
+    renderMetaTree();
+    renderMetaOverview();
+  } catch (err) {
+    if (requestedFile !== activeFile) return;
+    const safeMessage = escapeHtml(err.message);
+    if (overviewEl) overviewEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
+    if (treeEl) treeEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
+  } finally {
+    if (requestedFile === activeFile) metadataLoading = false;
+  }
 }
 
 function renderMetaTree() {
@@ -3684,10 +4133,21 @@ async function startSendingShare() {
   shareTransferStarted = false;
   setShareStep('prepare');
   try {
+    let fileToShare = activeFile;
+    const includeHistory = Boolean(loadSettings().includeRevisionHistoryByDefault);
+    if (includeHistory) {
+      setShareStatus('Bundling revision history…', 'waiting');
+      fileToShare = await bundleRevisionHistoryPdf('share');
+      // bundleRevisionHistoryPdf leaves the progress bar reading "Done" —
+      // that only reflects the bundling upload, not the share transfer
+      // itself, which hasn't started. Reset it so the bar doesn't falsely
+      // read complete while we're still waiting for a recipient to connect.
+      showIdleShareProgress('Waiting for the recipient to connect…');
+    }
     setShareStatus('Encrypting your PDF…', 'waiting');
     const shareToken = createCompactShareToken();
     const keyBytes = await deriveShareKeyBytes(shareToken);
-    const encrypted = await encryptShareFile(activeFile, keyBytes);
+    const encrypted = await encryptShareFile(fileToShare, keyBytes);
     shareEncryptedData = encrypted.ciphertext;
     shareMeta = encrypted.meta;
     document.getElementById('startShareBtn').hidden = true;
@@ -3832,7 +4292,7 @@ async function loadRevisionsIfNeeded() {
   const timeline = document.getElementById('revisionsTimeline');
   const compareBar = document.getElementById('revisionsCompareBar');
 
-  if (!activeFile) {
+  if (!activeFile || !documentSessionId) {
     revisionsData = null;
     revisionsLoadedForFile = null;
     emptyState.hidden = false;
@@ -3843,16 +4303,26 @@ async function loadRevisionsIfNeeded() {
     return;
   }
 
-  if (revisionsLoadedForFile === activeFile && revisionsData) {
+  const cacheKey = `${documentSessionId}:${documentRevisionCount}`;
+  if (revisionsLoadedForFile === cacheKey && revisionsData) {
     loadingState.hidden = true;
     renderRevisionsTimeline(revisionsData);
-    return; // already loaded for this exact file
+    return; // already loaded for this exact set of local revisions
   }
 
-  if (revisionsLoading) return;
+  if (revisionsLoading) {
+    // A load is already in flight -- it was kicked off for a stale
+    // revision count (e.g. the P2P-receive path calls this once right after
+    // storing the raw received file, before its embedded revision chain has
+    // been unpacked, and again after). Rerunning once the in-flight call
+    // settles guarantees the panel ends up reflecting the current state
+    // instead of silently keeping whatever the earlier call fetched.
+    revisionsReloadPending = true;
+    return;
+  }
   revisionsLoading = true;
 
-  const requestedFile = activeFile; // guards against a stale response landing after a newer upload
+  const requestedSessionId = documentSessionId; // guards against a stale response landing after a newer upload
 
   emptyState.hidden = true;
   errorState.hidden = true;
@@ -3861,8 +4331,18 @@ async function loadRevisionsIfNeeded() {
   loadingState.hidden = false;
 
   try {
+    const localRevisions = await listRevisionsForSession(requestedSessionId);
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
+    if (!localRevisions.length) {
+      throw new Error(
+        'No local revision snapshots found for this document. This browser (or a private/incognito window) may be blocking local storage, which revision history relies on.',
+      );
+    }
+
     const formData = new FormData();
-    formData.append('pdfDocument', requestedFile);
+    for (const rev of localRevisions) {
+      formData.append('pdfDocument', revisionToBlob(rev), `revision-${rev.index}.pdf`);
+    }
     const res = await fetch('/api/revisions', { method: 'POST', body: formData });
     let data;
     try {
@@ -3871,19 +4351,25 @@ async function loadRevisionsIfNeeded() {
       throw new Error(`Server returned status ${res.status}.`);
     }
     if (!res.ok) throw new Error(data?.error || 'Could not read revision history.');
-    if (requestedFile !== activeFile) return; // a newer upload superseded this request
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
 
     revisionsData = data.revisions || [];
-    revisionsLoadedForFile = requestedFile;
+    revisionsLoadedForFile = cacheKey;
     renderRevisionsTimeline(revisionsData);
   } catch (err) {
-    if (requestedFile !== activeFile) return;
+    if (requestedSessionId !== documentSessionId) return;
     revisionsData = null;
     revisionsLoadedForFile = null;
     errorState.textContent = err.message;
     errorState.hidden = false;
   } finally {
-    if (requestedFile === activeFile) revisionsLoading = false;
+    if (requestedSessionId === documentSessionId) {
+      revisionsLoading = false;
+      if (revisionsReloadPending) {
+        revisionsReloadPending = false;
+        loadRevisionsIfNeeded();
+      }
+    }
     loadingState.hidden = true;
   }
 }
@@ -4044,10 +4530,10 @@ async function runQuickDiff(fromIndex, toIndex, landOnTab) {
 }
 
 async function viewRevisionInMainViewer(revIndex) {
-  const requestedFile = activeFile; // guards against a stale response landing after a newer upload
+  const requestedSessionId = documentSessionId; // guards against a stale response landing after a newer upload
   try {
-    const doc = await fetchRevisionPdfDoc(revIndex, requestedFile);
-    if (requestedFile !== activeFile) return; // a newer upload superseded this request
+    const doc = await fetchRevisionPdfDoc(revIndex, requestedSessionId);
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
     if (revisionViewDoc && revisionViewDoc !== doc) revisionViewDoc.destroy();
     revisionViewDoc = doc;
     revisionViewIndex = revIndex;
@@ -4088,13 +4574,9 @@ async function renderRevisionViewPage(num) {
 
 async function downloadRevisionFile(revIndex) {
   try {
-    const formData = new FormData();
-    formData.append('pdfDocument', activeFile);
-    formData.append('revision', String(revIndex));
-    const res = await fetch('/api/revisions/snapshot', { method: 'POST', body: formData });
-    if (!res.ok) throw new Error(`Could not download revision ${revIndex}.`);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const rev = await getRevision(documentSessionId, revIndex);
+    if (!rev) throw new Error(`Revision ${revIndex} is not available locally.`);
+    const url = URL.createObjectURL(revisionToBlob(rev));
     const a = document.createElement('a');
     a.href = url;
     const baseName = (activeFile.name || 'document.pdf').replace(/\.pdf$/i, '');
@@ -4553,8 +5035,8 @@ function renderDiffResults(diff, fromRev, toRev) {
 }
 
 document.getElementById('btnCompareRevisions').addEventListener('click', async () => {
-  if (!activeFile) return;
-  const requestedFile = activeFile; // guards against a stale response landing after a newer upload
+  if (!activeFile || !documentSessionId) return;
+  const requestedSessionId = documentSessionId; // guards against a stale response landing after a newer upload
   const from = parseInt(document.getElementById('revisionFromSelect').value, 10);
   const to = parseInt(document.getElementById('revisionToSelect').value, 10);
   if (!Number.isInteger(from) || !Number.isInteger(to)) return;
@@ -4578,10 +5060,17 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
   }
 
   try {
+    const [fromRev, toRev] = await Promise.all([
+      getRevision(requestedSessionId, from),
+      getRevision(requestedSessionId, to),
+    ]);
+    if (!fromRev || !toRev) throw new Error('One of the selected revisions is not available locally.');
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
+
     const formData = new FormData();
-    formData.append('pdfDocument', requestedFile);
-    formData.append('from', String(from));
-    formData.append('to', String(to));
+    formData.append('from', revisionToBlob(fromRev), `revision-${from}.pdf`);
+    formData.append('to', revisionToBlob(toRev), `revision-${to}.pdf`);
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
     const res = await fetch('/api/revisions/diff', { method: 'POST', body: formData });
     let data;
     try {
@@ -4590,7 +5079,7 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
       throw new Error(`Server returned status ${res.status}.`);
     }
     if (!res.ok) throw new Error(data?.error || 'Could not compute the diff.');
-    if (requestedFile !== activeFile) return; // a newer upload superseded this request
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
 
     currentDiffResultData = data.diff;
     currentDiffFromRevIndex = from;
@@ -4609,25 +5098,35 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
     // Load PDF snapshots in background for visual diffing
     try {
       const [docA, docB] = await Promise.all([
-        fetchRevisionPdfDoc(from, requestedFile).catch(() => null),
-        fetchRevisionPdfDoc(to, requestedFile).catch(() => null),
+        fetchRevisionPdfDoc(from, requestedSessionId).catch(() => null),
+        fetchRevisionPdfDoc(to, requestedSessionId).catch(() => null),
       ]);
-      if (requestedFile !== activeFile) return; // a newer upload superseded this request
+      if (requestedSessionId !== documentSessionId) {
+        // A newer upload superseded this request -- these snapshots were
+        // never assigned to diffDocA/diffDocB, so nothing else will destroy them.
+        docA?.destroy();
+        docB?.destroy();
+        return;
+      }
+      if (diffDocA && diffDocA !== docA) diffDocA.destroy();
+      if (diffDocB && diffDocB !== docB) diffDocB.destroy();
       diffDocA = docA;
       diffDocB = docB;
       if (currentDiffActiveTab === 'visual') renderVisualDiffView();
     } catch (_e) {
-      if (requestedFile !== activeFile) return;
+      if (requestedSessionId !== documentSessionId) return;
+      diffDocA?.destroy();
+      diffDocB?.destroy();
       diffDocA = null;
       diffDocB = null;
     }
   } catch (err) {
-    if (requestedFile !== activeFile) return; // a newer upload superseded this request
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
     diffEmpty.textContent = err.message;
     diffEmpty.hidden = false;
     viewTabs.hidden = true;
   } finally {
-    if (requestedFile === activeFile) diffLoading.hidden = true;
+    if (requestedSessionId === documentSessionId) diffLoading.hidden = true;
   }
 });
 
@@ -4635,14 +5134,10 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
 // Visual Diff Implementation
 // ---------------------------------------------------------------
 
-async function fetchRevisionPdfDoc(revisionIndex, file = activeFile) {
-  const formData = new FormData();
-  formData.append('pdfDocument', file);
-  formData.append('revision', String(revisionIndex));
-  const res = await fetch('/api/revisions/snapshot', { method: 'POST', body: formData });
-  if (!res.ok) throw new Error(`Could not load snapshot for revision ${revisionIndex}`);
-  const arrayBuffer = await res.arrayBuffer();
-  return await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+async function fetchRevisionPdfDoc(revisionIndex, sessionId = documentSessionId) {
+  const rev = await getRevision(sessionId, revisionIndex);
+  if (!rev) throw new Error(`Could not load snapshot for revision ${revisionIndex}`);
+  return await pdfjsLib.getDocument({ data: rev.buffer }).promise;
 }
 
 function switchDiffTab(targetTab) {

@@ -1075,6 +1075,9 @@ input[type="number"]:focus, input[type="text"]:focus {
   letter-spacing: normal;
   font-weight: 400;
 }
+.settings-hint-flush {
+  padding-left: 0;
+}
 
 .placement-hint {
   display: flex;
