@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/Marbulinek/pdf-seal/compare/v1.0.0...v1.0.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* fixed wrongly added modification date in revisions + tests ([#31](https://github.com/Marbulinek/pdf-seal/issues/31)) ([57b11a6](https://github.com/Marbulinek/pdf-seal/commit/57b11a626d675c653af8d3938b6c023d67d965cd))
+
 # 1.0.0 (2026-08-29)
 
 
