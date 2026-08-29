@@ -718,9 +718,7 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 }
 .remove-field-hint {
   margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
 }
 .remove-field-warning {
   display: flex;
