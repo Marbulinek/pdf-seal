@@ -7,5 +7,5 @@
     "sourceMap": false
   },
   "include": ["server.ts", "lib/**/*.ts"],
-  "exclude": ["node_modules", "dist", "uploads", "public"]
+  "exclude": ["node_modules", "dist", "uploads", "public", "**/*.test.ts"]
 }
