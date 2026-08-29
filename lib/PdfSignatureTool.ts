@@ -323,6 +323,11 @@ class PdfSignatureTool {
     this.sourcePath = sourcePath;
   }
 
+  /** Append a blank page to the document. */
+  addPage() {
+    this.pdfDoc.addPage();
+  }
+
   // ---------------------------------------------------------------------
   // Signature fields
   // ---------------------------------------------------------------------
