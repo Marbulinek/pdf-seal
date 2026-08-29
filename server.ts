@@ -226,6 +226,7 @@ app.post(
       const required = req.body.required === "true";
 
       tool.addSignatureField(page, name, { x, y, width, height, required });
+      tool.setMetadata({ modificationDate: new Date() });
       // Always strip any revision-history chain that may have been embedded
       // in the uploaded file, so the output stays lean regardless of input.
       tool.clearRevisionSnapshotChain();
@@ -278,6 +279,7 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
     }
 
     tool.setFieldRequired(newName, required);
+    tool.setMetadata({ modificationDate: new Date() });
 
     tool.clearRevisionSnapshotChain();
 
@@ -311,6 +313,7 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
     }
 
     tool.removeField(name);
+    tool.setMetadata({ modificationDate: new Date() });
 
     tool.clearRevisionSnapshotChain();
 

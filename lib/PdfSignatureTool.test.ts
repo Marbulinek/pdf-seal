@@ -43,4 +43,14 @@ describe('PdfSignatureTool', () => {
     expect(meta.title).toBe('Test Document');
     expect(meta.author).toBe('CI');
   });
+
+  it('round-trips an explicitly set modification date', async () => {
+    const tool = await PdfSignatureTool.create();
+    const modDate = new Date('2026-01-15T10:00:00.000Z');
+    tool.setMetadata({ modificationDate: modDate });
+
+    const bytes = await tool.toBytes();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    expect(reloaded.getMetadata().modificationDate?.getTime()).toBe(modDate.getTime());
+  });
 });
