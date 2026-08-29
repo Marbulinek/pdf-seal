@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/Marbulinek/pdf-seal/compare/v1.0.1...v1.0.2) (2026-08-29)
+
+
+### Bug Fixes
+
+* fixed removal signature hint text ([c9a336f](https://github.com/Marbulinek/pdf-seal/commit/c9a336fddd7d01b1869f317ade313e06c2b40365))
+
 ## [1.0.1](https://github.com/Marbulinek/pdf-seal/compare/v1.0.0...v1.0.1) (2026-08-29)
 
 
