@@ -277,6 +277,18 @@
           <div id="overlay-layer"></div>
           <div class="drop-replace-overlay" aria-hidden="true"></div>
         </div>
+
+        <div class="document-loading-overlay" id="documentLoadingOverlay" hidden>
+          <div class="document-loading-page" id="documentLoadingPage">
+            <span class="icon icon-file-detailed" aria-hidden="true"></span>
+          </div>
+          <div class="document-loading-progress">
+            <div class="document-loading-bar">
+              <div class="document-loading-bar-fill" id="documentLoadingBarFill"></div>
+            </div>
+            <div class="document-loading-label" id="documentLoadingLabel">Loading document… <span id="documentLoadingPercent">0%</span></div>
+          </div>
+        </div>
       </div>
     
     </section>
@@ -1556,6 +1568,35 @@
       renderMetaOverview();
     }
 
+    // Drives the growing-document loading overlay shown while a new file is
+    // being read/analyzed/rendered (see processNewFile below). The "page"
+    // rectangle scales up alongside the percentage so the document visibly
+    // grows into place instead of just popping in once loading finishes.
+    function setDocumentLoadingProgress(percent) {
+      const clamped = Math.max(0, Math.min(100, percent));
+      const fill = document.getElementById('documentLoadingBarFill');
+      const percentEl = document.getElementById('documentLoadingPercent');
+      const page = document.getElementById('documentLoadingPage');
+      if (fill) fill.style.width = `${clamped}%`;
+      if (percentEl) percentEl.textContent = `${Math.round(clamped)}%`;
+      if (page) {
+        const scale = 0.35 + (clamped / 100) * 0.65;
+        page.style.transform = `scale(${scale})`;
+        page.style.opacity = `${0.4 + (clamped / 100) * 0.6}`;
+      }
+    }
+
+    function showDocumentLoadingOverlay() {
+      const overlay = document.getElementById('documentLoadingOverlay');
+      if (overlay) overlay.hidden = false;
+      setDocumentLoadingProgress(0);
+    }
+
+    function hideDocumentLoadingOverlay() {
+      const overlay = document.getElementById('documentLoadingOverlay');
+      if (overlay) overlay.hidden = true;
+    }
+
     async function processNewFile(file, options = {}) {
       const preservePage = Boolean(options.preservePage);
       const skipServerInfo = Boolean(options.skipServerInfo);
@@ -1643,6 +1684,11 @@
       // Toggle Viewer Visibility
       document.getElementById('emptyStateViewer').style.display = 'none';
       document.getElementById('pdfContainer').style.display = 'inline-block';
+      // The new document isn't actually ready to paint yet (server round trip,
+      // then pdf.js parsing/rendering below) -- show a growing progress
+      // overlay in its place instead of leaving the container flash stale/
+      // empty content while that work runs.
+      showDocumentLoadingOverlay();
 
       try {
         // A received P2P file must not be sent back to the server merely to
@@ -1652,13 +1698,32 @@
           // default view on every load/edit) -- the full metadata/raw-object
           // dump is expensive to compute and is fetched separately, lazily,
           // only if/when the MetaData section is actually opened.
+          // Uses XMLHttpRequest (rather than fetch) specifically for
+          // upload.onprogress, which drives the loading overlay's percentage.
           const formData = new FormData();
           formData.append('pdfDocument', file);
           formData.append('fieldsOnly', 'true');
-          const res = await fetch('/api/info', { method: 'POST', body: formData });
-          const data = await res.json();
+          const data = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/info');
+            xhr.responseType = 'json';
+            xhr.upload.onprogress = (e) => {
+              if (!e.lengthComputable) return;
+              setDocumentLoadingProgress((e.loaded / e.total) * 45);
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(xhr.response);
+              } else {
+                reject(new Error(`Failed to read document (status ${xhr.status}).`));
+              }
+            };
+            xhr.onerror = () => reject(new Error('Network error while reading document.'));
+            xhr.send(formData);
+          });
           documentFields = data.fields || [];
         }
+        setDocumentLoadingProgress(50);
         documentMeta = null;
         documentRawInfo = null;
         documentRawObjects = null;
@@ -1667,7 +1732,9 @@
 
         // 2. Render PDF
         const arrayBuffer = await file.arrayBuffer();
+        setDocumentLoadingProgress(65);
         const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        setDocumentLoadingProgress(80);
 
         // Release the previous document's worker + internal caches now that the
         // new one has loaded successfully -- otherwise every reload (including
@@ -1706,6 +1773,8 @@
         pageNum = Math.min(Math.max(targetPage, 1), pdfDoc.numPages);
         updateViewerControlsState();
         await renderPage(pageNum);
+        setDocumentLoadingProgress(100);
+        hideDocumentLoadingOverlay();
 
         // Only now that the replacement document has fully loaded is the
         // previous document's local history actually unreachable -- safe
@@ -1713,6 +1782,7 @@
         if (previousSessionIdToClear) clearRevisionSession(previousSessionIdToClear).catch(() => {});
 
       } catch (err) {
+        hideDocumentLoadingOverlay();
         if (pendingRevisionCleanup) {
           if (pendingRevisionCleanup.type === 'session') {
             clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});

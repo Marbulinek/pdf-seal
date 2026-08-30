@@ -912,6 +912,7 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   position: relative;
 }
 .viewer-scroll {
+  position: relative;
   overflow-y: auto;
   overflow-x: hidden;
   margin: 0 -4px 14px -4px;
@@ -1276,6 +1277,68 @@ canvas { display: block; }
    scrolled/zoomed to); the badge is a separate sticky-positioned sibling so
    it stays pinned near the top of the visible viewport even on tall pages
    instead of centering on a spot that may be scrolled out of view. */
+.document-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  background: var(--cream);
+  border: 1px solid var(--ice);
+  border-radius: var(--radius-l);
+}
+.document-loading-overlay[hidden] {
+  display: none;
+}
+.document-loading-page {
+  width: 120px;
+  height: 156px;
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 10px;
+  box-shadow: 0 3px 14px rgba(30, 33, 51, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(0.35);
+  opacity: 0.4;
+  transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+}
+.document-loading-page .icon {
+  width: 34px;
+  height: 34px;
+  color: var(--ocean);
+}
+.document-loading-progress {
+  width: min(260px, 70%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.document-loading-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ice);
+  overflow: hidden;
+}
+.document-loading-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--ocean);
+  transition: width 0.2s ease-out;
+}
+.document-loading-label {
+  font-size: 0.85rem;
+  color: var(--ocean-dark);
+  font-weight: 500;
+}
+
 .drop-replace-overlay {
   position: absolute;
   inset: 0;
