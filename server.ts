@@ -59,6 +59,13 @@ type ShareRole = "sender" | "receiver";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
 const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES } });
 
+// /api/revisions/bundle reads every prior revision fully into memory, base64-encodes
+// each one, and holds them all at once to embed as a single JSON string in the output
+// PDF (see PdfSignatureTool.setRevisionSnapshotChain) -- measured at ~6-7x the combined
+// raw input size in peak RSS. Capped well below that ratio's blast radius on a
+// memory-constrained host, rather than per-file, since it's the sum that drives the peak.
+const MAX_REVISION_BUNDLE_BYTES = 40 * 1024 * 1024; // 40MB combined (pdfDocument + all priorRevisions)
+
 // Serve the self-hosted pdf.js vendor bundle (~1.3MB) with a long,
 // immutable cache: on a slow/constrained host, letting every colleague's
 // browser cache it across visits instead of re-fetching it each time saves
@@ -434,12 +441,22 @@ app.post(
 app.post(
   "/api/revisions/bundle",
   uploadLimiter,
-  upload.fields([{ name: "pdfDocument", maxCount: 1 }, { name: "priorRevisions", maxCount: 200 }]),
+  upload.fields([{ name: "pdfDocument", maxCount: 1 }, { name: "priorRevisions", maxCount: 50 }]),
   async (req: Request, res: Response) => {
     const filesByField = (req.files || {}) as Record<string, Express.Multer.File[]>;
     const file = filesByField.pdfDocument?.[0];
     const priorFiles = filesByField.priorRevisions || [];
     if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    const totalBytes = file.size + priorFiles.reduce((sum, f) => sum + f.size, 0);
+    if (totalBytes > MAX_REVISION_BUNDLE_BYTES) {
+      cleanupFiles(file.path, ...priorFiles.map((f) => f.path));
+      return res.status(413).json({
+        error: `Combined size of the document and its revision history is too large to bundle (${Math.floor(
+          MAX_REVISION_BUNDLE_BYTES / (1024 * 1024),
+        )}MB max). Try exporting without revision history instead.`,
+      });
+    }
 
     let outputPath: string | null = null;
 

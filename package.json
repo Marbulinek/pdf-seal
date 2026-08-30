@@ -23,7 +23,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "@tsconfig/node20": "^20.1.9",
+    "@tsconfig/node24": "^24.0.5",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
     "@types/node": "^26.1.0",

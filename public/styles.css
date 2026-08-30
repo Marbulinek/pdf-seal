@@ -386,9 +386,19 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 
 .btn-block { width: 100%; justify-content: center; margin-top: 8px; }
 
-.add-sig-actions { display: flex; gap: 8px; margin-top: 8px; }
+.add-sig-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--ice); }
 .add-sig-actions[hidden] { display: none; }
-.add-sig-actions .btn { flex: 1; justify-content: center; margin-top: 0; }
+.add-sig-actions .btn { margin-top: 0; }
+
+#sectionSignatures .edit-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--ice);
+}
+#sectionSignatures .edit-actions .btn { margin-top: 0; }
 
 #sectionSignatures .edit-actions .btn,
 #sectionSignatures #btnPlaceField,
@@ -396,6 +406,28 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   font-size: 0.88rem;
   padding: 10px 16px;
 }
+
+/* ---------- Field geometry group (position/size inputs) ---------- */
+.field-geometry {
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  background: var(--cream);
+  padding: 14px 14px 2px;
+  margin-bottom: 16px;
+}
+.field-geometry-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--ocean-dark);
+  margin-bottom: 12px;
+}
+.field-geometry-label .icon { font-size: 0.85rem; }
+.field-geometry input[type="number"] { background: #fff; }
 
 .icon-btn {
   width: 27px; height: 27px;
@@ -877,6 +909,7 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
+  position: relative;
 }
 .viewer-scroll {
   overflow-y: auto;
@@ -1228,9 +1261,58 @@ input[type="number"]:focus, input[type="text"]:focus {
   max-width: none;
 }
 .pdf-container.drag-active {
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.3), 0 3px 14px rgba(30, 33, 51, 0.08);
+  animation: dropZonePulse 1.2s ease-in-out infinite;
+}
+@keyframes dropZonePulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.35), 0 3px 14px rgba(30, 33, 51, 0.08); }
+  50% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.75), 0 3px 14px rgba(30, 33, 51, 0.08); }
 }
 canvas { display: block; }
+
+/* Shown while dragging a file over an already-loaded document, to make it
+   clear that dropping here replaces the current document rather than
+   doing nothing (the container isn't an upload target visually otherwise).
+   The tint covers the full page (so it's visible wherever the user has
+   scrolled/zoomed to); the badge is a separate sticky-positioned sibling so
+   it stays pinned near the top of the visible viewport even on tall pages
+   instead of centering on a spot that may be scrolled out of view. */
+.drop-replace-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgba(249, 115, 22, 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.pdf-container.drag-active .drop-replace-overlay { opacity: 1; }
+
+.drop-replace-badge-wrap {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.viewer-panel:has(.pdf-container.drag-active) .drop-replace-badge-wrap { opacity: 1; }
+.drop-replace-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--navy);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(30, 33, 51, 0.3);
+}
+.drop-replace-badge .icon { color: var(--coral); font-size: 1.05rem; }
 
 /* Interactive Overlays */
 #overlay-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
@@ -1607,12 +1689,23 @@ body:not([data-active-section="signatures"]) .field-overlay:not(.pending) .resiz
   color: var(--navy);
   font-size: 0.68rem;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: background 0.15s ease, transform 0.15s ease;
 }
+.meta-search-clear[hidden] { display: none; }
 .meta-search-clear:hover { background: var(--ocean); color: #fff; transform: translateY(-50%) scale(1.08); }
+
+/* ---------- Screen-reader-only utility ---------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .meta-tree-container {
   padding-right: 2px;
@@ -1709,7 +1802,11 @@ mark.meta-highlight {
   color: var(--navy);
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
+.meta-card-title .icon { color: var(--ocean); font-size: 0.95em; }
 .meta-card-subhead {
   margin: 0 0 8px;
   font-size: 0.74rem;
@@ -1729,8 +1826,8 @@ mark.meta-highlight {
   padding: 2px 10px;
   letter-spacing: 0.02em;
 }
-.meta-badge-yes { background: rgba(16, 185, 129, 0.16); color: var(--ocean-dark); }
-.meta-badge-no { background: var(--ice); color: var(--navy); opacity: 0.75; }
+.meta-badge-yes { background: var(--success); color: #fff; }
+.meta-badge-no { background: transparent; color: var(--navy); opacity: 0.55; border: 1px solid var(--ice); }
 .meta-badge-info { background: rgba(249, 115, 22, 0.16); color: var(--coral-dark); }
 
 .meta-forms-table thead th {
