@@ -32,12 +32,12 @@ ENV NODE_ENV=production \
     PORT=3000 \
     NODE_OPTIONS=--max-old-space-size=320
 
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY public ./public
-COPY package.json ./
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chown=node:node public ./public
+COPY --chown=node:node package.json ./
 
-RUN mkdir -p uploads && chown -R node:node /app
+RUN mkdir -p uploads && chown node:node uploads
 USER node
 
 EXPOSE 3000

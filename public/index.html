@@ -229,6 +229,12 @@
 
   <div class="app-shell">
     <section class="panel viewer-panel viewer-column">
+      <div class="drop-replace-badge-wrap" aria-hidden="true">
+        <div class="drop-replace-badge">
+          <span class="icon icon-upload-device" aria-hidden="true"></span>
+          <span>Drop to replace this document</span>
+        </div>
+      </div>
       <div class="viewer-controls">
         <div class="viewer-diff-banner" id="viewerDiffBanner" hidden>
           <span id="viewerDiffBannerText">Comparing revisions</span>
@@ -269,6 +275,7 @@
         <div class="pdf-container" id="pdfContainer" style="display: none;">
           <canvas id="pdf-canvas"></canvas>
           <div id="overlay-layer"></div>
+          <div class="drop-replace-overlay" aria-hidden="true"></div>
         </div>
       </div>
     
@@ -292,18 +299,26 @@
             <label for="editName">Field Name</label>
             <input type="text" id="editName" required>
           </div>
-          <div class="form-row">
-            <div><label for="editX">X Position</label><input type="number" id="editX" step="0.1" required></div>
-            <div><label for="editY">Y Position</label><input type="number" id="editY" step="0.1" required></div>
+
+          <div class="field-geometry">
+            <div class="field-geometry-label"><span class="icon icon-move" aria-hidden="true"></span> Position &amp; Size</div>
+            <div class="form-row">
+              <div><label for="editX">X Position</label><input type="number" id="editX" step="0.1" required></div>
+              <div><label for="editY">Y Position</label><input type="number" id="editY" step="0.1" required></div>
+            </div>
+            <div class="form-row">
+              <div><label for="editWidth">Width</label><input type="number" id="editWidth" step="0.1" required></div>
+              <div><label for="editHeight">Height</label><input type="number" id="editHeight" step="0.1" required></div>
+            </div>
           </div>
-          <div class="form-row">
-            <div><label for="editWidth">Width</label><input type="number" id="editWidth" step="0.1" required></div>
-            <div><label for="editHeight">Height</label><input type="number" id="editHeight" step="0.1" required></div>
-          </div>
-          <div class="checkbox-group">
-            <input type="checkbox" id="editRequired">
-            <label for="editRequired">Required Field</label>
-          </div>
+
+          <label class="checkbox-group checkbox-group-block" for="editRequired">
+            <div class="checkbox-group-main">
+              <input type="checkbox" id="editRequired">
+              <span>Required Field</span>
+            </div>
+          </label>
+
           <details class="field-details" id="fieldDetailsBlock">
             <summary>Field Details (raw PDF properties) <span class="raw-panel-badge">Raw</span></summary>
             <div class="field-details-body" id="fieldDetailsBody"></div>
@@ -322,8 +337,8 @@
           </div>
 
           <div class="edit-actions">
-            <button type="submit" class="btn btn-primary btn-block">Update Field</button>
-            <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" disabled>Remove Field</button>
+            <button type="submit" class="btn btn-primary btn-block"><span class="icon icon-check" aria-hidden="true"></span> Update Field</button>
+            <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" disabled><span class="icon icon-close" aria-hidden="true"></span> Remove Field</button>
           </div>
         </form>
       </div>
@@ -338,14 +353,22 @@
             <label for="sigName">Field Name</label>
             <input type="text" id="sigName" placeholder="e.g. Signature1" required>
           </div>
-          <div class="form-row">
-            <div><label for="sigWidth">Width</label><input type="number" id="sigWidth" value="200" min="10" step="0.1"></div>
-            <div><label for="sigHeight">Height</label><input type="number" id="sigHeight" value="60" min="10" step="0.1"></div>
+
+          <div class="field-geometry">
+            <div class="field-geometry-label"><span class="icon icon-move" aria-hidden="true"></span> Field Size</div>
+            <div class="form-row">
+              <div><label for="sigWidth">Width</label><input type="number" id="sigWidth" value="200" min="10" step="0.1"></div>
+              <div><label for="sigHeight">Height</label><input type="number" id="sigHeight" value="60" min="10" step="0.1"></div>
+            </div>
           </div>
-          <div class="checkbox-group">
-            <input type="checkbox" id="sigRequired">
-            <label for="sigRequired">Required Field</label>
-          </div>
+
+          <label class="checkbox-group checkbox-group-block" for="sigRequired">
+            <div class="checkbox-group-main">
+              <input type="checkbox" id="sigRequired">
+              <span>Required Field</span>
+            </div>
+          </label>
+
           <div class="placement-hint" id="placementHint">
             <span class="icon icon-info-circle-notif placement-hint-icon" aria-hidden="true"></span>
             <span class="placement-hint-text" id="placementHintText">Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.</span>
@@ -353,8 +376,8 @@
 
           <button type="button" id="btnPlaceField" class="btn btn-primary btn-block" disabled><span class="icon icon-pen" aria-hidden="true"></span> Place on Document</button>
           <div class="add-sig-actions" id="addSigActions" hidden>
-            <button type="submit" id="btnAddSig" class="btn btn-primary" disabled>Add to Document</button>
-            <button type="button" id="btnCancelPlace" class="btn btn-danger">Remove from Document</button>
+            <button type="submit" id="btnAddSig" class="btn btn-primary btn-block" disabled><span class="icon icon-check" aria-hidden="true"></span> Add to Document</button>
+            <button type="button" id="btnCancelPlace" class="btn btn-danger btn-block"><span class="icon icon-close" aria-hidden="true"></span> Remove from Document</button>
           </div>
         </form>
         <div id="actionStatus" class="status-text"></div>
@@ -376,7 +399,7 @@
           </div>
 
           <details class="meta-advanced" id="metaAdvancedDetails">
-            <summary>Advanced — raw PDF structure <span class="raw-panel-badge">Raw</span></summary>
+            <summary><span class="icon icon-code" aria-hidden="true"></span> Advanced — raw PDF structure <span class="raw-panel-badge">Raw</span></summary>
             <div class="meta-advanced-body">
               <div class="meta-search-wrap">
                 <label for="metaSearchInput" class="sr-only">Search document metadata</label>
@@ -975,6 +998,16 @@
             nextSettings.showRawPdfData
               ? 'Enabled advanced raw PDF data panels — look for the "Raw" badge in MetaData, Signatures, and Revisions.'
               : 'Disabled advanced raw PDF data panels.',
+            'info',
+            8000,
+          );
+        }
+
+        if (nextSettings.includeRevisionHistoryByDefault !== previousSettings.includeRevisionHistoryByDefault) {
+          showNotification(
+            nextSettings.includeRevisionHistoryByDefault
+              ? 'Revision history will now be bundled into exported and shared documents.'
+              : 'Revision history will no longer be bundled into exported and shared documents.',
             'info',
             8000,
           );
@@ -3127,10 +3160,11 @@ function metaKvTable(rows) {
   return `<table class="field-details-table meta-kv-table">${body}</table>`;
 }
 
-function metaCard(title, bodyHtml, extraClass) {
+function metaCard(title, bodyHtml, extraClass, icon) {
   if (!bodyHtml) return '';
+  const iconHtml = icon ? `<span class="icon ${icon}" aria-hidden="true"></span> ` : '';
   return `<div class="meta-card${extraClass ? ` ${extraClass}` : ''}">
-    <h4 class="meta-card-title">${escapeHtml(title)}</h4>
+    <h4 class="meta-card-title">${iconHtml}${escapeHtml(title)}</h4>
     ${bodyHtml}
   </div>`;
 }
@@ -3150,7 +3184,7 @@ function renderDocumentInfoCard(info) {
     { label: 'File size', value: formatFileSize(info.fileSize), keep: true },
     { label: 'Page count', value: info.pageCount, keep: true },
   ];
-  return metaCard('Document Information', metaKvTable(rows));
+  return metaCard('Document Information', metaKvTable(rows), null, 'icon-file-text');
 }
 
 function renderFeaturesCard(features) {
@@ -3168,7 +3202,7 @@ function renderFeaturesCard(features) {
     { label: 'Incremental updates', value: features.incrementalUpdates ?? '—', keep: true },
     { label: 'Signatures', value: features.signatureCount, keep: true },
   ];
-  return metaCard('Document Features', metaKvTable(rows));
+  return metaCard('Document Features', metaKvTable(rows), null, 'icon-layers');
 }
 
 // Consecutive pages sharing the same size/orientation/rotation are folded
@@ -3195,7 +3229,7 @@ function renderPagesCard(pages) {
     return `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(g.sizeName)} · ${escapeHtml(g.orientation)}${escapeHtml(rotationNote)}</td></tr>`;
   }).join('');
   const body = `<p class="meta-card-subhead">${pages.length} page${pages.length === 1 ? '' : 's'}</p><table class="field-details-table meta-kv-table">${rows}</table>`;
-  return metaCard('Pages', body);
+  return metaCard('Pages', body, null, 'icon-file-detailed');
 }
 
 function fieldStateLabel(field) {
@@ -3219,7 +3253,7 @@ function renderFormsCard(fields) {
   }).join('');
   const body = `<p class="meta-card-subhead">${formFields.length} field${formFields.length === 1 ? '' : 's'}</p>
     <table class="field-details-table meta-kv-table meta-forms-table"><thead><tr><th>Field</th><th>Type</th><th>State</th></tr></thead><tbody>${rows}</tbody></table>`;
-  return metaCard('Forms', body);
+  return metaCard('Forms', body, null, 'icon-check-circle');
 }
 
 function renderAttachmentsCard(attachments) {
@@ -3232,7 +3266,7 @@ function renderAttachmentsCard(attachments) {
     </div>`;
   }).join('');
   const body = `${rows}<p class="meta-card-subhead">Total: ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}</p>`;
-  return metaCard('Attachments', body);
+  return metaCard('Attachments', body, null, 'icon-copy');
 }
 
 function renderXmpCard(xmp) {
@@ -3248,8 +3282,8 @@ function renderXmpCard(xmp) {
   ];
   const table = metaKvTable(rows);
   if (!table) return '';
-  const body = `${table}<button type="button" class="btn btn-ghost meta-view-raw-btn" id="btnViewRawXmp">View raw XMP</button>`;
-  return metaCard('XMP Metadata', body);
+  const body = `${table}<button type="button" class="btn btn-ghost meta-view-raw-btn" id="btnViewRawXmp"><span class="icon icon-eye" aria-hidden="true"></span> View raw XMP</button>`;
+  return metaCard('XMP Metadata', body, null, 'icon-code');
 }
 
 function renderDocumentIdsCard(ids) {
@@ -3260,7 +3294,7 @@ function renderDocumentIdsCard(ids) {
     { label: 'XMP document ID', value: ids.xmpDocumentId },
     { label: 'XMP instance ID', value: ids.xmpInstanceId },
   ];
-  return metaCard('Document IDs', metaKvTable(rows), 'meta-card-mono');
+  return metaCard('Document IDs', metaKvTable(rows), 'meta-card-mono', 'icon-lock');
 }
 
 function renderMetaOverview() {
