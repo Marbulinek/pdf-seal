@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/Marbulinek/pdf-seal/compare/v1.0.3...v1.0.4) (2026-08-30)
+
+
+### Bug Fixes
+
+* reworked pdf-viewer part when loading new document ([#34](https://github.com/Marbulinek/pdf-seal/issues/34)) ([2c4c5a3](https://github.com/Marbulinek/pdf-seal/commit/2c4c5a393e82711700ce7d7b4b10a4d102609723))
+
 ## [1.0.3](https://github.com/Marbulinek/pdf-seal/compare/v1.0.2...v1.0.3) (2026-08-30)
 
 
