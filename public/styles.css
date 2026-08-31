@@ -1198,11 +1198,6 @@ input[type="number"]:focus, input[type="text"]:focus {
 .empty-state-viewer.drag-active {
   border-color: var(--coral);
   background: rgba(249, 115, 22, 0.06);
-  animation: marchingAnts 0.6s linear infinite;
-}
-@keyframes marchingAnts {
-  from { background-position: 0 0, 0 0, 0 100%, 100% 0; }
-  to { background-position: 20px 0, 0 20px, 20px 100%, 100% 20px; }
 }
 .empty-state-base64-btn { margin-top: 18px; font-family: var(--font-mono); font-size: 0.78rem; }
 .empty-state-dropline {
@@ -1481,6 +1476,8 @@ body:not([data-active-section="signatures"]) .field-overlay .resize-handle {
 .field-overlay.is-staged.required::after {
   --ants-color: var(--coral);
 }
+/* The single definition of this animation -- see .field-overlay.is-staged::after
+   and .diff-object-hover-overlay, both of which use a 10px dash period. */
 @keyframes marchingAnts {
   to { background-position: 10px 0, -10px 100%, 0 -10px, 100% 10px; }
 }
@@ -2849,11 +2846,13 @@ body.hide-raw-pdf-data .diff-raw-objects {
   animation: marchingAnts 0.45s linear infinite;
   z-index: 3;
 }
-
-@keyframes marchingAnts {
-  0%   { background-position:   0 0,   0 100%, 0   0,   100% 0; }
-  100% { background-position: 20px 0, -20px 100%, 0 -20px, 100% 20px; }
+/* Set once more than a handful of change markers are on screen at the same
+   time: 50 elements each repainting a slice of the canvas every frame is the
+   dominant cost on screen, and adds nothing over a static outline. */
+#overlay-layer.has-many-diff-markers .diff-object-hover-overlay {
+  animation: none;
 }
+
 
 /* Visual Diff Styles */
 .revisions-view-tabs {
@@ -3129,4 +3128,14 @@ body.hide-raw-pdf-data .diff-raw-objects {
 
 @media (max-width: 640px) {
   .notification-stack { bottom: 12px; right: 8px; left: 8px; width: auto; }
+}
+
+/* Nothing in this app needs to animate forever to be understood, and several
+   of these (marching ants, pulsing outlines) repaint continuously. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
