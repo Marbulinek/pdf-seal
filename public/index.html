@@ -72,7 +72,10 @@
   <div id="notificationStack" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
 
   <div class="pending-changes-bar" id="pendingChangesBar" hidden>
-    <span id="pendingChangesLabel">0 unsaved changes</span>
+    <div class="pending-changes-summary">
+      <span id="pendingChangesLabel">0 unsaved changes</span>
+      <span id="pendingChangesDescription" class="pending-changes-desc"></span>
+    </div>
     <div class="pending-changes-actions">
       <button type="button" class="btn btn-ghost" id="btnDiscardFieldChanges">Discard</button>
       <button type="button" class="btn btn-primary" id="btnApplyFieldChanges">Apply changes</button>
@@ -336,7 +339,7 @@
           <div class="panel-overlay-text">Upload a document first to see edit history</div>
         </div>
         <h3><span class="panel-dot dot-ocean"></span>History</h3>
-        <p class="revisions-hint">Step back or forward through staged field changes — moves, resizes, renames, additions, and removals — for this document.</p>
+        <p class="revisions-hint">Undo or redo your staged field changes before applying them.</p>
         <div class="history-actions">
           <button type="button" id="btnHistoryUndo" class="btn btn-ghost" disabled title="Undo (Ctrl+Z)"><span class="icon icon-undo" aria-hidden="true"></span> Undo</button>
           <button type="button" id="btnHistoryRedo" class="btn btn-ghost" disabled title="Redo (Ctrl+Shift+Z)"><span class="icon icon-redo" aria-hidden="true"></span> Redo</button>
@@ -362,16 +365,13 @@
             <input type="text" id="editName" required>
           </div>
 
-          <div class="field-geometry">
-            <div class="field-geometry-label"><span class="icon icon-move" aria-hidden="true"></span> Position &amp; Size</div>
-            <div class="form-row">
-              <div><label for="editX">X Position</label><input type="number" id="editX" step="0.1" required></div>
-              <div><label for="editY">Y Position</label><input type="number" id="editY" step="0.1" required></div>
-            </div>
-            <div class="form-row">
-              <div><label for="editWidth">Width</label><input type="number" id="editWidth" step="0.1" required></div>
-              <div><label for="editHeight">Height</label><input type="number" id="editHeight" step="0.1" required></div>
-            </div>
+          <div class="form-row">
+            <div><label for="editX">X Position</label><input type="number" id="editX" step="0.1" required></div>
+            <div><label for="editY">Y Position</label><input type="number" id="editY" step="0.1" required></div>
+          </div>
+          <div class="form-row">
+            <div><label for="editWidth">Width</label><input type="number" id="editWidth" step="0.1" required></div>
+            <div><label for="editHeight">Height</label><input type="number" id="editHeight" step="0.1" required></div>
           </div>
 
           <label class="checkbox-group checkbox-group-block" for="editRequired">
@@ -412,12 +412,9 @@
             <input type="text" id="sigName" placeholder="e.g. Signature1" required>
           </div>
 
-          <div class="field-geometry">
-            <div class="field-geometry-label"><span class="icon icon-move" aria-hidden="true"></span> Field Size</div>
-            <div class="form-row">
-              <div><label for="sigWidth">Width</label><input type="number" id="sigWidth" value="200" min="10" step="0.1"></div>
-              <div><label for="sigHeight">Height</label><input type="number" id="sigHeight" value="60" min="10" step="0.1"></div>
-            </div>
+          <div class="form-row">
+            <div><label for="sigWidth">Width</label><input type="number" id="sigWidth" value="200" min="10" step="0.1"></div>
+            <div><label for="sigHeight">Height</label><input type="number" id="sigHeight" value="60" min="10" step="0.1"></div>
           </div>
 
           <label class="checkbox-group checkbox-group-block" for="sigRequired">
@@ -1791,6 +1788,7 @@
       resetPanelsForNewDocument(isEdit);
       if (skipServerInfo) {
         documentFields = transferredFields;
+        documentFields.forEach((f) => { f.__baselineName = f.name; });
         fieldsBaseline = cloneFields(documentFields);
         updatePendingChangesUi();
       }
@@ -1836,6 +1834,7 @@
             xhr.send(formData);
           });
           documentFields = data.fields || [];
+          documentFields.forEach((f) => { f.__baselineName = f.name; });
           fieldsBaseline = cloneFields(documentFields);
           updatePendingChangesUi();
         }
@@ -2527,6 +2526,7 @@
     function cloneFields(fields) {
       return (fields || []).map((f) => ({
         name: f.name,
+        __baselineName: f.__baselineName,
         type: f.type,
         required: !!f.required,
         readOnly: !!f.readOnly,
@@ -2753,13 +2753,18 @@
     // remove of the old name plus an add of the new one -- functionally
     // identical to a true rename here, and it avoids having to track field
     // identity across edits.
+    // Fields carry a `__baselineName` (stamped whenever fieldsBaseline is
+    // synced -- see the load/apply/discard sites) that stays fixed across a
+    // rename, so a field renamed pre-Apply is matched back to its baseline
+    // entry here and reported as one 'edit' instead of a remove+add pair.
     function computeFieldOps() {
       const baselineByName = new Map(fieldsBaseline.map((f) => [f.name, f]));
-      const currentByName = new Map(documentFields.map((f) => [f.name, f]));
+      const matchedBaselineNames = new Set();
       const ops = [];
 
-      for (const [name, field] of currentByName) {
-        const base = baselineByName.get(name);
+      for (const field of documentFields) {
+        const baselineKey = field.__baselineName || field.name;
+        const base = baselineByName.get(baselineKey);
         if (!base) {
           ops.push({
             op: 'add',
@@ -2770,10 +2775,12 @@
           });
           continue;
         }
-        if (!rectsEqual(base.rect, field.rect) || !!base.required !== !!field.required) {
+        matchedBaselineNames.add(baselineKey);
+        const renamed = field.name !== baselineKey;
+        if (renamed || !rectsEqual(base.rect, field.rect) || !!base.required !== !!field.required) {
           ops.push({
             op: 'edit',
-            originalName: name,
+            originalName: baselineKey,
             name: field.name,
             x: field.rect.x, y: field.rect.y, width: field.rect.width, height: field.rect.height,
             required: !!field.required,
@@ -2782,19 +2789,95 @@
       }
 
       for (const name of baselineByName.keys()) {
-        if (!currentByName.has(name)) ops.push({ op: 'remove', name });
+        if (!matchedBaselineNames.has(name)) ops.push({ op: 'remove', name });
       }
 
       return ops;
     }
 
+    // Keeps the bar's left edge/width tracking the PDF viewer column
+    // (.viewer-column) so it reads as attached to that panel rather than
+    // floating at a fixed spot on the viewport.
+    function positionPendingChangesBar() {
+      const bar = document.getElementById('pendingChangesBar');
+      const col = document.querySelector('.viewer-column');
+      if (!bar || !col) return;
+      const rect = col.getBoundingClientRect();
+      bar.style.left = `${Math.round(rect.left)}px`;
+      bar.style.width = `${Math.round(rect.width)}px`;
+    }
+    window.addEventListener('resize', () => {
+      const bar = document.getElementById('pendingChangesBar');
+      if (bar && !bar.hidden) positionPendingChangesBar();
+    });
+
+    let pendingBarHideTimer = null;
+
+    function showPendingChangesBar() {
+      const bar = document.getElementById('pendingChangesBar');
+      if (!bar) return;
+      clearTimeout(pendingBarHideTimer);
+      bar.classList.remove('is-leaving-apply', 'is-leaving-discard');
+      positionPendingChangesBar();
+      if (bar.hidden) {
+        bar.hidden = false;
+        bar.classList.remove('is-visible');
+        void bar.offsetWidth; // restart the enter animation on every fresh appearance
+      }
+      bar.classList.add('is-visible');
+    }
+
+    function hidePendingChangesBar(reason) {
+      const bar = document.getElementById('pendingChangesBar');
+      if (!bar || bar.hidden) return;
+      bar.classList.remove('is-visible');
+      bar.classList.add(reason === 'discard' ? 'is-leaving-discard' : 'is-leaving-apply');
+      clearTimeout(pendingBarHideTimer);
+      pendingBarHideTimer = setTimeout(() => {
+        bar.hidden = true;
+        bar.classList.remove('is-leaving-apply', 'is-leaving-discard');
+      }, 320);
+    }
+
+    // Set right before a discard/apply so the next hide plays the matching
+    // exit animation; consumed once so unrelated hides (e.g. loading a fresh
+    // document) fall back to the plain apply-style fade.
+    let pendingChangesHideReason = null;
+
+    // Turns the staged add/edit/remove ops into a short, human-readable
+    // recap like "Added 1 signature, renamed 1 signature, changed 2
+    // positions, removed 1 signature" for the small text under the
+    // unsaved-changes count. A rename is its own edit op (name !==
+    // originalName) and is called out separately from position/size/
+    // required edits so it doesn't read as a position change.
+    function describePendingFieldChanges(ops) {
+      const added = ops.filter((op) => op.op === 'add').length;
+      const renamed = ops.filter((op) => op.op === 'edit' && op.name !== op.originalName).length;
+      const moved = ops.filter((op) => op.op === 'edit' && op.name === op.originalName).length;
+      const removed = ops.filter((op) => op.op === 'remove').length;
+      const parts = [];
+      if (added) parts.push(`Added ${added} signature${added === 1 ? '' : 's'}`);
+      if (renamed) parts.push(`Renamed ${renamed} signature${renamed === 1 ? '' : 's'}`);
+      if (moved) parts.push(`Changed ${moved} signature position${moved === 1 ? '' : 's'}`);
+      if (removed) parts.push(`Removed ${removed} signature${removed === 1 ? '' : 's'}`);
+      return parts.join(', ');
+    }
+
     function updatePendingChangesUi() {
       const bar = document.getElementById('pendingChangesBar');
       if (!bar) return;
-      const count = computeFieldOps().length;
-      bar.hidden = count === 0;
+      const ops = computeFieldOps();
+      const count = ops.length;
       const label = document.getElementById('pendingChangesLabel');
       if (label) label.textContent = `${count} unsaved change${count === 1 ? '' : 's'}`;
+      const description = document.getElementById('pendingChangesDescription');
+      if (description) description.textContent = describePendingFieldChanges(ops);
+      if (count === 0) {
+        hidePendingChangesBar(pendingChangesHideReason);
+        pendingChangesHideReason = null;
+      } else {
+        showPendingChangesBar();
+      }
     }
 
     // Sends every staged add/edit/remove as one request. Returns whether it
@@ -2824,11 +2907,13 @@
       deselectActiveField();
       clearPendingField();
       if (currentViewport) drawFieldOverlays(currentViewport);
+      pendingChangesHideReason = 'discard';
       updatePendingChangesUi();
       showNotification('Discarded unsaved field changes.', 'info');
     }
 
     document.getElementById('btnApplyFieldChanges').addEventListener('click', () => {
+      pendingChangesHideReason = 'apply';
       applyPendingFieldChanges();
     });
     document.getElementById('btnDiscardFieldChanges').addEventListener('click', discardPendingFieldChanges);
