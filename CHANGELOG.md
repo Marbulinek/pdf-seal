@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/Marbulinek/pdf-seal/compare/v1.1.0...v1.2.0) (2026-08-31)
+
+
+### Features
+
+* implemented signature history feature ([#38](https://github.com/Marbulinek/pdf-seal/issues/38)) ([de34af4](https://github.com/Marbulinek/pdf-seal/commit/de34af44d498ad8f59941cf1e4b4d8b24274eb86))
+
 # [1.1.0](https://github.com/Marbulinek/pdf-seal/compare/v1.0.4...v1.1.0) (2026-08-31)
 
 
