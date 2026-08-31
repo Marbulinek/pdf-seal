@@ -39,6 +39,32 @@
   <script src="/vendor/pdfjs/pdf.min.js"></script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
+
+    // ONE pdf.js worker for the whole page, shared by every document we open
+    // (the live document, each revision snapshot, both sides of a diff).
+    //
+    // Without this, pdf.js spawns a *dedicated* Web Worker per getDocument()
+    // call -- each one re-parsing the 1 MB worker bundle and carrying its own
+    // JS heap plus its own copy of the PDF bytes. With several documents alive
+    // at once (live doc + diffDocA/diffDocB + revisionViewDoc + whatever the
+    // undo stack still pins) that was the single largest slice of this page's
+    // memory footprint.
+    //
+    // Passed per-call as `worker:` rather than set as
+    // GlobalWorkerOptions.workerPort: `workerPort` routes through
+    // PDFWorker.fromPort(), and PDFDocumentLoadingTask.destroy() flags that
+    // shared port with `_pendingDestroy`, after which every later getDocument()
+    // throws "the worker is being destroyed". An explicitly-passed worker is
+    // never assigned to `loadingTask._worker`, so destroy() leaves it alone --
+    // which is what we need, since this app destroys documents in a half-dozen
+    // places.
+    let sharedPdfWorker = null;
+    function getSharedPdfWorker() {
+      if (!sharedPdfWorker || sharedPdfWorker.destroyed) {
+        sharedPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-shared' });
+      }
+      return sharedPdfWorker;
+    }
   </script>
 </head>
 <body data-active-section="signatures">
@@ -1823,7 +1849,7 @@
         // 2. Render PDF
         const arrayBuffer = await file.arrayBuffer();
         setDocumentLoadingProgress(65);
-        const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
         setDocumentLoadingProgress(80);
 
         // Release the previous document's worker + internal caches now that the
@@ -2016,6 +2042,11 @@
 
       canvas.height = viewport.height;
       canvas.width = viewport.width;
+      // The visual diff rasterizes below full zoom and scales the canvas up in
+      // CSS (see sizeCanvasForVisualDiff) -- clear that here so a normal render
+      // always presents at its natural pixel size.
+      canvas.style.width = '';
+      canvas.style.height = '';
 
       const renderParams = { canvasContext: ctx, viewport };
       const renderTask = page.render(renderParams);
@@ -2029,6 +2060,11 @@
       } finally {
         if (currentRenderTask === renderTask) currentRenderTask = null;
       }
+
+      // pdf.js holds a page's decoded images, fonts and operator list on both
+      // the main thread and the worker until it's told to let go. Without this,
+      // paging through a document accumulates every page it has ever shown.
+      page.cleanup();
 
       return true;
     }
@@ -2507,7 +2543,12 @@
     // Undoing/redoing swaps the whole document (file/pdfDoc/fields/baseline/
     // cached metadata & revisions) wholesale, so undo reaches back across an
     // Apply just as it does across a plain staged edit.
-    const FIELD_HISTORY_LIMIT = 100;
+    // Deliberately shallow: a snapshot's unit of retention is an entire
+    // document (a live pdf.js PDFDocumentProxy plus a full raw-object dump),
+    // not a small delta, and a retained pdfDoc can't be destroyed while its
+    // snapshot survives (see isPdfDocRetainedInHistory below). At 100 this was
+    // the second-largest source of the page's memory use.
+    const FIELD_HISTORY_LIMIT = 10;
 
     // `documentFields`/`fieldsBaseline` are mutated in place elsewhere
     // (push/rect assignment) -- clone them so a later mutation can't reach
@@ -3457,7 +3498,13 @@ function renderMetaTreeNode(key, value, depth, term, forceOpen) {
     const childrenHtml = entries.length
       ? entries.map(([k, v]) => renderMetaTreeNode(k, v, depth + 1, term, forceOpen)).join('')
       : '<div class="meta-leaf"><span class="meta-value">Empty</span></div>';
-    const shouldOpen = Boolean(forceOpen) || Boolean(term) || (depth === 0 && key === 'Document Metadata');
+    // Only the top couple of levels open automatically on a search. Opening
+    // *every* matching branch meant a search laid out the entire filtered
+    // object table at once; collapsed <details> children cost nothing to lay
+    // out, and the matches are still one click away.
+    const shouldOpen = Boolean(forceOpen)
+      || (Boolean(term) && depth < 2)
+      || (depth === 0 && key === 'Document Metadata');
     return `<details class="meta-branch" data-depth="${depth}"${shouldOpen ? ' open' : ''}>
       <summary><span class="meta-key">${keyHtml}</span><span class="meta-count">${entries.length}</span></summary>
       <div class="meta-branch-body">${childrenHtml}</div>
@@ -3558,6 +3605,28 @@ async function loadMetadataIfNeeded() {
   }
 }
 
+// getFullRawDump() enumerates every indirect object in the file with no limit,
+// and each one becomes a DOM subtree in the raw tree below. On a large PDF that
+// was tens of thousands of nodes torn down and rebuilt on every render, which
+// is what made typing in the search box lock the page up. Applied *after*
+// filtering, so a search still looks at every object -- only what gets rendered
+// at once is bounded.
+const META_TREE_MAX_OBJECTS = 500;
+
+function capMetaObjectBranch(tree) {
+  const branch = tree['All PDF Objects (raw)'];
+  if (!branch) return tree;
+  const entries = Object.entries(branch);
+  if (entries.length <= META_TREE_MAX_OBJECTS) return tree;
+
+  const capped = {};
+  entries.slice(0, META_TREE_MAX_OBJECTS).forEach(([key, value]) => { capped[key] = value; });
+  const hidden = entries.length - META_TREE_MAX_OBJECTS;
+  capped[`… ${hidden} more not shown`] =
+    `Showing ${META_TREE_MAX_OBJECTS} of ${entries.length} objects. Narrow the search above to reach the rest.`;
+  return Object.assign({}, tree, { 'All PDF Objects (raw)': capped });
+}
+
 function renderMetaTree() {
   const container = document.getElementById('metaTreeContainer');
   const clearBtn = document.getElementById('metaSearchClearBtn');
@@ -3573,7 +3642,7 @@ function renderMetaTree() {
   }
 
   const treeData = buildMetaTreeData();
-  const filtered = term ? filterMetaTree(treeData, term) : treeData;
+  const filtered = capMetaObjectBranch(term ? filterMetaTree(treeData, term) : treeData);
 
   if (!Object.keys(filtered).length) {
     container.innerHTML = `<p class="field-details-empty">${term ? 'No matches found.' : 'No metadata available for this document.'}</p>`;
@@ -3817,7 +3886,15 @@ if (xmpRawModalEl) {
 
 const metaSearchInput = document.getElementById('metaSearchInput');
 if (metaSearchInput) {
-  metaSearchInput.addEventListener('input', renderMetaTree);
+  // Debounced, because renderMetaTree() is not cheap: it re-filters the whole
+  // raw object table, rebuilds it as one HTML string and replaces the entire
+  // subtree. Running that per keystroke on a document with a few thousand
+  // objects locked the page up while typing. Same 200ms as the base64 field.
+  let metaSearchTimer = null;
+  metaSearchInput.addEventListener('input', () => {
+    clearTimeout(metaSearchTimer);
+    metaSearchTimer = setTimeout(renderMetaTree, 200);
+  });
 }
 const metaSearchClearBtn = document.getElementById('metaSearchClearBtn');
 if (metaSearchClearBtn) {
@@ -4758,13 +4835,26 @@ function enterDiffViewMode() {
 
 function exitDiffViewMode() {
   viewerDiffActive = false;
+  visualDiffGeneration++; // abandon any diff render still in flight
   if (revisionViewDoc) revisionViewDoc.destroy();
   revisionViewDoc = null;
   revisionViewIndex = null;
   revisionViewPageNum = 1;
+
+  // Release the two comparison snapshots and their cached page pixels. These
+  // used to survive until the next document swap, so every open/close of the
+  // diff view left two whole pdf.js documents resident. ensureDiffDocs()
+  // brings them back if the person returns to the Visual tab.
+  if (diffDocA) diffDocA.destroy();
+  if (diffDocB) diffDocB.destroy();
+  diffDocA = null;
+  diffDocB = null;
+  resetVisualDiffPixelCache();
+
   const banner = document.getElementById('viewerDiffBanner');
   if (banner) banner.hidden = true;
   overlayLayer.style.pointerEvents = '';
+  overlayLayer.classList.remove('has-many-diff-markers');
   clearActiveDiffObjectSelection();
   if (pdfDoc) {
     renderPage(pageNum);
@@ -5190,10 +5280,12 @@ function renderCompareSelectors(revisions) {
 // onto -- otherwise a stale diff computed for the previous document stays
 // visible (and re-render-able) after a new document is loaded.
 function resetRevisionsDiffState() {
+  visualDiffGeneration++;
   if (diffDocA) diffDocA.destroy();
   if (diffDocB) diffDocB.destroy();
   diffDocA = null;
   diffDocB = null;
+  resetVisualDiffPixelCache();
   currentDiffResultData = null;
   currentDiffFromRevIndex = null;
   currentDiffToRevIndex = null;
@@ -5395,13 +5487,12 @@ async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects) {
   hoveredDiffObjectKey = previewedObjectKey;
   hoverActivatedViewerDiff = !viewerDiffActive;
 
-  const doc = diffDocB && currentDiffToRevIndex === currentDiffToRevIndex
-    ? diffDocB
-    : await fetchRevisionPdfDoc(currentDiffToRevIndex);
-
-  if (!diffDocB && currentDiffToRevIndex === currentDiffToRevIndex) {
-    diffDocB = doc;
+  visualDiffGeneration++;
+  if (!diffDocB) {
+    diffDocB = await fetchRevisionPdfDoc(currentDiffToRevIndex);
+    resetVisualDiffPixelCache();
   }
+  const doc = diffDocB;
   if (hoveredDiffObjectKey !== previewedObjectKey) return;
 
   enterDiffViewMode();
@@ -5421,14 +5512,8 @@ async function renderHoveredDiffVisualPagePreview(objectKey, pageIndex) {
   hoveredDiffObjectKey = objectKey;
   hoverActivatedViewerDiff = !viewerDiffActive;
 
-  if (!diffDocA || !diffDocB) {
-    const [docA, docB] = await Promise.all([
-      diffDocA ? Promise.resolve(diffDocA) : fetchRevisionPdfDoc(currentDiffFromRevIndex),
-      diffDocB ? Promise.resolve(diffDocB) : fetchRevisionPdfDoc(currentDiffToRevIndex),
-    ]);
-    diffDocA = docA;
-    diffDocB = docB;
-  }
+  visualDiffGeneration++;
+  await ensureDiffDocs();
 
   if (hoveredDiffObjectKey !== objectKey) return;
   enterDiffViewMode();
@@ -5693,6 +5778,7 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
       if (diffDocB && diffDocB !== docB) diffDocB.destroy();
       diffDocA = docA;
       diffDocB = docB;
+      resetVisualDiffPixelCache();
       if (currentDiffActiveTab === 'visual') renderVisualDiffView();
     } catch (_e) {
       if (requestedSessionId !== documentSessionId) return;
@@ -5718,7 +5804,32 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
 async function fetchRevisionPdfDoc(revisionIndex, sessionId = documentSessionId) {
   const rev = await getRevision(sessionId, revisionIndex);
   if (!rev) throw new Error(`Could not load snapshot for revision ${revisionIndex}`);
-  return await pdfjsLib.getDocument({ data: rev.buffer }).promise;
+  return await pdfjsLib.getDocument({ data: rev.buffer, worker: getSharedPdfWorker() }).promise;
+}
+
+// Re-acquire whichever comparison snapshots aren't currently open. Both are
+// released on exitDiffViewMode() (each is a whole pdf.js document), so any
+// entry point that needs them has to be able to bring them back.
+async function ensureDiffDocs() {
+  if (diffDocA && diffDocB) return;
+  if (!Number.isInteger(currentDiffFromRevIndex) || !Number.isInteger(currentDiffToRevIndex)) return;
+
+  const requestedSessionId = documentSessionId;
+  const [docA, docB] = await Promise.all([
+    diffDocA || fetchRevisionPdfDoc(currentDiffFromRevIndex, requestedSessionId),
+    diffDocB || fetchRevisionPdfDoc(currentDiffToRevIndex, requestedSessionId),
+  ]);
+  if (requestedSessionId !== documentSessionId) {
+    // A newer document landed while these were loading -- they were never
+    // assigned, so nothing else will ever destroy them.
+    if (docA !== diffDocA) docA?.destroy();
+    if (docB !== diffDocB) docB?.destroy();
+    return;
+  }
+  const changed = docA !== diffDocA || docB !== diffDocB;
+  diffDocA = docA;
+  diffDocB = docB;
+  if (changed) resetVisualDiffPixelCache();
 }
 
 function switchDiffTab(targetTab) {
@@ -5780,7 +5891,14 @@ function renderVisualDiffChecklistMini(diff) {
   ].join('');
 }
 
+// Rapid page-next clicks (or a color change landing mid-render) used to stack
+// full diff runs on top of each other, each fighting for the same canvas. Every
+// entry point bumps this; anything that resumes after an await and finds it has
+// moved on drops its result.
+let visualDiffGeneration = 0;
+
 async function renderVisualDiffView() {
+  const generation = ++visualDiffGeneration;
   enterDiffViewMode();
   renderVisualDiffChecklistMini(currentDiffResultData);
 
@@ -5788,8 +5906,17 @@ async function renderVisualDiffView() {
   const toLabel = currentDiffToRevIndex ?? '?';
 
   if (!diffDocA && !diffDocB) {
+    // exitDiffViewMode() releases both snapshots (they're two of the largest
+    // things this page holds), so coming back to this tab re-acquires them.
     setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — loading snapshots…`);
-    return;
+    try {
+      await ensureDiffDocs();
+    } catch (_e) {
+      setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — snapshots unavailable.`);
+      return;
+    }
+    if (generation !== visualDiffGeneration) return;
+    if (!diffDocA && !diffDocB) return;
   }
 
   const maxPages = Math.max(diffDocA ? diffDocA.numPages : 0, diffDocB ? diffDocB.numPages : 0);
@@ -5812,6 +5939,7 @@ async function renderVisualDiffView() {
   try {
     await renderVisualDiff(diffCurrentPage);
   } catch (err) {
+    if (generation !== visualDiffGeneration) return; // superseded; its error isn't interesting
     setDiffBannerText(`Visual diff error: ${err.message}`);
   }
 }
@@ -5828,183 +5956,258 @@ const VISUAL_DIFF_HIGHLIGHT_COLORS = {
   green: { r: 74, g: 222, b: 128 },
 };
 
-// Used by Summary-tab chip clicks: renders the target page cleanly and draws
-// marching-ants rectangles around each visually-changed region instead of
-// tinting the whole page.
-async function renderVisualDiffAsMarkers(pageNum) {
+// Ceiling on the resolution the diff is *computed* at. The viewer lets the
+// person zoom to 3.0, which would mean 9x the pixels to render, compare and
+// allocate -- for a signal that's deliberately coarse anyway (changes are
+// reported as 20px cells). Above this the canvas is simply scaled up in CSS,
+// so zooming still works, it just doesn't multiply the diffing cost.
+const VISUAL_DIFF_MAX_SCALE = 1.5;
+const VISUAL_DIFF_CELL = 20;   // marker mode: dirty-cell grid size, in px
+const VISUAL_DIFF_CELL_PAD = 4;
+const VISUAL_DIFF_MAX_RECTS = 50;
+// How many rendered pages the worker keeps pixels for. Two per page (one per
+// revision), so this covers the current page plus one -- enough that paging
+// back and forth, and every highlight-color change, is a pure cache hit.
+const VISUAL_DIFF_PIXEL_CACHE_LIMIT = 4;
+
+function visualDiffScale() {
+  return Math.min(currentScale, VISUAL_DIFF_MAX_SCALE);
+}
+
+// --- diff worker plumbing -------------------------------------------------
+// The per-pixel comparison used to run inline on the main thread, which froze
+// the tab for as long as it took (width*height*4 iterations, up to ~47M at
+// full zoom) on every page change and every color change. It now runs in
+// public/diff-worker.js, which also holds the rendered-page pixels so a color
+// change doesn't re-render anything at all.
+
+let diffWorker = null;
+let diffWorkerSeq = 0;
+const diffWorkerPending = new Map();
+// FIFO mirror of the keys the worker currently holds, so this side knows what
+// still needs rendering and which entry to evict next.
+let diffPixelCacheKeys = [];
+
+function getDiffWorker() {
+  if (diffWorker) return diffWorker;
+  diffWorker = new Worker('/diff-worker.js');
+  diffWorker.onmessage = (event) => {
+    const { id, ok, error } = event.data;
+    const pending = diffWorkerPending.get(id);
+    if (!pending) return;
+    diffWorkerPending.delete(id);
+    if (ok) pending.resolve(event.data);
+    else pending.reject(new Error(error || 'Diff worker failed.'));
+  };
+  diffWorker.onerror = () => {
+    // A worker-level failure rejects everything in flight; the next diff
+    // spins up a fresh worker (with an empty cache, hence the key reset).
+    diffWorkerPending.forEach(({ reject }) => reject(new Error('Diff worker crashed.')));
+    diffWorkerPending.clear();
+    diffPixelCacheKeys = [];
+    diffWorker.terminate();
+    diffWorker = null;
+  };
+  return diffWorker;
+}
+
+function callDiffWorker(message, transfer) {
+  const id = ++diffWorkerSeq;
+  const worker = getDiffWorker();
+  return new Promise((resolve, reject) => {
+    diffWorkerPending.set(id, { resolve, reject });
+    worker.postMessage(Object.assign({ id }, message), transfer || []);
+  });
+}
+
+// Drops every cached page's pixels. Called whenever the documents being
+// compared change (or the diff view closes) -- the cached pixels are the
+// single largest thing this feature holds onto.
+function resetVisualDiffPixelCache() {
+  diffPixelCacheKeys = [];
+  if (diffWorker) callDiffWorker({ type: 'reset' }).catch(() => {});
+}
+
+/**
+ * Make sure the worker holds the pixels for one side of the comparison at
+ * `key`, rendering the page offscreen only on a cache miss. Returns the key.
+ */
+async function ensureVisualDiffPixels(key, page, width, height, scale) {
+  const existing = diffPixelCacheKeys.indexOf(key);
+  if (existing !== -1) {
+    // Refresh its position so the FIFO evicts genuinely-cold entries.
+    diffPixelCacheKeys.splice(existing, 1);
+    diffPixelCacheKeys.push(key);
+    return key;
+  }
+
+  const off = document.createElement('canvas');
+  off.width = width;
+  off.height = height;
+  const offCtx = off.getContext('2d', { willReadFrequently: true });
+  if (page) {
+    await page.render({ canvasContext: offCtx, viewport: page.getViewport({ scale }) }).promise;
+  } else {
+    // This page doesn't exist in that revision -- compare against blank white
+    // so the whole page reads as changed, which is what actually happened.
+    offCtx.fillStyle = '#ffffff';
+    offCtx.fillRect(0, 0, width, height);
+  }
+  const pixels = offCtx.getImageData(0, 0, width, height).data;
+  // Release the backing store now rather than waiting for GC to notice it.
+  off.width = 0;
+  off.height = 0;
+  if (page) page.cleanup();
+
+  // Transferred, not copied -- `pixels.buffer` is detached after this.
+  await callDiffWorker(
+    { type: 'put', key, buf: pixels.buffer, width, height },
+    [pixels.buffer],
+  );
+
+  // Two overlapping renders can both miss on the same key and both land here;
+  // registering it twice would let one eviction drop pixels the other entry
+  // still claims are cached, and the next diff would fault on a cache miss.
+  if (!diffPixelCacheKeys.includes(key)) diffPixelCacheKeys.push(key);
+  while (diffPixelCacheKeys.length > VISUAL_DIFF_PIXEL_CACHE_LIMIT) {
+    const evicted = diffPixelCacheKeys.shift();
+    callDiffWorker({ type: 'evict', key: evicted }).catch(() => {});
+  }
+  return key;
+}
+
+/**
+ * Shared front half of both diff modes: works out the page geometry, sizes the
+ * shared canvas, and gets both revisions' pixels into the worker.
+ *
+ * Returns null when neither revision has this page.
+ */
+async function prepareVisualDiff(pageNum) {
   const pageA = (diffDocA && pageNum <= diffDocA.numPages) ? await diffDocA.getPage(pageNum) : null;
   const pageB = (diffDocB && pageNum <= diffDocB.numPages) ? await diffDocB.getPage(pageNum) : null;
   const targetPage = pageB || pageA;
 
   if (!targetPage) {
     setDiffBannerText('Page not available in either revision.');
-    return;
+    return null;
   }
 
   if (!userHasManuallyZoomed) {
     currentScale = 1.0;
     document.getElementById('zoomLevel').textContent = '100%';
   }
-  const viewport = targetPage.getViewport({ scale: currentScale });
-  currentViewport = viewport;
+
+  // Two scales in play: `displayViewport` is what the person sees (and what
+  // overlay rects are positioned against), `scale` is what we actually
+  // rasterize and compare at.
+  const displayViewport = targetPage.getViewport({ scale: currentScale });
+  currentViewport = displayViewport;
+
+  const scale = visualDiffScale();
+  const viewport = targetPage.getViewport({ scale });
   const width = Math.floor(viewport.width);
   const height = Math.floor(viewport.height);
 
-  const renderOffscreen = async (page) => {
-    const off = document.createElement('canvas');
-    off.width = width;
-    off.height = height;
-    const offCtx = off.getContext('2d');
-    if (page) {
-      await page.render({ canvasContext: offCtx, viewport: page.getViewport({ scale: currentScale }) }).promise;
-    } else {
-      offCtx.fillStyle = '#ffffff';
-      offCtx.fillRect(0, 0, width, height);
-    }
-    return { pixels: offCtx.getImageData(0, 0, width, height).data, canvas: off };
-  };
+  const keyA = await ensureVisualDiffPixels(`A:${pageNum}:${scale}`, pageA, width, height, scale);
+  const keyB = await ensureVisualDiffPixels(`B:${pageNum}:${scale}`, pageB, width, height, scale);
 
-  const [resA, resB] = await Promise.all([renderOffscreen(pageA), renderOffscreen(targetPage)]);
-  const imgDataA = resA.pixels;
-  const imgDataB = resB.pixels;
+  return { pageA, pageB, keyA, keyB, width, height, scale, displayViewport };
+}
 
-  // Paint the target revision cleanly (cancel any in-flight pdf.js render first)
+// Points the shared viewer canvas at a diff raster: the bitmap is at diff
+// resolution, but it's presented at the resolution the person zoomed to.
+function sizeCanvasForVisualDiff(width, height, displayViewport) {
+  // Cancel any in-flight main-viewer render first -- it targets this same
+  // canvas and would otherwise land on top of the diff.
   if (currentRenderTask) { currentRenderTask.cancel(); currentRenderTask = null; }
   overlayLayer.innerHTML = '';
   canvas.width = width;
   canvas.height = height;
-  ctx.drawImage(resB.canvas, 0, 0);
+  canvas.style.width = `${Math.floor(displayViewport.width)}px`;
+  canvas.style.height = `${Math.floor(displayViewport.height)}px`;
+}
 
-  // Detect changed pixels into a coarse cell grid
-  const CELL = 20;
-  const cols = Math.ceil(width / CELL);
-  const rows = Math.ceil(height / CELL);
-  const dirty = new Uint8Array(cols * rows);
+// Used by Summary-tab chip clicks: renders the target page cleanly and draws
+// marching-ants rectangles around each visually-changed region instead of
+// tinting the whole page.
+async function renderVisualDiffAsMarkers(pageNum) {
+  const generation = visualDiffGeneration;
+  const prepared = await prepareVisualDiff(pageNum);
+  if (!prepared || generation !== visualDiffGeneration) return;
+  const { pageA, pageB, keyA, keyB, width, height, scale, displayViewport } = prepared;
 
-  for (let i = 0; i < imgDataA.length; i += 4) {
-    if (
-      Math.abs(imgDataA[i]   - imgDataB[i])   +
-      Math.abs(imgDataA[i+1] - imgDataB[i+1]) +
-      Math.abs(imgDataA[i+2] - imgDataB[i+2]) +
-      Math.abs(imgDataA[i+3] - imgDataB[i+3]) > 20
-    ) {
-      const pixIdx = i >> 2;
-      dirty[((pixIdx / width | 0) / CELL | 0) * cols + ((pixIdx % width) / CELL | 0)] = 1;
-    }
+  const { rects } = await callDiffWorker({
+    type: 'diff',
+    mode: 'markers',
+    keyA,
+    keyB,
+    cell: VISUAL_DIFF_CELL,
+    pad: VISUAL_DIFF_CELL_PAD,
+    maxRects: VISUAL_DIFF_MAX_RECTS,
+  });
+  if (generation !== visualDiffGeneration) return;
+
+  // Paint the target revision cleanly (the diff itself is drawn as overlays)
+  sizeCanvasForVisualDiff(width, height, displayViewport);
+  const targetPage = pageB || pageA;
+  const renderTask = targetPage.render({
+    canvasContext: ctx,
+    viewport: targetPage.getViewport({ scale }),
+  });
+  currentRenderTask = renderTask;
+  try {
+    await renderTask.promise;
+  } catch (err) {
+    if (err && err.name === 'RenderingCancelledException') return;
+    throw err;
+  } finally {
+    if (currentRenderTask === renderTask) currentRenderTask = null;
   }
 
-  // BFS: group adjacent dirty cells into bounding-rect clusters
-  const visited = new Uint8Array(cols * rows);
-  const scale = currentViewport.scale;
-  const pdfPageHeight = currentViewport.viewBox[3];
-  let rectCount = 0;
-
-  for (let start = 0; start < dirty.length; start++) {
-    if (!dirty[start] || visited[start]) continue;
-    if (rectCount >= 50) break; // safety cap for heavily-changed pages
-    let minCx = start % cols, maxCx = minCx;
-    let minCy = (start / cols) | 0, maxCy = minCy;
-    const stack = [start];
-    visited[start] = 1;
-    while (stack.length) {
-      const cell = stack.pop();
-      const cx = cell % cols;
-      const cy = (cell / cols) | 0;
-      if (cx < minCx) minCx = cx; if (cx > maxCx) maxCx = cx;
-      if (cy < minCy) minCy = cy; if (cy > maxCy) maxCy = cy;
-      for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
-        const nx = cx + dx, ny = cy + dy;
-        if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) continue;
-        const nc = ny * cols + nx;
-        if (dirty[nc] && !visited[nc]) { visited[nc] = 1; stack.push(nc); }
-      }
-    }
-    // Convert cell-grid bounds → screen px (with padding) → PDF coords
-    const pad = 4;
-    const sL = Math.max(0, minCx * CELL - pad);
-    const sT = Math.max(0, minCy * CELL - pad);
-    const sR = Math.min(width,  (maxCx + 1) * CELL + pad);
-    const sB = Math.min(height, (maxCy + 1) * CELL + pad);
-    const pdfW = (sR - sL) / scale;
-    const pdfH = (sB - sT) / scale;
-    const pdfRect = { x: sL / scale, y: pdfPageHeight - sT / scale - pdfH, width: pdfW, height: pdfH };
+  // The worker reports rects in diff-raster pixels; convert to PDF space so
+  // applyRectToOverlay can place them at whatever zoom is on screen.
+  const pdfPageHeight = displayViewport.viewBox[3];
+  rects.forEach((rect) => {
+    const pdfW = (rect.right - rect.left) / scale;
+    const pdfH = (rect.bottom - rect.top) / scale;
     const div = document.createElement('div');
     div.className = 'diff-object-hover-overlay';
-    applyRectToOverlay(div, pdfRect);
+    applyRectToOverlay(div, {
+      x: rect.left / scale,
+      y: pdfPageHeight - rect.top / scale - pdfH,
+      width: pdfW,
+      height: pdfH,
+    });
     overlayLayer.appendChild(div);
-    rectCount++;
-  }
+  });
+  // Marching ants on every marker at once repaints the whole canvas area each
+  // frame; past a handful it's the dominant cost on screen for no extra clarity.
+  overlayLayer.classList.toggle('has-many-diff-markers', rects.length > 8);
 }
 
 async function renderVisualDiff(pageNum) {
-  const pageA = (diffDocA && pageNum <= diffDocA.numPages) ? await diffDocA.getPage(pageNum) : null;
-  const pageB = (diffDocB && pageNum <= diffDocB.numPages) ? await diffDocB.getPage(pageNum) : null;
-  const targetPage = pageB || pageA;
-
-  if (!targetPage) {
-    setDiffBannerText('Page not available in either revision.');
-    return;
-  }
-
-  if (!userHasManuallyZoomed) {
-    currentScale = 1.0;
-    document.getElementById('zoomLevel').textContent = '100%';
-  }
-  const viewport = targetPage.getViewport({ scale: currentScale });
-  currentViewport = viewport;
-  const width = Math.floor(viewport.width);
-  const height = Math.floor(viewport.height);
-
-  const renderOffscreen = async (page) => {
-    const off = document.createElement('canvas');
-    off.width = width;
-    off.height = height;
-    const offCtx = off.getContext('2d');
-    if (page) {
-      const vp = page.getViewport({ scale: currentScale });
-      await page.render({ canvasContext: offCtx, viewport: vp }).promise;
-    } else {
-      offCtx.fillStyle = '#ffffff';
-      offCtx.fillRect(0, 0, width, height);
-    }
-    return offCtx.getImageData(0, 0, width, height).data;
-  };
-
-  const imgDataA = await renderOffscreen(pageA);
-  const imgDataB = await renderOffscreen(pageB);
-  const base = pageB ? imgDataB : imgDataA; // show the document as it actually looks, not a diff render
+  const generation = visualDiffGeneration;
+  const prepared = await prepareVisualDiff(pageNum);
+  if (!prepared || generation !== visualDiffGeneration) return;
+  const { pageB, keyA, keyB, width, height, displayViewport } = prepared;
 
   const colorKey = document.getElementById('visualDiffColor').value;
   const highlight = VISUAL_DIFF_HIGHLIGHT_COLORS[colorKey] || VISUAL_DIFF_HIGHLIGHT_COLORS.yellow;
-  const alpha = 0.55;
 
-  overlayLayer.innerHTML = '';
-  canvas.width = width;
-  canvas.height = height;
-  const out = ctx.createImageData(width, height);
-  const data = out.data;
+  const result = await callDiffWorker({
+    type: 'diff',
+    mode: 'tint',
+    keyA,
+    keyB,
+    // Show the document as it actually looks, not a diff render.
+    baseKey: pageB ? keyB : keyA,
+    highlight,
+    alpha: 0.55,
+  });
+  if (generation !== visualDiffGeneration) return;
 
-  for (let i = 0; i < base.length; i += 4) {
-    const dr = Math.abs(imgDataA[i] - imgDataB[i]);
-    const dg = Math.abs(imgDataA[i + 1] - imgDataB[i + 1]);
-    const db = Math.abs(imgDataA[i + 2] - imgDataB[i + 2]);
-    const da = Math.abs(imgDataA[i + 3] - imgDataB[i + 3]);
-    const delta = dr + dg + db + da;
-
-    if (delta > 20) {
-      data[i] = base[i] * (1 - alpha) + highlight.r * alpha;
-      data[i + 1] = base[i + 1] * (1 - alpha) + highlight.g * alpha;
-      data[i + 2] = base[i + 2] * (1 - alpha) + highlight.b * alpha;
-      data[i + 3] = 255;
-    } else {
-      data[i] = base[i];
-      data[i + 1] = base[i + 1];
-      data[i + 2] = base[i + 2];
-      data[i + 3] = base[i + 3];
-    }
-  }
-
-  ctx.putImageData(out, 0, 0);
+  sizeCanvasForVisualDiff(width, height, displayViewport);
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(result.buf), width, height), 0, 0);
 }
   </script>
 </body>
