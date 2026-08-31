@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/Marbulinek/pdf-seal/compare/v1.0.4...v1.1.0) (2026-08-31)
+
+
+### Features
+
+* improved signing section ([#37](https://github.com/Marbulinek/pdf-seal/issues/37)) ([58b6560](https://github.com/Marbulinek/pdf-seal/commit/58b6560fd5b4d3977f1595afcd90dc7dafeb2ebe))
+
 ## [1.0.4](https://github.com/Marbulinek/pdf-seal/compare/v1.0.3...v1.0.4) (2026-08-30)
 
 
