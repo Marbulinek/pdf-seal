@@ -1,6 +1,6 @@
 {
   "name": "pdf-seal",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "PDF Seal :: Manage signature fields, inspect metadata, and compare revision history — entirely in your browser, nothing is stored on a server",
   "license": "MIT",
   "author": {
