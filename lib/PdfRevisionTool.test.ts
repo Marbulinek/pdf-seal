@@ -58,7 +58,7 @@ describe('PdfRevisionTool', () => {
     const revisions = await PdfRevisionTool.summarizeIndependentSnapshots([firstBytes, secondBytes]);
     expect(revisions).toHaveLength(2);
     const [firstRev, secondRev] = revisions;
-    expect(firstRev.metadata.modificationDate.getTime()).not.toBe(secondRev.metadata.modificationDate.getTime());
-    expect(secondRev.metadata.modificationDate.getTime()).toBeGreaterThan(firstRev.metadata.modificationDate.getTime());
+    expect(firstRev.metadata?.modificationDate.getTime()).not.toBe(secondRev.metadata?.modificationDate.getTime());
+    expect(secondRev.metadata?.modificationDate.getTime()).toBeGreaterThan(firstRev.metadata?.modificationDate.getTime());
   });
 });

@@ -390,17 +390,6 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 .add-sig-actions[hidden] { display: none; }
 .add-sig-actions .btn { margin-top: 0; }
 
-#sectionSignatures .edit-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--ice);
-}
-#sectionSignatures .edit-actions .btn { margin-top: 0; }
-
-#sectionSignatures .edit-actions .btn,
 #sectionSignatures #btnPlaceField,
 #sectionSignatures .add-sig-actions .btn {
   font-size: 0.88rem;
@@ -447,6 +436,9 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 .icon-btn:hover:not(:disabled) { background: var(--cream); transform: translate(-1px, -1px); box-shadow: none; }
 .icon-btn:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: none; }
 .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.icon-btn-danger { margin-left: auto; border-color: var(--coral); color: var(--coral-dark); }
+.icon-btn-danger:hover:not(:disabled) { background: rgba(230, 57, 70, 0.1); }
 
 /* ---------- Dropdown buttons (Upload / Download) ---------- */
 .dropdown {
@@ -1111,6 +1103,30 @@ input[type="number"]:focus, input[type="text"]:focus {
   padding-left: 0;
 }
 
+.pending-changes-bar {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 600px;
+  max-width: calc(100vw - 32px);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--navy);
+  background: #ffffff;
+  border: 1px solid var(--ocean);
+  border-radius: var(--radius-l);
+  box-shadow: 0 8px 24px rgba(30, 33, 51, 0.14);
+  padding: 14px 18px;
+}
+.pending-changes-bar[hidden] { display: none; }
+.pending-changes-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.pending-changes-actions .btn { margin-top: 0; }
+
 .placement-hint {
   display: flex;
   align-items: flex-start;
@@ -1391,10 +1407,12 @@ canvas { display: block; }
   font-size: 0.72rem; line-height: 1.25; white-space: nowrap;
   pointer-events: none; z-index: 5; font-weight: 600; box-sizing: border-box;
 }
+.field-overlay .field-label-tooltip {
+  font-weight: 400; opacity: 0.85; margin-top: 2px;
+}
 .field-overlay:hover .field-label,
-.field-overlay.active .field-label,
-.field-overlay.pending .field-label { display: block; }
-.field-overlay:not(:hover):not(.active):not(.pending) .field-label { display: none; }
+.field-overlay.active .field-label { display: block; }
+.field-overlay:not(:hover):not(.active) .field-label { display: none; }
 .field-overlay:hover { background: rgba(16, 185, 129, 0.28); transform: scale(1.02); }
 .field-overlay.required {
   border-color: var(--coral); background: rgba(249, 115, 22, 0.16);
@@ -1414,13 +1432,14 @@ canvas { display: block; }
 }
 
 /* Field overlays are only meant to be manipulated from the Signatures
-   section -- elsewhere (MetaData, Revisions, ...) they're still drawn for
-   context but shouldn't intercept clicks/drags on the viewer beneath them. */
-body:not([data-active-section="signatures"]) .field-overlay:not(.pending) {
-  pointer-events: none;
+   section -- elsewhere (MetaData, Revisions, ...) pointer-events stay on
+   just enough to let hover show the name/tooltip label (see the JS guard
+   on the drag handler), but dragging/resizing is disabled and the resize
+   handle never shows since selection is cleared on leaving Signatures. */
+body:not([data-active-section="signatures"]) .field-overlay {
   cursor: default;
 }
-body:not([data-active-section="signatures"]) .field-overlay:not(.pending) .resize-handle {
+body:not([data-active-section="signatures"]) .field-overlay .resize-handle {
   pointer-events: none;
 }
 
@@ -1436,19 +1455,33 @@ body:not([data-active-section="signatures"]) .field-overlay:not(.pending) .resiz
   50% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.7); }
 }
 
-/* Pending (unsaved) new-field ghost box */
-.field-overlay.pending {
-  border: 2.5px dashed var(--coral);
-  background: rgba(249, 115, 22, 0.15);
-  cursor: move;
-  z-index: 20;
-  animation: pendingPulse 1.8s ease-in-out infinite;
+/* Staged field (added/moved/resized/toggled but not yet Applied): a
+   marching-ants outline drawn on a pseudo-element, in the SAME color as
+   the field's own border (ocean = optional, coral = required) so it reads
+   as one moving border rather than a second, differently-colored one. */
+.field-overlay.is-staged::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 8px;
+  pointer-events: none;
+  --ants-color: var(--ocean);
+  background-image:
+    linear-gradient(90deg, var(--ants-color) 50%, transparent 50%),
+    linear-gradient(90deg, var(--ants-color) 50%, transparent 50%),
+    linear-gradient(0deg, var(--ants-color) 50%, transparent 50%),
+    linear-gradient(0deg, var(--ants-color) 50%, transparent 50%);
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  background-size: 10px 2px, 10px 2px, 2px 10px, 2px 10px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  animation: marchingAnts 0.5s linear infinite;
 }
-@keyframes pendingPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.28); }
-  50% { box-shadow: 0 0 0 7px rgba(249, 115, 22, 0); }
+.field-overlay.is-staged.required::after {
+  --ants-color: var(--coral);
 }
-.field-overlay.pending:hover { background: rgba(249, 115, 22, 0.25); }
+@keyframes marchingAnts {
+  to { background-position: 10px 0, -10px 100%, 0 -10px, 100% 10px; }
+}
 
 .resize-handle {
   position: absolute; bottom: -7px; right: -7px; width: 15px; height: 15px;
@@ -1457,7 +1490,6 @@ body:not([data-active-section="signatures"]) .field-overlay:not(.pending) .resiz
   display: none;
 }
 .field-overlay.active .resize-handle { display: block; }
-.field-overlay.pending .resize-handle { display: block; background: var(--coral); }
 
 @media (max-width: 960px) {
   .tools-panel { width: 100%; }
@@ -3067,6 +3099,7 @@ body.hide-raw-pdf-data .diff-raw-objects {
 .notification-error .notification-progress { background: var(--coral); }
 
 .notification-info { border-left-color: var(--ocean); }
+.notification-subtle .notification-message { font-weight: 400; }
 
 .notification-loading { border-left-color: var(--ocean); }
 .notification-spinner {

@@ -45,6 +45,14 @@
 
   <div id="notificationStack" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
 
+  <div class="pending-changes-bar" id="pendingChangesBar" hidden>
+    <span id="pendingChangesLabel">0 unsaved changes</span>
+    <div class="pending-changes-actions">
+      <button type="button" class="btn btn-ghost" id="btnDiscardFieldChanges">Discard</button>
+      <button type="button" class="btn btn-primary" id="btnApplyFieldChanges">Apply changes</button>
+    </div>
+  </div>
+
   <header class="topbar">
     <div class="topbar-inner">
       <div class="topbar-row topbar-row-primary">
@@ -205,8 +213,8 @@
       <div class="remove-field-body">
         <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
         <div class="remove-field-text">
-          <p class="remove-field-warning"><span class="icon icon-alert-triangle" aria-hidden="true"></span> This can't be undone!</p>
           <p class="modal-hint remove-field-hint">Remove the signature field <strong id="removeFieldModalName"></strong> from this document?</p>
+          <p class="modal-hint remove-field-hint">This is staged like any other change — you can still <strong>Discard</strong> it before hitting Apply.</p>
         </div>
       </div>
       <div class="modal-actions">
@@ -304,7 +312,11 @@
         <div class="panel-overlay is-hidden" id="editPanelNoSelectionOverlay">
           <div class="panel-overlay-text">Select a signature field on the document to edit it</div>
         </div>
-        <h3><span class="panel-dot dot-ocean"></span>Edit Selected Field</h3>
+        <h3>
+          <span class="panel-dot dot-ocean"></span>Edit Selected Field
+          <button type="button" id="btnRemoveField" class="icon-btn icon-btn-danger" disabled aria-label="Remove field" title="Remove field"><span class="icon icon-close" aria-hidden="true"></span></button>
+        </h3>
+        <p class="revisions-hint">Move, resize, rename, or toggle fields as needed — changes are staged until you hit <strong>Apply changes</strong>.</p>
         <form id="editFieldForm">
           <input type="hidden" id="editOriginalName">
           <div class="form-group">
@@ -348,10 +360,6 @@
             </div>
           </div>
 
-          <div class="edit-actions">
-            <button type="submit" class="btn btn-primary btn-block"><span class="icon icon-check" aria-hidden="true"></span> Update Field</button>
-            <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" disabled><span class="icon icon-close" aria-hidden="true"></span> Remove Field</button>
-          </div>
         </form>
       </div>
 
@@ -388,8 +396,7 @@
 
           <button type="button" id="btnPlaceField" class="btn btn-primary btn-block" disabled><span class="icon icon-pen" aria-hidden="true"></span> Place on Document</button>
           <div class="add-sig-actions" id="addSigActions" hidden>
-            <button type="submit" id="btnAddSig" class="btn btn-primary btn-block" disabled><span class="icon icon-check" aria-hidden="true"></span> Add to Document</button>
-            <button type="button" id="btnCancelPlace" class="btn btn-danger btn-block"><span class="icon icon-close" aria-hidden="true"></span> Remove from Document</button>
+            <button type="button" id="btnCancelPlace" class="btn btn-danger btn-block"><span class="icon icon-close" aria-hidden="true"></span> Cancel Placement</button>
           </div>
         </form>
         <div id="actionStatus" class="status-text"></div>
@@ -633,6 +640,13 @@
     let currentScale = 1.0;
     let userHasManuallyZoomed = false; // once true, the page no longer auto-fits the viewer on render
     let documentFields = [];
+    // Last field state actually confirmed by the server (deep copy). Add/edit/remove
+    // in the Signatures panel mutate `documentFields` directly and locally -- no
+    // server round trip per operation -- and the diff between this baseline and
+    // `documentFields` (see computeFieldOps()) is what gets sent, as one batch, when
+    // the user clicks "Apply changes". Kept in sync with documentFields everywhere
+    // the latter is set from server truth (or restored on rollback).
+    let fieldsBaseline = [];
     let documentMeta = null;       // standard Info dict fields (title, author, producer, ...), from /api/info
     let documentRawInfo = null;    // raw/custom Info dictionary entries, from /api/info
     let documentRawObjects = null; // { trailer, objects } -- the entire raw PDF object table, from /api/info
@@ -646,10 +660,24 @@
     // Revisions tool state
     let documentSessionId = null;    // groups this document's revision snapshots in IndexedDB (see revisionStore below)
     let documentRevisionCount = 0;   // how many revisions are stored under documentSessionId so far
-    let revisionsData = null;        // array from /api/revisions, for documentSessionId's current revision count
+    let revisionsData = null;        // one entry per local revision for documentSessionId's current revision count; each entry's full summary is loaded lazily (see loadRevisionSummary)
     let revisionsLoadedForFile = null; // "<documentSessionId>:<revisionCount>" revisionsData corresponds to (cache-invalidation key)
     let revisionsLoading = false;
     let revisionsReloadPending = false; // another load was requested while one was already in flight -- rerun once it settles
+    // Per-revision summary cache, keyed by revision index, for revisionSummaryCacheSessionId.
+    // summarizeSnapshot() (server-side) computes each revision's summary purely from that
+    // revision's own bytes -- nothing about it depends on any other revision -- so once a
+    // given index has been summarized it never needs to be re-uploaded or re-parsed, even
+    // though loadRevisionsIfNeeded() re-runs on every edit while the panel is open. Without
+    // this, opening the Revisions panel on a document with N revisions re-uploads and
+    // re-parses all N of them on every single field edit (O(N) work, and O(N) full PDF
+    // copies in flight at once, per edit -- O(N^2) over a session).
+    let revisionSummaryCache = new Map();
+    let revisionSummaryCacheSessionId = null;
+    // Indices whose card is currently expanded, so a re-render (after a
+    // lazy detail fetch finishes) can restore what the user had open
+    // instead of collapsing every card back down.
+    let expandedRevisionIndices = new Set();
 
     // Visual Diff state
     let diffDocA = null;
@@ -756,6 +784,32 @@
         const req = tx.objectStore(REVISION_STORE_NAME).index('bySession').getAll(IDBKeyRange.only(sessionId));
         req.onsuccess = () => resolve((req.result || []).sort((a, b) => a.index - b.index));
         req.onerror = () => reject(req.error || new Error('Could not read local revisions.'));
+      });
+    }
+
+    // Cheap sibling of listRevisionsForSession -- reads just the (sessionId, index) keys
+    // via getAllKeys, without pulling every revision's full ArrayBuffer into memory just to
+    // find out which indices exist. Used by loadRevisionsIfNeeded so that a document with many
+    // revisions doesn't load N full PDF buffers on every re-check, only the ones actually
+    // missing from revisionSummaryCache.
+    async function listRevisionIndicesForSession(sessionId) {
+      if (!sessionId) return [];
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
+        const req = tx.objectStore(REVISION_STORE_NAME).index('bySession').getAllKeys(IDBKeyRange.only(sessionId));
+        req.onsuccess = () => resolve((req.result || []).map((key) => key[1]).sort((a, b) => a - b));
+        req.onerror = () => reject(req.error || new Error('Could not read local revisions.'));
+      });
+    }
+
+    async function getRevisionRecord(sessionId, index) {
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
+        const req = tx.objectStore(REVISION_STORE_NAME).get([sessionId, index]);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error || new Error('Could not read a local revision.'));
       });
     }
 
@@ -1007,22 +1061,20 @@
             document.getElementById('fieldDetailsBlock')?.setAttribute('open', '');
           }
           showNotification(
-            nextSettings.showRawPdfData
-              ? 'Enabled advanced raw PDF data panels — look for the "Raw" badge in MetaData, Signatures, and Revisions.'
-              : 'Disabled advanced raw PDF data panels.',
+            nextSettings.showRawPdfData ? 'Raw PDF data panels enabled.' : 'Raw PDF data panels disabled.',
             'info',
             8000,
-          );
+          ).classList.add('notification-subtle');
         }
 
         if (nextSettings.includeRevisionHistoryByDefault !== previousSettings.includeRevisionHistoryByDefault) {
           showNotification(
             nextSettings.includeRevisionHistoryByDefault
-              ? 'Revision history will now be bundled into exported and shared documents.'
-              : 'Revision history will no longer be bundled into exported and shared documents.',
+              ? 'Revision history will be included in exports.'
+              : 'Revision history will be excluded from exports.',
             'info',
             8000,
-          );
+          ).classList.add('notification-subtle');
         }
       });
     }
@@ -1454,7 +1506,6 @@
       const editPanel = document.getElementById('editPanel');
       const addSigForm = document.getElementById('addSigForm');
       const placeFieldBtn = document.getElementById('btnPlaceField');
-      const addSigBtn = document.getElementById('btnAddSig');
       const editPanelOverlay = document.getElementById('editPanelOverlay');
       const addSigPanelOverlay = document.getElementById('addSigPanelOverlay');
       const hasDocument = Boolean(pdfDoc);
@@ -1498,7 +1549,7 @@
           addSigPanelOverlay.classList.toggle('is-hidden', hasDocument);
         }
         addSigForm.querySelectorAll('input, select, textarea, button').forEach((el) => {
-          if (el.id === 'btnAddSig' || el.id === 'btnPlaceField') {
+          if (el.id === 'btnPlaceField') {
             // handled below
           } else {
             el.disabled = !hasDocument;
@@ -1509,7 +1560,6 @@
       if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !activeField;
       const sigNameFilled = Boolean(document.getElementById('sigName').value.trim());
       if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument || !sigNameFilled;
-      if (addSigBtn) addSigBtn.disabled = !hasDocument || !pendingField;
 
       const docInfoPanelOverlay = document.getElementById('docInfoPanelOverlay');
       const metaSearchInput = document.getElementById('metaSearchInput');
@@ -1614,6 +1664,7 @@
         pdfDoc,
         pageNum,
         documentFields,
+        fieldsBaseline,
         documentMeta,
         documentRawInfo,
         documentRawObjects,
@@ -1679,7 +1730,11 @@
 
       // A brand new document means any previous pending placement/selection is stale
       resetPanelsForNewDocument();
-      if (skipServerInfo) documentFields = transferredFields;
+      if (skipServerInfo) {
+        documentFields = transferredFields;
+        fieldsBaseline = cloneFields(documentFields);
+        updatePendingChangesUi();
+      }
 
       // Toggle Viewer Visibility
       document.getElementById('emptyStateViewer').style.display = 'none';
@@ -1722,6 +1777,8 @@
             xhr.send(formData);
           });
           documentFields = data.fields || [];
+          fieldsBaseline = cloneFields(documentFields);
+          updatePendingChangesUi();
         }
         setDocumentLoadingProgress(50);
         documentMeta = null;
@@ -1779,15 +1836,28 @@
         // Only now that the replacement document has fully loaded is the
         // previous document's local history actually unreachable -- safe
         // to drop it.
-        if (previousSessionIdToClear) clearRevisionSession(previousSessionIdToClear).catch(() => {});
+        if (previousSessionIdToClear) {
+          clearRevisionSession(previousSessionIdToClear).catch(() => {});
+          if (revisionSummaryCacheSessionId === previousSessionIdToClear) {
+            revisionSummaryCache = new Map();
+            revisionSummaryCacheSessionId = null;
+          }
+        }
 
       } catch (err) {
         hideDocumentLoadingOverlay();
         if (pendingRevisionCleanup) {
           if (pendingRevisionCleanup.type === 'session') {
             clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
+            if (revisionSummaryCacheSessionId === pendingRevisionCleanup.sessionId) revisionSummaryCache.clear();
           } else {
             deleteRevision(pendingRevisionCleanup.sessionId, pendingRevisionCleanup.index).catch(() => {});
+            // That index number can be reused by the next edit attempt (documentRevisionCount
+            // is rolled back below) -- drop any cached summary for it so a retry doesn't serve
+            // a stale result computed from the failed attempt's bytes.
+            if (revisionSummaryCacheSessionId === pendingRevisionCleanup.sessionId) {
+              revisionSummaryCache.delete(pendingRevisionCleanup.index);
+            }
           }
         }
         if (previousDocumentState) {
@@ -1797,6 +1867,7 @@
           pdfDoc = previousDocumentState.pdfDoc;
           pageNum = previousDocumentState.pageNum;
           documentFields = previousDocumentState.documentFields;
+          fieldsBaseline = previousDocumentState.fieldsBaseline;
           documentMeta = previousDocumentState.documentMeta;
           documentRawInfo = previousDocumentState.documentRawInfo;
           documentRawObjects = previousDocumentState.documentRawObjects;
@@ -1806,6 +1877,7 @@
           revisionsLoadedForFile = previousDocumentState.revisionsLoadedForFile;
           documentSessionId = previousDocumentState.documentSessionId;
           documentRevisionCount = previousDocumentState.documentRevisionCount;
+          updatePendingChangesUi();
           renderMetaTree();
           renderMetaOverview();
           document.getElementById('pageCount').textContent = pdfDoc.numPages;
@@ -1824,6 +1896,9 @@
         } else {
           activeFile = null;
           pdfDoc = null;
+          documentFields = [];
+          fieldsBaseline = [];
+          updatePendingChangesUi();
           documentMeta = null;
           documentRawInfo = null;
           documentRawObjects = null;
@@ -1890,11 +1965,6 @@
       currentViewport = viewport;
       drawFieldOverlays(viewport);
 
-      // Re-draw the in-progress ghost box if it belongs to the page being shown
-      if (pendingField && pendingFieldPage === (pageNum - 1)) {
-        drawPendingOverlay();
-      }
-
       document.getElementById('pageNum').textContent = num;
       document.getElementById('btnPrev').disabled = num <= 1;
       document.getElementById('btnNext').disabled = num >= pdfDoc.numPages;
@@ -1927,8 +1997,7 @@
     }
 
     function drawFieldOverlays(viewport) {
-      // Clear only existing-field overlays; the in-progress pending ghost is redrawn separately
-      overlayLayer.querySelectorAll('.field-overlay:not(.pending)').forEach(el => el.remove());
+      overlayLayer.querySelectorAll('.field-overlay').forEach(el => el.remove());
       activeFieldDiv = null;
       const fieldsOnThisPage = documentFields.filter(f => f.page === (pageNum - 1));
 
@@ -1936,14 +2005,20 @@
         if (!field.rect) return;
 
         const div = document.createElement('div');
-        div.className = `field-overlay${field.required ? ' required' : ''}`;
-        div.title = field.name || 'Signature field';
+        div.className = `field-overlay${field.required ? ' required' : ''}${isFieldStaged(field) ? ' is-staged' : ''}`;
+        div.title = field.tooltip ? `${field.name} — ${field.tooltip}` : (field.name || 'Signature field');
         div.innerHTML = field.type === 'Signature' ? ICONS.pen : ICONS.fileText;
         applyRectToOverlay(div, field.rect);
 
         const label = document.createElement('div');
         label.className = 'field-label';
         label.textContent = field.name || 'Signature field';
+        if (field.tooltip) {
+          const tooltipLine = document.createElement('div');
+          tooltipLine.className = 'field-label-tooltip';
+          tooltipLine.textContent = field.tooltip;
+          label.appendChild(tooltipLine);
+        }
         div.appendChild(label);
 
         const handle = document.createElement('div');
@@ -1971,6 +2046,9 @@
         // Drag the body to reposition. A plain click (no movement) on a field
         // that's already selected toggles it off instead of re-selecting it.
         div.addEventListener('mousedown', (e) => {
+          // Outside Signatures, overlays keep pointer-events on only so hover
+          // can show the name/tooltip label -- they must stay non-interactive.
+          if (document.body.dataset.activeSection !== 'signatures') return;
           if (e.target === handle) return;
           if (isPanning) return; // let the pointerdown bubble up to the pan handler instead
           e.preventDefault();
@@ -2095,6 +2173,8 @@
       const screenHeight = parseFloat(div.style.height);
       field.rect = screenRectToPdf(screenLeft, screenTop, screenWidth, screenHeight);
       populateEditPanel(field);
+      div.classList.toggle('is-staged', isFieldStaged(field));
+      updatePendingChangesUi();
     }
 
     function populateEditPanel(field) {
@@ -2126,7 +2206,39 @@
 
         activeField.rect = { x, y, width, height };
         applyRectToOverlay(activeFieldDiv, activeField.rect);
+        activeFieldDiv.classList.toggle('is-staged', isFieldStaged(activeField));
+        updatePendingChangesUi();
       });
+    });
+
+    // Renaming and toggling "Required" both stage immediately too -- like
+    // dragging/resizing, there's no separate "Update Field" step. Name
+    // commits on blur (not every keystroke) so a field isn't flagged as a
+    // duplicate while only half-typed.
+    document.getElementById('editName').addEventListener('blur', () => {
+      if (!activeField) return;
+      const editNameInput = document.getElementById('editName');
+      const newName = editNameInput.value.trim();
+      if (!newName || newName === activeField.name) {
+        editNameInput.value = activeField.name;
+        return;
+      }
+      if (documentFields.some((f) => f !== activeField && f.name === newName)) {
+        showNotification(`A field named "${newName}" already exists.`, 'error');
+        editNameInput.value = activeField.name;
+        return;
+      }
+      activeField.name = newName;
+      document.getElementById('editOriginalName').value = newName;
+      if (currentViewport) drawFieldOverlays(currentViewport);
+      updatePendingChangesUi();
+    });
+
+    document.getElementById('editRequired').addEventListener('change', () => {
+      if (!activeField) return;
+      activeField.required = document.getElementById('editRequired').checked;
+      if (currentViewport) drawFieldOverlays(currentViewport);
+      updatePendingChangesUi();
     });
 
     // --- New Field Placement (click-to-drop, then drag/resize) ---
@@ -2178,7 +2290,6 @@
     // user moves through: idle -> placing -> placed.
     const PLACEMENT_HINT_IDLE = 'Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.';
     const PLACEMENT_HINT_PLACING = 'Click anywhere on the PDF to drop the field.';
-    const PLACEMENT_HINT_PLACED = 'Field placed. Drag it to reposition, or drag the coral handle to resize — then click <strong>Add to Document</strong>.';
 
     function setPlacementHint(html, state) {
       const hintEl = document.getElementById('placementHint');
@@ -2230,138 +2341,63 @@
 
       isPlacing = false;
       pdfContainer.classList.remove('placing-mode');
-      document.getElementById('btnAddSig').disabled = false;
-      setPlacementHint(PLACEMENT_HINT_PLACED, 'placed');
 
-      drawPendingOverlay();
+      // Dropping the field onto the page stages it immediately -- the real
+      // commit is the "Apply changes" button, so there's no separate
+      // "Add to Document" step in between. The field is a normal (staged)
+      // field-overlay from this point on: draggable/resizable in place.
+      commitPendingFieldToDocument();
     }
 
-    function drawPendingOverlay() {
-      // Remove any previous ghost before re-drawing
-      const existing = overlayLayer.querySelector('.field-overlay.pending');
-      if (existing) existing.remove();
-      if (!pendingField || !currentViewport) return;
+    // Moves `pendingField` into `documentFields` (staged) and resets the
+    // placement UI back to idle. Returns whether it succeeded.
+    function commitPendingFieldToDocument() {
+      if (!pendingField) return false;
 
-      const ghostName = document.getElementById('sigName').value.trim() || 'Signature field';
-      const ghost = document.createElement('div');
-      ghost.className = `field-overlay pending${document.getElementById('sigRequired').checked ? ' required' : ''}`;
-      ghost.title = ghostName;
-      ghost.innerHTML = ICONS.pen;
-      applyRectToOverlay(ghost, pendingField);
+      const name = document.getElementById('sigName').value.trim();
+      if (!name) {
+        showNotification('Enter a field name.', 'error');
+        return false;
+      }
+      if (documentFields.some((f) => f.name === name)) {
+        showNotification(`A field named "${name}" already exists.`, 'error');
+        return false;
+      }
 
-      const label = document.createElement('div');
-      label.className = 'field-label';
-      label.textContent = ghostName;
-      ghost.appendChild(label);
-
-      const handle = document.createElement('div');
-      handle.className = 'resize-handle';
-      ghost.appendChild(handle);
-
-      // Drag to move
-      ghost.addEventListener('mousedown', (e) => {
-        if (e.target === handle) return;
-        if (isPanning) return;
-        e.preventDefault();
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const startLeft = parseFloat(ghost.style.left);
-        const startTop = parseFloat(ghost.style.top);
-
-        function onMove(ev) {
-          const dx = ev.clientX - startX;
-          const dy = ev.clientY - startY;
-          let newLeft = startLeft + dx;
-          let newTop = startTop + dy;
-          newLeft = Math.max(0, Math.min(newLeft, canvas.width - ghost.offsetWidth));
-          newTop = Math.max(0, Math.min(newTop, canvas.height - ghost.offsetHeight));
-          ghost.style.left = `${newLeft}px`;
-          ghost.style.top = `${newTop}px`;
-        }
-        function onUp() {
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-          syncPendingFieldFromGhost(ghost);
-        }
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+      documentFields.push({
+        name,
+        type: 'Signature',
+        required: document.getElementById('sigRequired').checked,
+        readOnly: false,
+        tooltip: '',
+        page: pendingFieldPage,
+        rect: { x: pendingField.x, y: pendingField.y, width: pendingField.width, height: pendingField.height },
       });
 
-      // Drag handle to resize
-      handle.addEventListener('mousedown', (e) => {
-        if (isPanning) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const startWidth = parseFloat(ghost.style.width);
-        const startHeight = parseFloat(ghost.style.height);
-        const left = parseFloat(ghost.style.left);
-        const top = parseFloat(ghost.style.top);
-
-        function onMove(ev) {
-          const dx = ev.clientX - startX;
-          const dy = ev.clientY - startY;
-          let newWidth = Math.max(20, startWidth + dx);
-          let newHeight = Math.max(20, startHeight + dy);
-          newWidth = Math.min(newWidth, canvas.width - left);
-          newHeight = Math.min(newHeight, canvas.height - top);
-          ghost.style.width = `${newWidth}px`;
-          ghost.style.height = `${newHeight}px`;
-        }
-        function onUp() {
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-          syncPendingFieldFromGhost(ghost);
-        }
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-      });
-
-      overlayLayer.appendChild(ghost);
+      clearPendingField();
+      document.getElementById('addSigForm').reset();
+      document.getElementById('sigWidth').value = 200;
+      document.getElementById('sigHeight').value = 60;
+      if (currentViewport) drawFieldOverlays(currentViewport);
+      updatePendingChangesUi();
+      showNotification(`"${name}" staged — click Apply changes to save it.`, 'info');
+      return true;
     }
-
-    // Read the ghost's current screen rect back into PDF space, and keep the
-    // Width/Height inputs in sync so typed values and dragged values never disagree
-    function syncPendingFieldFromGhost(ghost) {
-      const screenLeft = parseFloat(ghost.style.left);
-      const screenTop = parseFloat(ghost.style.top);
-      const screenWidth = parseFloat(ghost.style.width);
-      const screenHeight = parseFloat(ghost.style.height);
-
-      pendingField = screenRectToPdf(screenLeft, screenTop, screenWidth, screenHeight);
-      document.getElementById('sigWidth').value = pendingField.width.toFixed(1);
-      document.getElementById('sigHeight').value = pendingField.height.toFixed(1);
-    }
-
-    // If the user types a new width/height while a field is pending, resize the ghost to match
-    function resizePendingFromInputs() {
-      if (!pendingField) return;
-      const widthPdf = parseFloat(document.getElementById('sigWidth').value);
-      const heightPdf = parseFloat(document.getElementById('sigHeight').value);
-      if (!Number.isFinite(widthPdf) || !Number.isFinite(heightPdf) || widthPdf <= 0 || heightPdf <= 0) return;
-
-      // Keep the top-left screen corner anchored while the box grows/shrinks
-      pendingField = { x: pendingField.x, y: pendingField.y + pendingField.height - heightPdf, width: widthPdf, height: heightPdf };
-      drawPendingOverlay();
-    }
-    document.getElementById('sigWidth').addEventListener('change', resizePendingFromInputs);
-    document.getElementById('sigHeight').addEventListener('change', resizePendingFromInputs);
 
     function clearPendingField() {
       pendingField = null;
       pendingFieldPage = null;
       isPlacing = false;
       pdfContainer.classList.remove('placing-mode');
-      const existing = overlayLayer.querySelector('.field-overlay.pending');
-      if (existing) existing.remove();
       setAddSigActionsVisible(false);
       setPlacementHint(PLACEMENT_HINT_IDLE, 'idle');
       updateViewerControlsState();
     }
 
-    // Replace the current active file with the API response, then re-render
-    async function handleApiUpdate(endpoint, formData) {
+    // Replace the current active file with the API response, then re-render.
+    // Returns whether the update succeeded (callers that need to chain further
+    // work, like applying staged field changes before a download, need this).
+    async function handleApiUpdate(endpoint, formData, successMessage = 'Update successful.') {
       const loadingToast = showNotification('Processing document…', 'loading', 0);
       isDocumentUpdating = true;
       updateViewerControlsState();
@@ -2376,61 +2412,139 @@
 
         await processNewFile(updatedFile, { preservePage: true, isEdit: true });
         loadingToast?.dismissNotification();
-        showNotification('Update successful.', 'success');
+        showNotification(successMessage, 'success');
+        return true;
       } catch (err) {
         loadingToast?.dismissNotification();
         showNotification(`Error: ${err.message}`, 'error');
+        return false;
       } finally {
         isDocumentUpdating = false;
         updateViewerControlsState();
       }
     }
 
+    // --- Field-change staging ---
+    // add/edit/remove in the panels below only mutate `documentFields`
+    // locally; nothing reaches the server until "Apply changes" (or an
+    // export/share action that needs the real bytes) calls
+    // applyPendingFieldChanges(), which sends the whole batch as one request.
+
+    function cloneFields(fields) {
+      return (fields || []).map((f) => ({
+        name: f.name,
+        type: f.type,
+        required: !!f.required,
+        readOnly: !!f.readOnly,
+        tooltip: f.tooltip,
+        page: f.page,
+        rect: f.rect ? { x: f.rect.x, y: f.rect.y, width: f.rect.width, height: f.rect.height } : null,
+      }));
+    }
+
+    function rectsEqual(a, b) {
+      if (!a || !b) return a === b;
+      const EPS = 0.01;
+      return Math.abs(a.x - b.x) < EPS && Math.abs(a.y - b.y) < EPS
+        && Math.abs(a.width - b.width) < EPS && Math.abs(a.height - b.height) < EPS;
+    }
+
+    // Whether `field` differs from its last-applied server state -- new
+    // (not on the server yet), or moved/resized/toggled since. Drives the
+    // marching-ants outline on its overlay so staged fields read as visually
+    // distinct from ones already saved to the document.
+    function isFieldStaged(field) {
+      const base = fieldsBaseline.find((f) => f.name === field.name);
+      if (!base) return true;
+      return !rectsEqual(base.rect, field.rect) || !!base.required !== !!field.required;
+    }
+
+    // Diffs the working `documentFields` against the last server-confirmed
+    // `fieldsBaseline` (by name) to produce exactly the ops the server needs
+    // to reconstruct the current state in one pass. A rename shows up as a
+    // remove of the old name plus an add of the new one -- functionally
+    // identical to a true rename here, and it avoids having to track field
+    // identity across edits.
+    function computeFieldOps() {
+      const baselineByName = new Map(fieldsBaseline.map((f) => [f.name, f]));
+      const currentByName = new Map(documentFields.map((f) => [f.name, f]));
+      const ops = [];
+
+      for (const [name, field] of currentByName) {
+        const base = baselineByName.get(name);
+        if (!base) {
+          ops.push({
+            op: 'add',
+            name: field.name,
+            page: field.page,
+            x: field.rect.x, y: field.rect.y, width: field.rect.width, height: field.rect.height,
+            required: !!field.required,
+          });
+          continue;
+        }
+        if (!rectsEqual(base.rect, field.rect) || !!base.required !== !!field.required) {
+          ops.push({
+            op: 'edit',
+            originalName: name,
+            name: field.name,
+            x: field.rect.x, y: field.rect.y, width: field.rect.width, height: field.rect.height,
+            required: !!field.required,
+          });
+        }
+      }
+
+      for (const name of baselineByName.keys()) {
+        if (!currentByName.has(name)) ops.push({ op: 'remove', name });
+      }
+
+      return ops;
+    }
+
+    function updatePendingChangesUi() {
+      const bar = document.getElementById('pendingChangesBar');
+      if (!bar) return;
+      const count = computeFieldOps().length;
+      bar.hidden = count === 0;
+      const label = document.getElementById('pendingChangesLabel');
+      if (label) label.textContent = `${count} unsaved change${count === 1 ? '' : 's'}`;
+    }
+
+    // Sends every staged add/edit/remove as one request. Returns whether it
+    // succeeded (or there was nothing to send). Also used by Download/Share/
+    // Copy-as-Base64 so they never export a file missing in-progress edits.
+    async function applyPendingFieldChanges() {
+      const ops = computeFieldOps();
+      if (!ops.length) return true;
+      const formData = new FormData();
+      formData.append('pdfDocument', activeFile);
+      formData.append('ops', JSON.stringify(ops));
+      const label = ops.length === 1 ? '1 change' : `${ops.length} changes`;
+      return await handleApiUpdate('/api/apply-changes', formData, `Applied ${label}.`);
+    }
+
+    function discardPendingFieldChanges() {
+      if (!computeFieldOps().length) return;
+      documentFields = cloneFields(fieldsBaseline);
+      deselectActiveField();
+      clearPendingField();
+      if (currentViewport) drawFieldOverlays(currentViewport);
+      updatePendingChangesUi();
+      showNotification('Discarded unsaved field changes.', 'info');
+    }
+
+    document.getElementById('btnApplyFieldChanges').addEventListener('click', () => {
+      applyPendingFieldChanges();
+    });
+    document.getElementById('btnDiscardFieldChanges').addEventListener('click', discardPendingFieldChanges);
+
     // --- Form Submissions ---
     applySettingsToUi();
 
-    document.getElementById('addSigForm').addEventListener('submit', async (e) => {
+    // No submit button remains in this form (placing a field on the canvas
+    // commits it directly, see commitPendingFieldToDocument) -- this only
+    // guards against an implicit Enter-key submission reloading the page.
+    document.getElementById('addSigForm').addEventListener('submit', (e) => {
       e.preventDefault();
-      if (!activeFile) return;
-      if (!pendingField) {
-        showNotification('Place the field on the document first', 'error');
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append('pdfDocument', activeFile);
-      formData.append('name', document.getElementById('sigName').value);
-      formData.append('page', pendingFieldPage);
-      formData.append('x', pendingField.x.toFixed(2));
-      formData.append('y', pendingField.y.toFixed(2));
-      formData.append('width', pendingField.width.toFixed(2));
-      formData.append('height', pendingField.height.toFixed(2));
-      formData.append('required', document.getElementById('sigRequired').checked);
-
-      await handleApiUpdate('/api/add-signature', formData);
-      clearPendingField();
-      e.target.reset(); // Clear add form
-      document.getElementById('sigWidth').value = 200;
-      document.getElementById('sigHeight').value = 60;
-    });
-
-    document.getElementById('editFieldForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!activeFile) return;
-
-      const formData = new FormData();
-      formData.append('pdfDocument', activeFile);
-      formData.append('originalName', document.getElementById('editOriginalName').value);
-      formData.append('name', document.getElementById('editName').value);
-      formData.append('x', document.getElementById('editX').value);
-      formData.append('y', document.getElementById('editY').value);
-      formData.append('width', document.getElementById('editWidth').value);
-      formData.append('height', document.getElementById('editHeight').value);
-
-      const isRequired = document.getElementById('editRequired').checked;
-      formData.append('required', isRequired ? 'true' : 'false');
-
-      await handleApiUpdate('/api/edit-field', formData);
     });
 
     const removeFieldModal = document.getElementById('removeFieldModal');
@@ -2467,16 +2581,18 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && removeFieldModal.classList.contains('is-open')) closeRemoveFieldModal();
     });
-    document.getElementById('confirmRemoveFieldBtn').addEventListener('click', async () => {
+    document.getElementById('confirmRemoveFieldBtn').addEventListener('click', () => {
       if (!activeFile || !pendingRemoveFieldName) return;
       const fieldName = pendingRemoveFieldName;
       closeRemoveFieldModal();
 
-      const formData = new FormData();
-      formData.append('pdfDocument', activeFile);
-      formData.append('name', fieldName);
-
-      await handleApiUpdate('/api/remove-field', formData);
+      documentFields = documentFields.filter((f) => f.name !== fieldName);
+      if (activeField && activeField.name === fieldName) {
+        deselectActiveField();
+      }
+      if (currentViewport) drawFieldOverlays(currentViewport);
+      updatePendingChangesUi();
+      showNotification(`"${fieldName}" removed — click Apply changes to save it.`, 'info');
     });
 
     // --- Export Actions ---
@@ -2540,7 +2656,13 @@
         const blob = await bundleRevisionHistoryPdf((loaded, total) => {
           if (!messageEl) return;
           const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
-          messageEl.textContent = `${label}… ${percent}%`;
+          // The percentage only tracks the *upload* of the (usually small) source
+          // files -- it hits 100% almost instantly and then sits there, unchanged,
+          // for however long the server actually takes to bundle the revisions and
+          // send the result back. Left as "100%" the whole time, that reads as
+          // stuck/broken. Switch to a percent-free "processing" message once the
+          // upload itself is done, so the copy matches what's actually happening.
+          messageEl.textContent = percent < 100 ? `${label}… ${percent}%` : `${label}…`;
         });
         return { blob, toast };
       } catch (err) {
@@ -2576,6 +2698,16 @@
       if (!name) {
         setModalStatus(saveAsModalStatus, 'Please enter a valid file name.', 'error');
         return;
+      }
+
+      // Any staged (not-yet-applied) field edits live only in `documentFields`
+      // -- `activeFile` itself doesn't have them yet -- so apply them first,
+      // otherwise the exported file would silently miss in-progress changes.
+      if (computeFieldOps().length) {
+        confirmSaveAsBtn.disabled = true;
+        const applied = await applyPendingFieldChanges();
+        confirmSaveAsBtn.disabled = false;
+        if (!applied) return;
       }
 
       let fileToSave = activeFile;
@@ -2630,6 +2762,9 @@
     // what used to be a modal progress bar.
     async function doCopyBase64() {
       if (!activeFile) return;
+      // Staged field edits live only in `documentFields` until applied --
+      // make sure the bytes we're about to copy actually include them.
+      if (computeFieldOps().length && !(await applyPendingFieldChanges())) return;
       let fileToCopy = activeFile;
       const includeHistory = Boolean(loadSettings().includeRevisionHistoryByDefault);
       let toast = null;
@@ -4003,6 +4138,12 @@ async function finishReceivedFile() {
       transferredFields: receiveMeta.fields,
     });
     history.replaceState({}, '', location.pathname);
+    // The document is now loaded (pdf.js has its own copy); the raw chunks
+    // and reassembled ciphertext are no longer needed and would otherwise
+    // sit in memory, duplicating the full PDF size, for the rest of the
+    // session.
+    receiveChunks = [];
+    receiveCiphertext = null;
   } catch (error) {
     setShareStatus(error.message ? `Could not open the received PDF: ${error.message}` : 'Could not open the received PDF. Ask for a new link.', 'error');
   }
@@ -4229,6 +4370,14 @@ async function startSendingShare() {
   if (!activeFile || !crypto.subtle || !window.RTCPeerConnection) {
     return setShareStatus('Your browser doesn’t support secure sharing. Try Chrome, Firefox, or Edge.', 'error');
   }
+  // Staged field edits live only in `documentFields` until applied -- make
+  // sure what gets shared actually includes them.
+  if (computeFieldOps().length) {
+    setShareStatus('Applying unsaved field changes…', 'waiting');
+    if (!(await applyPendingFieldChanges())) {
+      return setShareStatus('Could not apply pending field changes. Fix them and try again.', 'error');
+    }
+  }
   showIdleShareProgress();
   shareClosedByUser = false;
   shareRole = 'sender';
@@ -4435,29 +4584,29 @@ async function loadRevisionsIfNeeded() {
   loadingState.hidden = false;
 
   try {
-    const localRevisions = await listRevisionsForSession(requestedSessionId);
+    const indices = await listRevisionIndicesForSession(requestedSessionId);
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
-    if (!localRevisions.length) {
+    if (!indices.length) {
       throw new Error(
         'No local revision snapshots found for this document. This browser (or a private/incognito window) may be blocking local storage, which revision history relies on.',
       );
     }
 
-    const formData = new FormData();
-    for (const rev of localRevisions) {
-      formData.append('pdfDocument', revisionToBlob(rev), `revision-${rev.index}.pdf`);
+    if (revisionSummaryCacheSessionId !== requestedSessionId) {
+      revisionSummaryCache = new Map();
+      revisionSummaryCacheSessionId = requestedSessionId;
     }
-    const res = await fetch('/api/revisions', { method: 'POST', body: formData });
-    let data;
-    try {
-      data = await res.json();
-    } catch (_e) {
-      throw new Error(`Server returned status ${res.status}.`);
-    }
-    if (!res.ok) throw new Error(data?.error || 'Could not read revision history.');
-    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
 
-    revisionsData = data.revisions || [];
+    // Just build the list from what's already known locally -- index and
+    // byte size cost nothing to read from IndexedDB (getAllKeys, no bytes
+    // pulled in). The heavier per-revision summary (parses the PDF
+    // server-side for metadata/fields/signatures/change counts) is only
+    // fetched lazily, per revision, when its card is expanded -- see
+    // loadRevisionSummary(). Without this, opening the panel on a document
+    // with N revisions uploaded and parsed all N of them up front even
+    // though the user typically only ever looks at one or two.
+    revisionsData = indices.map((index) => revisionSummaryCache.get(index) || { index, loaded: false });
+    revisionsData.forEach((rev, i) => { rev.isFinal = i === revisionsData.length - 1; });
     revisionsLoadedForFile = cacheKey;
     renderRevisionsTimeline(revisionsData);
   } catch (err) {
@@ -4476,6 +4625,43 @@ async function loadRevisionsIfNeeded() {
     }
     loadingState.hidden = true;
   }
+}
+
+// Fetches and caches the full summary (metadata/fields/signatures/change
+// counts -- requires the server to actually parse this revision's PDF)
+// for exactly one revision. Called on demand when a revision card is
+// expanded, not up front for the whole panel.
+async function loadRevisionSummary(index) {
+  const cached = revisionSummaryCache.get(index);
+  if (cached && cached.loaded) return cached;
+
+  const requestedSessionId = documentSessionId;
+  const record = await getRevisionRecord(requestedSessionId, index);
+  if (!record) throw new Error('Local revision snapshot not found.');
+
+  const formData = new FormData();
+  formData.append('pdfDocument', revisionToBlob(record), `revision-${index}.pdf`);
+  const res = await fetch('/api/revisions', { method: 'POST', body: formData });
+  let data;
+  try {
+    data = await res.json();
+  } catch (_e) {
+    throw new Error(`Server returned status ${res.status}.`);
+  }
+  if (!res.ok) throw new Error(data?.error || 'Could not read this revision.');
+  if (requestedSessionId !== documentSessionId) throw new Error('Document changed.');
+
+  // The server tags the single summary it returns with index 1 / isFinal
+  // true (its position within this one-file batch) -- neither means
+  // anything here, so drop them and let the caller's own index/isFinal
+  // (already correct from the local list) stand.
+  const raw = (data.revisions && data.revisions[0]) || {};
+  const { index: _ignoredIndex, isFinal: _ignoredIsFinal, ...summary } = raw;
+  const result = { ...summary, index, loaded: true };
+  if (revisionSummaryCacheSessionId === requestedSessionId) {
+    revisionSummaryCache.set(index, result);
+  }
+  return result;
 }
 
 function renderRevisionsTimeline(revisions) {
@@ -4507,41 +4693,54 @@ function renderRevisionsTimeline(revisions) {
         subHtml = `<div class="revision-row-sub">modified ${escapeHtml(formatDisplayDate(rev.metadata.modificationDate))}</div>`;
       }
 
-      const changeSummary = rev.changeSummary || {};
-      const summaryItems = [
-        { label: 'Pages',            value: changeSummary.pageCount         != null ? changeSummary.pageCount         : (rev.pageCount != null ? rev.pageCount : '—') },
-        { label: 'Text',             value: changeSummary.textCount         ?? 0 },
-        { label: 'Images',           value: changeSummary.imageCount        ?? 0 },
-        { label: 'Signature fields', value: changeSummary.fieldCount        ?? (rev.fields ? rev.fields.length : 0) },
-        { label: 'AcroForm',         value: changeSummary.acroFormCount     ?? 0 },
-        { label: 'Metadata',         value: changeSummary.metadataFieldCount ?? 0 },
-        { label: 'Signature',        value: changeSummary.signatureCount    ?? 0 },
-      ];
-
       let errorHtml = '';
       if (rev.parseError) {
         errorHtml = `<div class="revision-card-error">Could not be parsed standalone: ${escapeHtml(rev.parseError)}</div>`;
       }
 
+      // The heavier per-revision detail (parsed server-side) isn't fetched
+      // until this card is expanded -- see loadRevisionSummary(). Until
+      // then the body just offers to load it, instead of every revision
+      // paying for a parse the user may never look at.
+      let bodyInnerHtml;
+      if (!rev.loaded) {
+        bodyInnerHtml = `<p class="field-details-empty revision-details-placeholder">Expand to load this revision's details.</p>`;
+      } else {
+        const changeSummary = rev.changeSummary || {};
+        const summaryItems = [
+          { label: 'Pages',            value: changeSummary.pageCount         != null ? changeSummary.pageCount         : (rev.pageCount != null ? rev.pageCount : '—') },
+          { label: 'Text',             value: changeSummary.textCount         ?? 0 },
+          { label: 'Images',           value: changeSummary.imageCount        ?? 0 },
+          { label: 'Signature fields', value: changeSummary.fieldCount        ?? (rev.fields ? rev.fields.length : 0) },
+          { label: 'AcroForm',         value: changeSummary.acroFormCount     ?? 0 },
+          { label: 'Metadata',         value: changeSummary.metadataFieldCount ?? 0 },
+          { label: 'Signature',        value: changeSummary.signatureCount    ?? 0 },
+        ];
+        bodyInnerHtml = `
+            <div class="revision-change-summary">
+              ${summaryItems.map((item) => `<div class="revision-summary-pill"><span class="revision-summary-label">${escapeHtml(item.label)}</span><span class="revision-summary-value">${escapeHtml(String(item.value))}</span></div>`).join('')}
+            </div>
+            ${sigCell}
+            ${subHtml}
+            ${errorHtml}`;
+      }
+
+      const isExpanded = expandedRevisionIndices.has(rev.index);
+
       return `
-        <li class="revision-card is-collapsed${rev.parseError ? ' has-error' : ''}${isSigned ? ' is-signed' : ''}">
-          <button type="button" class="revision-card-head" data-rev-toggle="${rev.index}" aria-label="Toggle revision details" aria-expanded="false">
+        <li class="revision-card ${isExpanded ? 'is-expanded' : 'is-collapsed'}${rev.parseError ? ' has-error' : ''}${isSigned ? ' is-signed' : ''}">
+          <button type="button" class="revision-card-head" data-rev-toggle="${rev.index}" aria-label="Toggle revision details" aria-expanded="${isExpanded}">
             <div class="revision-card-title">
               <span class="revision-index-badge" title="Revision ${rev.index}">${rev.index}</span>
               <span>${escapeHtml(revisionLabel(rev))}</span>
             </div>
             <div class="revision-card-head-actions">
               <span class="revision-row-tags">${tags.join(' ')}</span>
-              <span class="revision-expand-btn" aria-hidden="true">${ICONS.chevronRight}</span>
+              <span class="revision-expand-btn" aria-hidden="true">${isExpanded ? ICONS.chevronDown : ICONS.chevronRight}</span>
             </div>
           </button>
           <div class="revision-card-body">
-            <div class="revision-change-summary">
-              ${summaryItems.map((item) => `<div class="revision-summary-pill"><span class="revision-summary-label">${escapeHtml(item.label)}</span><span class="revision-summary-value">${escapeHtml(String(item.value))}</span></div>`).join('')}
-            </div>
-            ${sigCell}
-            ${subHtml}
-            ${errorHtml}
+            ${bodyInnerHtml}
             <div class="revision-card-actions">
               <button type="button" class="btn revision-action-btn" title="View this revision in the document viewer" data-rev-action="view" data-rev-index="${rev.index}">View</button>
               ${rev.index > 1 ? `<button type="button" class="btn revision-action-btn" title="Visually compare this revision against the one right before it" data-rev-action="diff-prev" data-rev-index="${rev.index}">${ICONS.repeat} vs previous</button>` : ''}
@@ -4555,15 +4754,37 @@ function renderRevisionsTimeline(revisions) {
   timeline.hidden = false;
 
   timeline.querySelectorAll('.revision-card-head').forEach((btn) => {
-    btn.addEventListener('click', (event) => {
+    btn.addEventListener('click', async (event) => {
       event.stopPropagation();
       const card = btn.closest('.revision-card');
       if (!card) return;
+      const revIndex = parseInt(btn.getAttribute('data-rev-toggle'), 10);
       const expanded = card.classList.toggle('is-expanded');
       card.classList.toggle('is-collapsed', !expanded);
       btn.setAttribute('aria-expanded', String(expanded));
       const arrow = btn.querySelector('.revision-expand-btn');
       if (arrow) arrow.innerHTML = expanded ? ICONS.chevronDown : ICONS.chevronRight;
+      if (expanded) {
+        expandedRevisionIndices.add(revIndex);
+      } else {
+        expandedRevisionIndices.delete(revIndex);
+      }
+
+      const rev = revisions.find((r) => r.index === revIndex);
+      if (expanded && rev && !rev.loaded) {
+        const placeholder = card.querySelector('.revision-details-placeholder');
+        if (placeholder) placeholder.textContent = 'Loading revision details…';
+        try {
+          const summary = await loadRevisionSummary(revIndex);
+          Object.assign(rev, summary);
+          // Re-render so this card picks up its now-loaded summary; expanded
+          // state for every card (including this one) is preserved via
+          // expandedRevisionIndices.
+          if (revisionsData === revisions) renderRevisionsTimeline(revisions);
+        } catch (err) {
+          if (placeholder) placeholder.textContent = `Error loading details: ${err.message}`;
+        }
+      }
     });
   });
 

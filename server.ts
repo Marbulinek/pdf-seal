@@ -337,6 +337,87 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
   }
 });
 
+// --- API Endpoint: Apply a Batch of Field Changes in One Round Trip ---
+// The client stages add/edit/remove field operations locally (no server
+// call per operation) and sends them all here at once when the user hits
+// "Apply changes" -- one upload, one PDF open/save, one download, instead
+// of one full round trip per field edit.
+app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  let outputPath: string | null = null;
+
+  try {
+    const safePath = resolveUploadPath(file.path);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+
+    let ops: any[];
+    try {
+      ops = JSON.parse(req.body.ops || "[]");
+    } catch (_e) {
+      throw new Error("Invalid changes payload.");
+    }
+    if (!Array.isArray(ops) || ops.length === 0) {
+      throw new Error("No changes to apply.");
+    }
+
+    for (const op of ops) {
+      if (!op || typeof op !== "object") continue;
+
+      if (op.op === "add") {
+        const page = parseInt(op.page, 10) || 0;
+        const name = String(op.name || `SigField_${Date.now()}`);
+        tool.addSignatureField(page, name, {
+          x: parseFloat(op.x) || 50,
+          y: parseFloat(op.y) || 50,
+          width: parseFloat(op.width) || 200,
+          height: parseFloat(op.height) || 60,
+          required: op.required === true || op.required === "true",
+        });
+      } else if (op.op === "edit") {
+        const originalName = String(op.originalName || "");
+        const newName = String(op.name || originalName);
+        if (!originalName) throw new Error("Field name is required.");
+
+        if (originalName !== newName) {
+          tool.renameField(originalName, newName);
+        }
+
+        const x = parseFloat(op.x);
+        const y = parseFloat(op.y);
+        const width = parseFloat(op.width);
+        const height = parseFloat(op.height);
+        if ([x, y, width, height].every((value) => Number.isFinite(value))) {
+          tool.setFieldRect(newName, { x, y, width, height });
+        }
+
+        tool.setFieldRequired(newName, op.required === true || op.required === "true");
+      } else if (op.op === "remove") {
+        const name = String(op.name || "");
+        if (!name) throw new Error("Field name is required.");
+        tool.removeField(name);
+      } else {
+        throw new Error(`Unknown operation "${op.op}".`);
+      }
+    }
+
+    tool.setMetadata({ modificationDate: new Date() });
+    tool.clearRevisionSnapshotChain();
+
+    outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+    await tool.save(outputPath, { baseDir: UPLOADS_DIR });
+
+    res.download(outputPath, "signed-document.pdf", () => {
+      cleanupFiles(file.path, outputPath);
+    });
+  } catch (error: any) {
+    logError("api-apply-changes", error, { filePath: file.path });
+    cleanupFiles(file.path, outputPath);
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  }
+});
+
 // --- API Endpoint: Read a PDF's Embedded/Native Revision History ---
 // A file can carry its prior revisions in two different ways, and the
 // client hydrates its local IndexedDB revision store from whichever one
