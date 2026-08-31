@@ -72,6 +72,8 @@
 .icon-list { -webkit-mask-image: url(/assets/images/icons/list.svg); mask-image: url(/assets/images/icons/list.svg); }
 .icon-eye { -webkit-mask-image: url(/assets/images/icons/eye.svg); mask-image: url(/assets/images/icons/eye.svg); }
 .icon-repeat { -webkit-mask-image: url(/assets/images/icons/repeat.svg); mask-image: url(/assets/images/icons/repeat.svg); }
+.icon-undo { -webkit-mask-image: url(/assets/images/icons/undo.svg); mask-image: url(/assets/images/icons/undo.svg); }
+.icon-redo { -webkit-mask-image: url(/assets/images/icons/redo.svg); mask-image: url(/assets/images/icons/redo.svg); }
 .icon-lock { -webkit-mask-image: url(/assets/images/icons/lock.svg); mask-image: url(/assets/images/icons/lock.svg); }
 .icon-github { -webkit-mask-image: url(/assets/images/icons/github.svg); mask-image: url(/assets/images/icons/github.svg); }
 .icon-chat { -webkit-mask-image: url(/assets/images/icons/chat.svg); mask-image: url(/assets/images/icons/chat.svg); }
@@ -2326,6 +2328,20 @@ body.hide-raw-pdf-data .diff-raw-objects {
   color: var(--ocean-dark);
   line-height: 1.5;
 }
+
+.history-panel { position: relative; }
+.history-actions {
+  display: flex;
+  gap: 10px;
+}
+.history-actions .btn {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.history-actions .icon { font-size: 1rem; }
 
 .revisions-empty,
 .revisions-diff-empty {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import PdfSignatureTool from './PdfSignatureTool';
-import PdfRevisionTool from './PdfRevisionTool';
+import PdfSignatureTool from '../../lib/PdfSignatureTool';
+import PdfRevisionTool from '../../lib/PdfRevisionTool';
 
 describe('PdfRevisionTool', () => {
   it('reports no changes between identical snapshots', async () => {

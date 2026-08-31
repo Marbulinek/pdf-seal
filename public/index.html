@@ -305,6 +305,18 @@
 
       <section class="section-panel active section-panel-enter" id="sectionSignatures" data-section-panel="signatures">
 
+      <div class="panel history-panel" id="historyPanel">
+        <div class="panel-overlay" id="historyPanelOverlay">
+          <div class="panel-overlay-text">Upload a document first to see edit history</div>
+        </div>
+        <h3><span class="panel-dot dot-ocean"></span>History</h3>
+        <p class="revisions-hint">Step back or forward through staged field changes — moves, resizes, renames, additions, and removals — for this document.</p>
+        <div class="history-actions">
+          <button type="button" id="btnHistoryUndo" class="btn btn-ghost" disabled title="Undo (Ctrl+Z)"><span class="icon icon-undo" aria-hidden="true"></span> Undo</button>
+          <button type="button" id="btnHistoryRedo" class="btn btn-ghost" disabled title="Redo (Ctrl+Shift+Z)"><span class="icon icon-redo" aria-hidden="true"></span> Redo</button>
+        </div>
+      </div>
+
       <div class="panel edit-panel" id="editPanel" style="opacity: 0.5; pointer-events: none;">
         <div class="panel-overlay" id="editPanelOverlay">
           <div class="panel-overlay-text">Upload a document first to edit fields</div>
@@ -647,6 +659,18 @@
     // the user clicks "Apply changes". Kept in sync with documentFields everywhere
     // the latter is set from server truth (or restored on rollback).
     let fieldsBaseline = [];
+    // Undo/redo stacks of `documentFields` snapshots for the currently open
+    // document. Each entry is the full field list as it was right before a
+    // staged add/move/resize/rename/toggle/remove -- reset whenever a new
+    // document is loaded, or the current one is reloaded after "Apply
+    // changes" (see resetPanelsForNewDocument()), since staged edits don't
+    // carry meaning across a new baseline.
+    let fieldHistoryUndo = [];
+    let fieldHistoryRedo = [];
+    // Pre-edit snapshot for an in-progress rect-input edit session (X/Y/Width/
+    // Height), captured on focus and committed as one history step on blur --
+    // see the rectInputIds listeners below.
+    let rectEditHistorySnapshot = null;
     let documentMeta = null;       // standard Info dict fields (title, author, producer, ...), from /api/info
     let documentRawInfo = null;    // raw/custom Info dictionary entries, from /api/info
     let documentRawObjects = null; // { trailer, objects } -- the entire raw PDF object table, from /api/info
@@ -889,6 +913,10 @@
     // whatever this doesn't catch in time.
     window.addEventListener('pagehide', () => {
       if (documentSessionId) clearRevisionSession(documentSessionId).catch(() => {});
+      // Releases any pdf.js document (and its worker) still held only by the
+      // undo/redo history -- nothing left alive to reach it once this tab is
+      // gone, so there's no point letting it hang around until GC gets to it.
+      try { resetFieldHistory(); } catch { /* best-effort, same as above */ }
     });
 
     // Client-side counterpart to hydrateEmbeddedRevisions below, for a P2P-received
@@ -1569,9 +1597,13 @@
       if (metaSearchInput) metaSearchInput.disabled = !hasDocument;
       if (revisionsListPanelOverlay) revisionsListPanelOverlay.classList.toggle('is-hidden', hasDocument);
       if (revisionsDiffPanelOverlay) revisionsDiffPanelOverlay.classList.toggle('is-hidden', hasDocument);
+      updateHistoryUi();
     }
 
-    function resetPanelsForNewDocument() {
+    // `keepFieldHistory` is true for an "Apply changes" reload -- undo/redo
+    // spans that boundary (see pushFieldHistory()/applyPendingFieldChanges()),
+    // so a genuinely new document is the only case that should wipe it.
+    function resetPanelsForNewDocument(keepFieldHistory = false) {
       const editForm = document.getElementById('editFieldForm');
       const addForm = document.getElementById('addSigForm');
       const detailsBody = document.getElementById('fieldDetailsBody');
@@ -1583,6 +1615,7 @@
       clearPendingField();
       activeField = null;
       activeFieldDiv = null;
+      if (!keepFieldHistory) resetFieldHistory();
 
       editControls.forEach((el) => {
         el.disabled = true;
@@ -1729,7 +1762,7 @@
       updateViewerControlsState();
 
       // A brand new document means any previous pending placement/selection is stale
-      resetPanelsForNewDocument();
+      resetPanelsForNewDocument(isEdit);
       if (skipServerInfo) {
         documentFields = transferredFields;
         fieldsBaseline = cloneFields(documentFields);
@@ -1796,7 +1829,10 @@
         // Release the previous document's worker + internal caches now that the
         // new one has loaded successfully -- otherwise every reload (including
         // the one that follows every field add/edit/remove) leaks a worker.
-        if (pdfDoc && pdfDoc !== nextPdfDoc) {
+        // Skipped when the outgoing pdfDoc is still held by the undo/redo
+        // history (an Apply just pushed a snapshot pointing at it) -- it gets
+        // destroyed later, once its snapshot actually falls out of history.
+        if (pdfDoc && pdfDoc !== nextPdfDoc && !isPdfDocRetainedInHistory(pdfDoc)) {
           pdfDoc.destroy();
         }
         pdfDoc = nextPdfDoc;
@@ -1898,6 +1934,7 @@
           pdfDoc = null;
           documentFields = [];
           fieldsBaseline = [];
+          resetFieldHistory();
           updatePendingChangesUi();
           documentMeta = null;
           documentRawInfo = null;
@@ -2171,6 +2208,7 @@
       const screenTop = parseFloat(div.style.top);
       const screenWidth = parseFloat(div.style.width);
       const screenHeight = parseFloat(div.style.height);
+      pushFieldHistory();
       field.rect = screenRectToPdf(screenLeft, screenTop, screenWidth, screenHeight);
       populateEditPanel(field);
       div.classList.toggle('is-staged', isFieldStaged(field));
@@ -2195,8 +2233,25 @@
 
     // Typing into the position/size fields moves or resizes the selected overlay live,
     // keeping the numbers and the on-page box always in sync with each other
-    ['editX', 'editY', 'editWidth', 'editHeight'].forEach((id) => {
-      document.getElementById(id).addEventListener('input', () => {
+    const rectInputIds = ['editX', 'editY', 'editWidth', 'editHeight'];
+    rectInputIds.forEach((id) => {
+      const el = document.getElementById(id);
+      // Snapshot once per edit session (tabbing between X/Y/Width/Height while
+      // editing the same field stays one undo step), taken before any keystroke.
+      el.addEventListener('focus', () => {
+        if (rectEditHistorySnapshot === null) rectEditHistorySnapshot = captureDocumentSnapshot();
+      });
+      el.addEventListener('blur', (e) => {
+        const goingTo = e.relatedTarget;
+        if (goingTo && rectInputIds.includes(goingTo.id)) return; // still editing this field's rect
+        if (rectEditHistorySnapshot !== null) {
+          if (JSON.stringify(rectEditHistorySnapshot.documentFields) !== JSON.stringify(documentFields)) {
+            commitFieldHistorySnapshot(rectEditHistorySnapshot);
+          }
+          rectEditHistorySnapshot = null;
+        }
+      });
+      el.addEventListener('input', () => {
         if (!activeField || !activeFieldDiv || !currentViewport) return;
         const x = parseFloat(document.getElementById('editX').value);
         const y = parseFloat(document.getElementById('editY').value);
@@ -2228,6 +2283,7 @@
         editNameInput.value = activeField.name;
         return;
       }
+      pushFieldHistory();
       activeField.name = newName;
       document.getElementById('editOriginalName').value = newName;
       if (currentViewport) drawFieldOverlays(currentViewport);
@@ -2236,6 +2292,7 @@
 
     document.getElementById('editRequired').addEventListener('change', () => {
       if (!activeField) return;
+      pushFieldHistory();
       activeField.required = document.getElementById('editRequired').checked;
       if (currentViewport) drawFieldOverlays(currentViewport);
       updatePendingChangesUi();
@@ -2364,6 +2421,7 @@
         return false;
       }
 
+      pushFieldHistory();
       documentFields.push({
         name,
         type: 'Signature',
@@ -2442,6 +2500,195 @@
       }));
     }
 
+    // --- Field-change history (undo/redo) ---
+    // Every discrete staged mutation (add/move/resize/rename/toggle/remove/
+    // discard) -- and "Apply changes" itself -- pushes a full pre-mutation
+    // document snapshot onto the undo stack and clears the redo stack.
+    // Undoing/redoing swaps the whole document (file/pdfDoc/fields/baseline/
+    // cached metadata & revisions) wholesale, so undo reaches back across an
+    // Apply just as it does across a plain staged edit.
+    const FIELD_HISTORY_LIMIT = 100;
+
+    // `documentFields`/`fieldsBaseline` are mutated in place elsewhere
+    // (push/rect assignment) -- clone them so a later mutation can't reach
+    // back and corrupt an already-captured snapshot. Everything else here is
+    // always reassigned wholesale (never mutated in place), so a plain
+    // reference is safe -- same convention the pre-existing error-rollback
+    // snapshot (see `previousDocumentState` in processNewFile) already uses.
+    function captureDocumentSnapshot() {
+      return {
+        file: activeFile,
+        pdfDoc,
+        pageNum,
+        documentFields: cloneFields(documentFields),
+        fieldsBaseline: cloneFields(fieldsBaseline),
+        documentMeta,
+        documentRawInfo,
+        documentRawObjects,
+        documentOverview,
+        documentMetaLoadedFor,
+        revisionsData,
+        revisionsLoadedForFile,
+        documentSessionId,
+        documentRevisionCount,
+      };
+    }
+
+    // Whether `doc` (a pdf.js document) is still held by any snapshot in
+    // either stack -- checked before destroying a superseded pdfDoc so undo
+    // never ends up pointing at a torn-down document.
+    function isPdfDocRetainedInHistory(doc) {
+      if (!doc) return false;
+      return fieldHistoryUndo.some((s) => s.pdfDoc === doc) || fieldHistoryRedo.some((s) => s.pdfDoc === doc);
+    }
+
+    // Destroys any pdf.js document from `evictedSnapshots` that's no longer
+    // referenced by the live document or by what's left in either stack --
+    // called wherever snapshots are permanently dropped (cap eviction, a
+    // cleared redo branch, or a full reset), so superseded documents (e.g.
+    // the pre-Apply pdfDoc, once its undo entry falls off) get released
+    // instead of leaking.
+    function cleanupEvictedSnapshots(evictedSnapshots) {
+      if (!evictedSnapshots || !evictedSnapshots.length) return;
+      const destroyed = new Set();
+      evictedSnapshots.forEach((snap) => {
+        const doc = snap && snap.pdfDoc;
+        if (!doc || doc === pdfDoc || destroyed.has(doc)) return;
+        if (isPdfDocRetainedInHistory(doc)) return;
+        doc.destroy();
+        destroyed.add(doc);
+      });
+    }
+
+    // Pushes an already-captured snapshot (the pre-mutation state) onto the
+    // undo stack, evicting the oldest entry past FIELD_HISTORY_LIMIT and
+    // discarding the now-stale redo branch.
+    function commitFieldHistorySnapshot(snapshot) {
+      fieldHistoryUndo.push(snapshot);
+      const evicted = fieldHistoryUndo.length > FIELD_HISTORY_LIMIT ? [fieldHistoryUndo.shift()] : [];
+      const clearedRedo = fieldHistoryRedo;
+      fieldHistoryRedo = [];
+      cleanupEvictedSnapshots(evicted.concat(clearedRedo));
+      updateHistoryUi();
+    }
+
+    // Captures the current state and pushes it -- the common case, called
+    // right before a mutation.
+    function pushFieldHistory() {
+      commitFieldHistorySnapshot(captureDocumentSnapshot());
+    }
+
+    function resetFieldHistory() {
+      const evicted = fieldHistoryUndo.concat(fieldHistoryRedo);
+      fieldHistoryUndo = [];
+      fieldHistoryRedo = [];
+      rectEditHistorySnapshot = null;
+      cleanupEvictedSnapshots(evicted);
+      updateHistoryUi();
+    }
+
+    function updateHistoryUi() {
+      const undoBtn = document.getElementById('btnHistoryUndo');
+      const redoBtn = document.getElementById('btnHistoryRedo');
+      if (undoBtn) undoBtn.disabled = historyBusy || !pdfDoc || fieldHistoryUndo.length === 0;
+      if (redoBtn) redoBtn.disabled = historyBusy || !pdfDoc || fieldHistoryRedo.length === 0;
+      const overlay = document.getElementById('historyPanelOverlay');
+      if (overlay) overlay.classList.toggle('is-hidden', Boolean(pdfDoc));
+    }
+
+    // Restores every var captured by captureDocumentSnapshot(). Only re-runs
+    // the page render / metadata / revisions refresh when the pdfDoc itself
+    // actually changed (crossing an Apply boundary) -- a plain staged-edit
+    // step never touches those, so it's cheaper to just redraw the overlays.
+    async function applyDocumentSnapshot(snapshot) {
+      const pdfDocChanged = pdfDoc !== snapshot.pdfDoc;
+
+      activeFile = snapshot.file;
+      pdfDoc = snapshot.pdfDoc;
+      pageNum = snapshot.pageNum;
+      documentFields = snapshot.documentFields;
+      fieldsBaseline = snapshot.fieldsBaseline;
+      documentMeta = snapshot.documentMeta;
+      documentRawInfo = snapshot.documentRawInfo;
+      documentRawObjects = snapshot.documentRawObjects;
+      documentOverview = snapshot.documentOverview;
+      documentMetaLoadedFor = snapshot.documentMetaLoadedFor;
+      revisionsData = snapshot.revisionsData;
+      revisionsLoadedForFile = snapshot.revisionsLoadedForFile;
+      documentSessionId = snapshot.documentSessionId;
+      documentRevisionCount = snapshot.documentRevisionCount;
+
+      deselectActiveField();
+      clearPendingField();
+      updatePendingChangesUi();
+
+      if (pdfDocChanged) {
+        if (viewerDiffActive) exitDiffViewMode();
+        resetRevisionsDiffState();
+        document.getElementById('pageCount').textContent = pdfDoc.numPages;
+        await renderPage(pageNum); // also updates viewer controls + field overlays
+        if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
+          loadMetadataIfNeeded();
+        } else {
+          renderMetaTree();
+          renderMetaOverview();
+        }
+        if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+          loadRevisionsIfNeeded();
+        }
+      } else {
+        updateViewerControlsState();
+        if (currentViewport) drawFieldOverlays(currentViewport);
+      }
+    }
+
+    // Guards against overlapping undo/redo clicks -- applyDocumentSnapshot()
+    // is async (it may re-render the page) so a second click before the
+    // first finishes would race two snapshot swaps against each other.
+    let historyBusy = false;
+
+    async function undoFieldChange() {
+      if (historyBusy || !fieldHistoryUndo.length) return;
+      historyBusy = true;
+      updateHistoryUi();
+      try {
+        const prev = fieldHistoryUndo.pop();
+        fieldHistoryRedo.push(captureDocumentSnapshot());
+        await applyDocumentSnapshot(prev);
+      } finally {
+        historyBusy = false;
+        updateHistoryUi();
+      }
+    }
+
+    async function redoFieldChange() {
+      if (historyBusy || !fieldHistoryRedo.length) return;
+      historyBusy = true;
+      updateHistoryUi();
+      try {
+        const next = fieldHistoryRedo.pop();
+        fieldHistoryUndo.push(captureDocumentSnapshot());
+        await applyDocumentSnapshot(next);
+      } finally {
+        historyBusy = false;
+        updateHistoryUi();
+      }
+    }
+
+    document.getElementById('btnHistoryUndo').addEventListener('click', undoFieldChange);
+    document.getElementById('btnHistoryRedo').addEventListener('click', redoFieldChange);
+
+    document.addEventListener('keydown', (e) => {
+      if (document.body.dataset.activeSection !== 'signatures') return;
+      const tag = document.activeElement && document.activeElement.tagName;
+      const isTextInput = tag === 'INPUT' || tag === 'TEXTAREA';
+      const key = e.key.toLowerCase();
+      if (!(e.ctrlKey || e.metaKey) || key !== 'z') return;
+      if (isTextInput && !e.shiftKey) return; // let plain Ctrl+Z keep editing text fields normally
+      e.preventDefault();
+      if (e.shiftKey) redoFieldChange(); else undoFieldChange();
+    });
+
     function rectsEqual(a, b) {
       if (!a || !b) return a === b;
       const EPS = 0.01;
@@ -2515,15 +2762,23 @@
     async function applyPendingFieldChanges() {
       const ops = computeFieldOps();
       if (!ops.length) return true;
+      // Captured before the request so Undo can reach back across this Apply
+      // to the pre-apply file/fields -- only committed to history on success,
+      // so a failed apply (which processNewFile rolls back on its own) never
+      // leaves a no-op undo step behind.
+      const preApplySnapshot = captureDocumentSnapshot();
       const formData = new FormData();
       formData.append('pdfDocument', activeFile);
       formData.append('ops', JSON.stringify(ops));
       const label = ops.length === 1 ? '1 change' : `${ops.length} changes`;
-      return await handleApiUpdate('/api/apply-changes', formData, `Applied ${label}.`);
+      const success = await handleApiUpdate('/api/apply-changes', formData, `Applied ${label}.`);
+      if (success) commitFieldHistorySnapshot(preApplySnapshot);
+      return success;
     }
 
     function discardPendingFieldChanges() {
       if (!computeFieldOps().length) return;
+      pushFieldHistory();
       documentFields = cloneFields(fieldsBaseline);
       deselectActiveField();
       clearPendingField();
@@ -2586,6 +2841,7 @@
       const fieldName = pendingRemoveFieldName;
       closeRemoveFieldModal();
 
+      pushFieldHistory();
       documentFields = documentFields.filter((f) => f.name !== fieldName);
       if (activeField && activeField.name === fieldName) {
         deselectActiveField();

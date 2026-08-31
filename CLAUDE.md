@@ -17,7 +17,7 @@ npm run build   # Compile TypeScript to dist/ (tsc)
 npm start       # Run the compiled server (node dist/server.js)
 ```
 
-There is no test suite or linter configured. Verify changes with `npm run build` (type checking) and manual testing against `http://localhost:3000`; add focused tests only for critical logic if needed.
+There is no linter configured. Unit tests (Vitest) live under `test/`, mirroring the `lib/` layout (e.g. `test/lib/PdfSignatureTool.test.ts`). Run them with `npm test`. Verify changes with `npm run build` (type checking), `npm test`, and manual testing against `http://localhost:3000`; add focused tests only for critical logic if needed.
 
 ## Architecture
 

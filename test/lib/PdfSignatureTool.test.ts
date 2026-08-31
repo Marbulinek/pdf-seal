@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import PdfSignatureTool from './PdfSignatureTool';
+import PdfSignatureTool from '../../lib/PdfSignatureTool';
 
 describe('PdfSignatureTool', () => {
   it('creates a blank document with no fields', async () => {
