@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/Marbulinek/pdf-seal/compare/v1.3.0...v1.3.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* fixed icon drag signature when disabled by settings ([#43](https://github.com/Marbulinek/pdf-seal/issues/43)) ([a7dee37](https://github.com/Marbulinek/pdf-seal/commit/a7dee37766b6b25bcc849e77cf49657dd80912cd))
+
 # [1.3.0](https://github.com/Marbulinek/pdf-seal/compare/v1.2.3...v1.3.0) (2026-09-01)
 
 
