@@ -8,6 +8,8 @@ A browser-based PDF editor for preparing documents with signature form fields. U
 
 - Upload and preview PDFs in the browser
 - Place, move, resize, and remove signature form fields
+- Save reusable signature templates by dragging placed fields off the page into the panel, then place them by drag & drop or in one batch
+- Back up signature templates to a JSON file and load them back from Settings
 - Edit field properties (name, required, read-only)
 - Edit PDF metadata (title, author)
 - Download modified PDFs
@@ -18,6 +20,7 @@ A browser-based PDF editor for preparing documents with signature form fields. U
 - **Server** (`server.ts`): Express app serving the UI, handling multipart uploads, REST APIs for PDF operations, and WebSocket signaling for sharing
 - **PDF layer** (`lib/PdfSignatureTool.ts`): Wraps pdf-lib to manage AcroForm signature fields and metadata
 - **Revision tracking** (`lib/PdfRevisionTool.ts`): Compares PDF revisions to detect changes (added/removed/modified signature fields, metadata changes); powers the revision panel UI
+- **Signature templates** (`lib/SignatureTemplates.ts`): pure logic for locally-stored, reusable field lists; mirrored inline in `public/index.html` (see `lib/FieldHistory.ts` for the same pattern)
 - **Frontend** (`public/index.html`, `public/styles.css`): Single-page UI with document preview and controls; pdf.js is self-hosted (not from CDN)
 
 ## Key rules

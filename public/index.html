@@ -195,21 +195,46 @@
         <h3 id="settingsModalTitle">Settings</h3>
         <button type="button" class="modal-close" id="closeSettingsModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
-      <p class="modal-hint">Choose the default behavior for document changes.</p>
-      <label class="checkbox-group checkbox-group-block" for="settingsIncludeRevisionHistory">
-        <div class="checkbox-group-main">
-          <input type="checkbox" id="settingsIncludeRevisionHistory">
-          <span>Include revisions when exporting / sharing document</span>
+      <div class="modal-tabs" role="tablist">
+        <button type="button" class="modal-tab is-active" id="settingsTabBtnGeneral" role="tab" aria-selected="true" aria-controls="settingsTabPanelGeneral">Settings</button>
+        <button type="button" class="modal-tab" id="settingsTabBtnTemplates" role="tab" aria-selected="false" aria-controls="settingsTabPanelTemplates">Signature Templates</button>
+      </div>
+
+      <div class="modal-tab-panel" id="settingsTabPanelGeneral" role="tabpanel" aria-labelledby="settingsTabBtnGeneral">
+        <p class="modal-hint">Choose the default behavior for document changes.</p>
+        <label class="checkbox-group checkbox-group-block" for="settingsIncludeRevisionHistory">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsIncludeRevisionHistory">
+            <span>Include revisions when exporting / sharing document</span>
+          </div>
+          <p class="modal-hint settings-hint">Bundles your document's revision history into exported and shared files. Takes a bit longer to prepare, since every past revision is included.</p>
+        </label>
+        <label class="checkbox-group checkbox-group-block" for="settingsShowRawData">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsShowRawData">
+            <span>Show advanced PDF raw data</span>
+          </div>
+          <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions — each marked with a "Raw" badge, and opened automatically.</p>
+        </label>
+      </div>
+
+      <div class="modal-tab-panel" id="settingsTabPanelTemplates" role="tabpanel" aria-labelledby="settingsTabBtnTemplates" hidden>
+        <label class="checkbox-group checkbox-group-block" for="settingsTemplatesEnabled">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsTemplatesEnabled">
+            <span>Enable signature templates</span>
+          </div>
+          <p class="modal-hint settings-hint">Shows the Signature Templates panel in the sidebar so you can save and reuse field layouts. Off by default.</p>
+        </label>
+        <p class="modal-hint settings-hint settings-hint-flush">Templates are stored only in this browser, so clearing your browsing data removes them. Download a copy to keep as a backup, or to move your templates to another computer. These two act straight away — they don't wait for <strong>Save</strong>.</p>
+        <div class="settings-template-actions">
+          <button type="button" class="btn btn-ghost" id="btnExportTemplates"><span class="icon icon-download" aria-hidden="true"></span> Download templates</button>
+          <button type="button" class="btn btn-ghost" id="btnImportTemplates"><span class="icon icon-upload-device" aria-hidden="true"></span> Load from file</button>
+          <input type="file" id="templateImportInput" accept="application/json,.json" hidden>
         </div>
-        <p class="modal-hint settings-hint">Bundles your document's revision history into exported and shared files. Takes a bit longer to prepare, since every past revision is included.</p>
-      </label>
-      <label class="checkbox-group checkbox-group-block" for="settingsShowRawData">
-        <div class="checkbox-group-main">
-          <input type="checkbox" id="settingsShowRawData">
-          <span>Show advanced PDF raw data</span>
-        </div>
-        <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions — each marked with a "Raw" badge, and opened automatically.</p>
-      </label>
+        <p class="modal-hint settings-hint settings-hint-flush" id="templatesBackupSummary"></p>
+      </div>
+
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelSettingsBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="saveSettingsBtn">Save</button>
@@ -256,6 +281,115 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelRemoveFieldBtn">Cancel</button>
         <button type="button" class="btn btn-danger" id="confirmRemoveFieldBtn">Remove Field</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Name a signature template (create + rename). Fields aren't edited here:
+       they're captured by dragging real, already-placed fields off the page
+       and into the panel, so a template only ever needs a name. -->
+  <div class="modal-backdrop" id="templateNameModal" aria-hidden="true">
+    <div class="modal-box template-name-modal-box" role="dialog" aria-modal="true" aria-labelledby="templateNameTitle">
+      <div class="modal-header">
+        <h3 id="templateNameTitle">New signature template</h3>
+        <button type="button" class="modal-close" id="closeTemplateNameBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <p class="modal-hint" id="templateNameHint">Give the template a name. To fill it, place fields on your document as usual, then drag each one into the Signature Templates panel.</p>
+
+      <div class="form-group">
+        <label for="templateNameInput">Template name</label>
+        <input type="text" id="templateNameInput" placeholder="e.g. Contract — 2 signers" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="modal-status" id="templateNameStatus"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelTemplateNameBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveTemplateNameBtn"><span class="icon icon-check" aria-hidden="true"></span> <span id="saveTemplateNameLabel">Create template</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Move a saved field into another template -->
+  <div class="modal-backdrop" id="templateMoveItemModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="templateMoveItemTitle">
+      <div class="modal-header">
+        <h3 id="templateMoveItemTitle">Move or copy field</h3>
+        <button type="button" class="modal-close" id="closeTemplateMoveItemBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <p class="modal-hint">Move or copy <strong id="templateMoveItemName"></strong> from <strong id="templateMoveItemSource"></strong> into another template.</p>
+      <div class="form-group">
+        <label for="templateMoveTargetSelect">Target template</label>
+        <div class="select-field">
+          <select id="templateMoveTargetSelect"></select>
+          <span class="icon icon-chevron-down select-field-arrow" aria-hidden="true"></span>
+        </div>
+      </div>
+      <div class="modal-status" id="templateMoveItemStatus"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelTemplateMoveItemBtn">Cancel</button>
+        <button type="button" class="btn btn-ghost" id="confirmTemplateCopyItemBtn"><span class="icon icon-copy" aria-hidden="true"></span> Copy</button>
+        <button type="button" class="btn btn-primary" id="confirmTemplateMoveItemBtn"><span class="icon icon-move" aria-hidden="true"></span> Move</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete signature template confirmation -->
+  <div class="modal-backdrop" id="deleteTemplateModal" aria-hidden="true">
+    <div class="modal-box remove-field-modal-box" role="dialog" aria-modal="true" aria-labelledby="deleteTemplateModalTitle">
+      <div class="modal-header">
+        <h3 id="deleteTemplateModalTitle">Delete Template</h3>
+        <button type="button" class="modal-close" id="closeDeleteTemplateModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <div class="remove-field-body">
+        <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <div class="remove-field-text">
+          <p class="modal-hint remove-field-hint">Delete the template <strong id="deleteTemplateModalName"></strong><span id="deleteTemplateModalCount"></span>?</p>
+          <p class="modal-hint remove-field-hint">Unlike field edits, this isn't staged — the template is removed from this browser straight away and can't be brought back.</p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelDeleteTemplateBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteTemplateBtn">Delete Template</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remove a single field from a signature template -->
+  <div class="modal-backdrop" id="removeTemplateItemModal" aria-hidden="true">
+    <div class="modal-box remove-field-modal-box" role="dialog" aria-modal="true" aria-labelledby="removeTemplateItemModalTitle">
+      <div class="modal-header">
+        <h3 id="removeTemplateItemModalTitle">Remove field</h3>
+        <button type="button" class="modal-close" id="closeRemoveTemplateItemModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <div class="remove-field-body">
+        <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <div class="remove-field-text">
+          <p class="modal-hint remove-field-hint">Remove <strong id="removeTemplateItemModalName"></strong> from <strong id="removeTemplateItemModalTemplateName"></strong>?</p>
+          <p class="modal-hint remove-field-hint">This only removes it from the template — nothing already placed on your document is affected.</p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelRemoveTemplateItemBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmRemoveTemplateItemBtn">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm how an imported template file should be applied -->
+  <div class="modal-backdrop" id="templateImportModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="templateImportTitle">
+      <div class="modal-header">
+        <h3 id="templateImportTitle">Load templates</h3>
+        <button type="button" class="modal-close" id="closeTemplateImportBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <p class="modal-hint" id="templateImportSummary"></p>
+      <div class="template-import-preview" id="templateImportPreview"></div>
+      <p class="modal-hint settings-hint settings-hint-flush" id="templateImportChoiceHint"></p>
+      <div class="modal-status" id="templateImportStatus"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelTemplateImportBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btnTemplateImportReplace">Replace all</button>
+        <button type="button" class="btn btn-primary" id="btnTemplateImportMerge">Add to my templates</button>
       </div>
     </div>
   </div>
@@ -448,7 +582,56 @@
         <div id="actionStatus" class="status-text"></div>
       </div>
 
-      
+
+      <div class="panel templates-panel" id="templatesPanel">
+        <h3><span class="panel-dot dot-coral"></span>Signature Templates
+          <button type="button" id="btnOpenTemplateSettings" class="icon-btn panel-h3-action" aria-label="Signature template settings" title="Manage &amp; backup templates"><span class="icon icon-settings-gear" aria-hidden="true"></span></button>
+          <button type="button" id="btnNewTemplate" class="icon-btn" aria-label="New template" title="New template"><span class="icon icon-plus-bold" aria-hidden="true"></span></button>
+        </h3>
+        <p class="revisions-hint">Reusable field lists saved in this browser. Place your fields on the document, then drag them in here to keep them for next time.</p>
+
+        <div class="template-picker" id="templatePicker">
+          <label for="templateSelect">Active template</label>
+          <div class="template-picker-row">
+            <div class="select-field">
+              <select id="templateSelect"></select>
+              <span class="icon icon-chevron-down select-field-arrow" aria-hidden="true"></span>
+            </div>
+            <button type="button" id="btnRenameTemplate" class="icon-btn" aria-label="Rename template" title="Rename template"><span class="icon icon-edit2" aria-hidden="true"></span></button>
+            <button type="button" id="btnDeleteTemplate" class="icon-btn icon-btn-danger template-delete-btn" aria-label="Delete template" title="Delete template"><span class="icon icon-close" aria-hidden="true"></span></button>
+          </div>
+        </div>
+
+        <div class="template-dropzone" id="templateDropzone">
+          <div class="template-dropzone-idle" aria-hidden="true">
+            <span class="icon icon-layers" aria-hidden="true"></span>
+            <span>Drag a field off the document here to save it</span>
+          </div>
+          <div class="template-dropzone-cue" aria-hidden="true">
+            <span class="icon icon-layers" aria-hidden="true"></span>
+            <span id="templateDropzoneCueText">Drop to add to this template</span>
+          </div>
+        </div>
+
+        <details class="template-item-list-details" id="templateItemListDetails">
+          <summary class="template-item-list-summary">
+            <span class="icon icon-chevron-right template-item-list-caret" aria-hidden="true"></span>
+            <span id="templateItemListSummaryText">Saved fields</span>
+          </summary>
+          <div class="template-item-list" id="templateItemList"></div>
+        </details>
+
+        <label class="checkbox-group checkbox-group-block" for="templateAutoPlace">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="templateAutoPlace">
+            <span>Automatic placing</span>
+          </div>
+          <p class="modal-hint settings-hint">Places every field in the list back at the exact page and position it was saved from, in one go. Leave it off to drag items onto the document one at a time.</p>
+        </label>
+
+        <p class="template-place-hint" id="templatePlaceHint"></p>
+        <button type="button" id="btnPlaceTemplate" class="btn btn-primary btn-block" disabled><span class="icon icon-layers" aria-hidden="true"></span> <span id="btnPlaceTemplateLabel">Place all fields</span></button>
+      </div>
       </section>
 
       <section class="section-panel" id="sectionMetaData" data-section-panel="metadata" hidden>
@@ -1106,23 +1289,45 @@
     const settingsOpenBtn = document.getElementById('btnOpenSettings');
     const settingsShowRawDataInput = document.getElementById('settingsShowRawData');
     const settingsIncludeRevisionHistoryInput = document.getElementById('settingsIncludeRevisionHistory');
+    const settingsTemplatesEnabledInput = document.getElementById('settingsTemplatesEnabled');
     const settingsSaveBtn = document.getElementById('saveSettingsBtn');
     const settingsCancelBtn = document.getElementById('cancelSettingsBtn');
     const settingsCloseBtn = document.getElementById('closeSettingsModalBtn');
+    const settingsTabs = [
+      { btn: document.getElementById('settingsTabBtnGeneral'), panel: document.getElementById('settingsTabPanelGeneral') },
+      { btn: document.getElementById('settingsTabBtnTemplates'), panel: document.getElementById('settingsTabPanelTemplates') },
+    ];
     const SETTINGS_STORAGE_KEY = 'pdfseal-settings';
+
+    function setSettingsTab(activeBtn) {
+      settingsTabs.forEach(({ btn, panel }) => {
+        const isActive = btn === activeBtn;
+        if (btn) {
+          btn.classList.toggle('is-active', isActive);
+          btn.setAttribute('aria-selected', String(isActive));
+        }
+        if (panel) panel.hidden = !isActive;
+      });
+    }
+    settingsTabs.forEach(({ btn }) => {
+      if (btn) btn.addEventListener('click', () => setSettingsTab(btn));
+    });
+
+    const DEFAULT_SETTINGS = { showRawPdfData: false, includeRevisionHistoryByDefault: false, templatesEnabled: false };
 
     function loadSettings() {
       try {
         const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (!raw) return { showRawPdfData: false, includeRevisionHistoryByDefault: false };
+        if (!raw) return { ...DEFAULT_SETTINGS };
         const parsed = JSON.parse(raw);
         return {
           showRawPdfData: parsed && typeof parsed.showRawPdfData === 'boolean' ? parsed.showRawPdfData : false,
           includeRevisionHistoryByDefault:
             parsed && typeof parsed.includeRevisionHistoryByDefault === 'boolean' ? parsed.includeRevisionHistoryByDefault : false,
+          templatesEnabled: parsed && typeof parsed.templatesEnabled === 'boolean' ? parsed.templatesEnabled : false,
         };
       } catch (_err) {
-        return { showRawPdfData: false, includeRevisionHistoryByDefault: false };
+        return { ...DEFAULT_SETTINGS };
       }
     }
 
@@ -1134,17 +1339,25 @@
       document.body.classList.toggle('hide-raw-pdf-data', !settings.showRawPdfData);
     }
 
+    function applyTemplatesPanelVisibility(settings) {
+      document.body.classList.toggle('hide-signature-templates-panel', !settings.templatesEnabled);
+    }
+
     function applySettingsToUi() {
       const settings = loadSettings();
       if (settingsShowRawDataInput) settingsShowRawDataInput.checked = settings.showRawPdfData;
       if (settingsIncludeRevisionHistoryInput) settingsIncludeRevisionHistoryInput.checked = settings.includeRevisionHistoryByDefault;
+      if (settingsTemplatesEnabledInput) settingsTemplatesEnabledInput.checked = settings.templatesEnabled;
       applyRawPdfDataVisibility(settings);
+      applyTemplatesPanelVisibility(settings);
       return settings;
     }
 
-    function openSettingsModal() {
+    function openSettingsModal(tabName) {
       if (!settingsModal) return;
       applySettingsToUi();
+      updateTemplatesBackupUi();
+      setSettingsTab(tabName === 'templates' ? settingsTabs[1].btn : settingsTabs[0].btn);
       settingsModal.classList.add('is-open');
       settingsModal.setAttribute('aria-hidden', 'false');
     }
@@ -1155,7 +1368,11 @@
       settingsModal.setAttribute('aria-hidden', 'true');
     }
 
-    applyRawPdfDataVisibility(loadSettings());
+    (() => {
+      const initialSettings = loadSettings();
+      applyRawPdfDataVisibility(initialSettings);
+      applyTemplatesPanelVisibility(initialSettings);
+    })();
 
     if (settingsOpenBtn) {
       settingsOpenBtn.addEventListener('click', (e) => {
@@ -1169,6 +1386,7 @@
         const nextSettings = {
           showRawPdfData: Boolean(settingsShowRawDataInput?.checked),
           includeRevisionHistoryByDefault: Boolean(settingsIncludeRevisionHistoryInput?.checked),
+          templatesEnabled: Boolean(settingsTemplatesEnabledInput?.checked),
         };
         saveSettings(nextSettings);
         applySettingsToUi();
@@ -1195,6 +1413,14 @@
             8000,
           ).classList.add('notification-subtle');
         }
+
+        if (nextSettings.templatesEnabled !== previousSettings.templatesEnabled) {
+          showNotification(
+            nextSettings.templatesEnabled ? 'Signature Templates panel enabled.' : 'Signature Templates panel disabled.',
+            'info',
+            8000,
+          ).classList.add('notification-subtle');
+        }
       });
     }
     [settingsCancelBtn, settingsCloseBtn].forEach((btn) => {
@@ -1206,6 +1432,9 @@
       });
     }
     document.addEventListener('keydown', (e) => {
+      // The template-import confirmation opens on top of Settings; let its own
+      // handler take that Escape rather than closing both at once.
+      if (document.getElementById('templateImportModal')?.classList.contains('is-open')) return;
       if (e.key === 'Escape' && settingsModal?.classList.contains('is-open')) closeSettingsModal();
     });
 
@@ -1691,6 +1920,10 @@
       if (metaSearchInput) metaSearchInput.disabled = !hasDocument;
       if (revisionsListPanelOverlay) revisionsListPanelOverlay.classList.toggle('is-hidden', hasDocument);
       if (revisionsDiffPanelOverlay) revisionsDiffPanelOverlay.classList.toggle('is-hidden', hasDocument);
+      // The Templates panel has no overlay (templates are editable with no
+      // document open) -- re-rendering it is what enables/disables placing and
+      // row dragging as a document comes and goes.
+      renderTemplatesPanel();
       updateHistoryUi();
     }
 
@@ -2169,6 +2402,21 @@
         handle.className = 'resize-handle';
         div.appendChild(handle);
 
+        // Saving a field into a signature template is a drag off the page and
+        // into the Signature Templates panel. The overlay body already owns
+        // mouse-dragging (repositioning), so the two gestures can't share an
+        // element -- this corner grip is the HTML5 drag source, and swallows
+        // its own mousedown so grabbing it never starts a reposition.
+        const templateGrip = document.createElement('div');
+        templateGrip.className = 'template-save-handle';
+        templateGrip.draggable = true;
+        templateGrip.title = `Drag "${field.name || 'this field'}" into Signature Templates to save it`;
+        templateGrip.innerHTML = ICONS.layers;
+        templateGrip.addEventListener('mousedown', (e) => e.stopPropagation());
+        templateGrip.addEventListener('dragstart', (e) => beginDocumentFieldDrag(field, e));
+        templateGrip.addEventListener('dragend', endDocumentFieldDrag);
+        div.appendChild(templateGrip);
+
         div.addEventListener('mouseenter', () => {
           overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
             if (el !== div) {
@@ -2531,13 +2779,10 @@
         return false;
       }
 
-      pushFieldHistory();
-      documentFields.push({
+      stageNewField({
         name,
         type: addFieldType === 'text' ? 'TextField' : 'Signature',
         required: document.getElementById('sigRequired').checked,
-        readOnly: false,
-        tooltip: '',
         page: pendingFieldPage,
         rect: { x: pendingField.x, y: pendingField.y, width: pendingField.width, height: pendingField.height },
       });
@@ -2547,10 +2792,34 @@
       document.getElementById('addSigForm').reset();
       document.getElementById('sigWidth').value = config.defaultWidth;
       document.getElementById('sigHeight').value = config.defaultHeight;
-      if (currentViewport) drawFieldOverlays(currentViewport);
-      updatePendingChangesUi();
       showNotification(`"${name}" staged — click Apply changes to save it.`, 'info');
       return true;
+    }
+
+    // Pushes one already-resolved field into `documentFields` as a staged
+    // change and refreshes the overlays + pending-changes bar. Callers own
+    // name resolution (uniqueness) and the toast; they also own history,
+    // except that a lone field gets its own step by default -- a batch
+    // placement passes `{ history: false }` and pushes one step for the whole
+    // batch instead, so a single Undo takes the batch back out.
+    // Likewise `{ redraw: false }` lets a batch redraw once at the end
+    // rather than once per field.
+    function stageNewField({ name, type, required, page, rect }, options = {}) {
+      const { history = true, redraw = true } = options;
+      if (history) pushFieldHistory();
+      documentFields.push({
+        name,
+        type: type === 'TextField' || type === 'text' ? 'TextField' : 'Signature',
+        required: !!required,
+        readOnly: false,
+        tooltip: '',
+        page,
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      });
+      if (redraw) {
+        if (currentViewport) drawFieldOverlays(currentViewport);
+        updatePendingChangesUi();
+      }
     }
 
     function clearPendingField() {
@@ -2562,6 +2831,1153 @@
       setPlacementHint(FIELD_TYPE_CONFIG[addFieldType].placementHintIdle, 'idle');
       updateViewerControlsState();
     }
+
+    // ---------------------------------------------------------------
+    // Signature templates (localStorage)
+    // ---------------------------------------------------------------
+    // Named, reusable lists of field definitions. A template is filled by
+    // dragging fields the user has already placed on the document into the
+    // panel, and spent either by dragging an item back onto the page or by
+    // placing the whole list at its saved pages/positions in one batch. There
+    // is no numeric editing anywhere: every size and position in a template
+    // came from a real field on a real page.
+    //
+    // The pure helpers below (normalize/templateItemFromField/upsert/
+    // uniqueFieldName/planAutoPlacement/moveTemplateItem) are a hand-kept
+    // mirror of lib/SignatureTemplates.ts, which exists purely so they have
+    // unit coverage -- there's no frontend build step to import from. Keep the
+    // two in sync if either changes.
+    //
+    // Item coordinates are PDF points with a bottom-left origin (the same
+    // space as `field.rect`), and `page` is 0-indexed like `field.page`.
+
+    const TEMPLATES_STORAGE_KEY = 'pdfseal-signature-templates';
+    const TEMPLATE_STORE_VERSION = 1;
+
+    const TEMPLATE_DEFAULT_SIZE = {
+      signature: { width: 200, height: 60 },
+      text: { width: 200, height: 30 },
+    };
+    const TEMPLATE_MIN_DIMENSION = 1;
+
+    function templateToFiniteNumber(value, fallback) {
+      const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function makeTemplateId(prefix) {
+      return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+    }
+
+    function normalizeTemplateItem(raw, seenIds) {
+      if (!raw || typeof raw !== 'object') return null;
+      const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+      if (!name) return null; // an unnamed field can't be added to a PDF at all
+
+      const type = raw.type === 'text' ? 'text' : 'signature';
+      const defaults = TEMPLATE_DEFAULT_SIZE[type];
+
+      let id = typeof raw.id === 'string' && raw.id ? raw.id : makeTemplateId('itm');
+      if (seenIds.has(id)) id = makeTemplateId('itm');
+      seenIds.add(id);
+
+      return {
+        id,
+        name,
+        type,
+        width: Math.max(TEMPLATE_MIN_DIMENSION, templateToFiniteNumber(raw.width, defaults.width)),
+        height: Math.max(TEMPLATE_MIN_DIMENSION, templateToFiniteNumber(raw.height, defaults.height)),
+        x: templateToFiniteNumber(raw.x, 0),
+        y: templateToFiniteNumber(raw.y, 0),
+        page: Math.max(0, Math.round(templateToFiniteNumber(raw.page, 0))),
+        required: raw.required === true,
+      };
+    }
+
+    // Repairs whatever came back out of localStorage into a store the panel can
+    // render without defensive checks at every access. Anything unsalvageable is
+    // dropped rather than thrown -- a corrupt store must never break the panel.
+    function normalizeTemplateStore(raw) {
+      if (!raw || typeof raw !== 'object' || !Array.isArray(raw.templates)) {
+        return { version: TEMPLATE_STORE_VERSION, templates: [] };
+      }
+
+      const seenTemplateIds = new Set();
+      const templates = [];
+      for (const rawTemplate of raw.templates) {
+        if (!rawTemplate || typeof rawTemplate !== 'object') continue;
+        const name = typeof rawTemplate.name === 'string' ? rawTemplate.name.trim() : '';
+        if (!name) continue;
+
+        let id = typeof rawTemplate.id === 'string' && rawTemplate.id ? rawTemplate.id : makeTemplateId('tpl');
+        if (seenTemplateIds.has(id)) id = makeTemplateId('tpl');
+        seenTemplateIds.add(id);
+
+        const seenItemIds = new Set();
+        const rawItems = Array.isArray(rawTemplate.items) ? rawTemplate.items : [];
+        const items = rawItems.map((item) => normalizeTemplateItem(item, seenItemIds)).filter(Boolean);
+
+        const createdAt = templateToFiniteNumber(rawTemplate.createdAt, 0);
+        templates.push({ id, name, createdAt, updatedAt: templateToFiniteNumber(rawTemplate.updatedAt, createdAt), items });
+      }
+
+      return { version: TEMPLATE_STORE_VERSION, templates };
+    }
+
+    // Sizes and positions come out of a drag/resize as long floats; two
+    // decimals is well under a point and keeps the stored JSON readable.
+    function roundTemplatePoint(value) {
+      return Math.round(templateToFiniteNumber(value, 0) * 100) / 100;
+    }
+
+    // Turns a field already placed on the document into a template item --
+    // the only way items are created. `id` is passed in so this stays pure.
+    function templateItemFromField(field, id) {
+      const type = field.type === 'TextField' || field.type === 'text' ? 'text' : 'signature';
+      const defaults = TEMPLATE_DEFAULT_SIZE[type];
+      const rect = field.rect || {};
+      return {
+        id,
+        name: String(field.name ?? '').trim(),
+        type,
+        width: Math.max(TEMPLATE_MIN_DIMENSION, roundTemplatePoint(templateToFiniteNumber(rect.width, defaults.width))),
+        height: Math.max(TEMPLATE_MIN_DIMENSION, roundTemplatePoint(templateToFiniteNumber(rect.height, defaults.height))),
+        x: roundTemplatePoint(rect.x),
+        y: roundTemplatePoint(rect.y),
+        page: Math.max(0, Math.round(templateToFiniteNumber(field.page, 0))),
+        required: field.required === true,
+      };
+    }
+
+    // Appends `item`, or replaces the existing entry of the same name in
+    // place. Dragging the same field in twice means "update what I saved",
+    // not "keep two copies" -- and two same-named items in one template would
+    // collide on placement anyway.
+    function upsertTemplateItem(items, item) {
+      const list = Array.isArray(items) ? items : [];
+      const index = list.findIndex((existing) => existing.name === item.name);
+      if (index === -1) return { items: [...list, item], replaced: false };
+      const next = list.slice();
+      // Keep the id already in the list so anything holding a reference to it
+      // still resolves.
+      next[index] = { ...item, id: list[index].id };
+      return { items: next, replaced: true };
+    }
+
+    // Returns `base` if it's free, else the first "base (n)" that is. Field
+    // names must be unique within a PDF's AcroForm, so every name headed for a
+    // document goes through here first.
+    function uniqueFieldName(base, takenNames) {
+      const taken = takenNames instanceof Set ? takenNames : new Set(takenNames);
+      if (!taken.has(base)) return base;
+      let suffix = 2;
+      while (taken.has(`${base} (${suffix})`)) suffix += 1;
+      return `${base} (${suffix})`;
+    }
+
+    // Template names are a human-facing label rather than a PDF identifier, so
+    // they're compared case-insensitively -- "NDA" and "nda" would be confusing
+    // as two separate entries in the picker.
+    function uniqueTemplateName(base, takenNames) {
+      const taken = new Set([...takenNames].map((name) => name.toLowerCase()));
+      if (!taken.has(base.toLowerCase())) return base;
+      let suffix = 2;
+      while (taken.has(`${base} (${suffix})`.toLowerCase())) suffix += 1;
+      return `${base} (${suffix})`;
+    }
+
+    // Works out what "Automatic placing" would do without touching any document
+    // state, so the caller can stage the result as one undo step and report the
+    // skips. Names claimed earlier in the batch join `takenNames` as we go, so
+    // two identically-named items in one template resolve against each other.
+    function planAutoPlacement(items, takenNames, pageCount) {
+      const claimed = new Set(takenNames);
+      const placements = [];
+      const skipped = [];
+
+      for (const item of Array.isArray(items) ? items : []) {
+        if (!item) continue;
+
+        // An item saved against page 5 is meaningless in a 3-page document,
+        // and the server would reject the add outright.
+        if (!Number.isFinite(pageCount) || item.page < 0 || item.page >= pageCount) {
+          skipped.push({ name: item.name, page: item.page, reason: 'page-missing' });
+          continue;
+        }
+
+        const name = uniqueFieldName(item.name, claimed);
+        claimed.add(name);
+        placements.push({
+          name,
+          type: item.type,
+          required: !!item.required,
+          page: item.page,
+          rect: { x: item.x, y: item.y, width: item.width, height: item.height },
+        });
+      }
+
+      return { placements, skipped };
+    }
+
+    // Moves one item between two templates, returning a new store. A no-op --
+    // the same store, unchanged -- if either template or the item is unknown.
+    function moveTemplateItem(store, fromTemplateId, toTemplateId, itemId) {
+      if (!store || !Array.isArray(store.templates)) return store;
+      if (fromTemplateId === toTemplateId) return store;
+
+      const from = store.templates.find((t) => t.id === fromTemplateId);
+      const to = store.templates.find((t) => t.id === toTemplateId);
+      if (!from || !to) return store;
+
+      const item = from.items.find((i) => i.id === itemId);
+      if (!item) return store;
+
+      // Item ids are only unique within a template, so re-mint on a collision.
+      const moved = to.items.some((i) => i.id === item.id) ? { ...item, id: makeTemplateId('itm') } : item;
+      const now = Date.now();
+
+      return {
+        ...store,
+        templates: store.templates.map((template) => {
+          if (template.id === fromTemplateId) {
+            return { ...template, items: template.items.filter((i) => i.id !== itemId), updatedAt: now };
+          }
+          if (template.id === toTemplateId) {
+            return { ...template, items: [...template.items, moved], updatedAt: now };
+          }
+          return template;
+        }),
+      };
+    }
+
+    // Copies one item into another template, returning a new store. Unlike
+    // moveTemplateItem, the source keeps its copy. A no-op if either template
+    // or the item is unknown.
+    function copyTemplateItem(store, fromTemplateId, toTemplateId, itemId) {
+      if (!store || !Array.isArray(store.templates)) return store;
+      if (fromTemplateId === toTemplateId) return store;
+
+      const from = store.templates.find((t) => t.id === fromTemplateId);
+      const to = store.templates.find((t) => t.id === toTemplateId);
+      if (!from || !to) return store;
+
+      const item = from.items.find((i) => i.id === itemId);
+      if (!item) return store;
+
+      // Item ids are only unique within a template, so re-mint on a collision.
+      const copied = to.items.some((i) => i.id === item.id) ? { ...item, id: makeTemplateId('itm') } : { ...item };
+      const now = Date.now();
+
+      return {
+        ...store,
+        templates: store.templates.map((template) => (
+          template.id === toTemplateId
+            ? { ...template, items: [...template.items, copied], updatedAt: now }
+            : template
+        )),
+      };
+    }
+
+    // --- Store persistence (same shape as loadSettings/saveSettings above) ---
+
+    function loadTemplateStore() {
+      try {
+        const raw = localStorage.getItem(TEMPLATES_STORAGE_KEY);
+        if (!raw) return { version: TEMPLATE_STORE_VERSION, templates: [] };
+        return normalizeTemplateStore(JSON.parse(raw));
+      } catch (_err) {
+        return { version: TEMPLATE_STORE_VERSION, templates: [] };
+      }
+    }
+
+    function saveTemplateStore(nextStore) {
+      templateStore = normalizeTemplateStore(nextStore);
+      try {
+        localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templateStore));
+      } catch (_err) {
+        // Quota or a privacy mode that blocks writes -- the in-memory store
+        // still works for this session, so say so rather than failing silently.
+        showNotification('Could not save templates to this browser. Changes will be lost on reload.', 'error');
+      }
+      renderTemplatesPanel();
+      updateTemplatesBackupUi();
+    }
+
+    let templateStore = loadTemplateStore();
+    let selectedTemplateId = templateStore.templates[0]?.id ?? null;
+    // The item currently being dragged from the panel onto the page. Set on
+    // dragstart because dataTransfer's payload is unreadable during dragover,
+    // which is where the drop target has to decide whether to accept.
+    let draggingTemplateItem = null;
+
+    function getSelectedTemplate() {
+      return templateStore.templates.find((t) => t.id === selectedTemplateId) || null;
+    }
+
+    function isAutoPlaceOn() {
+      return !!document.getElementById('templateAutoPlace')?.checked;
+    }
+
+    // --- Panel rendering ---
+
+    // Trims the trailing ".0" off whole numbers so a 200pt field reads "200",
+    // not "200.0", while 120.5 keeps its half point.
+    function formatTemplateNumber(value) {
+      return Number.isInteger(value) ? String(value) : String(Math.round(value * 10) / 10);
+    }
+
+    // The full geometry, kept out of the row itself -- sizes and positions
+    // aren't editable here (they come from the page), so they belong in a
+    // tooltip rather than taking up space in the list.
+    function templateItemSummary(item) {
+      const parts = [
+        item.type === 'text' ? 'Text box' : 'Signature',
+        `${formatTemplateNumber(item.width)} × ${formatTemplateNumber(item.height)} pt`,
+        `page ${item.page + 1}`,
+        `X ${formatTemplateNumber(item.x)}, Y ${formatTemplateNumber(item.y)}`,
+      ];
+      if (item.required) parts.push('required');
+      return parts.join(' · ');
+    }
+
+    function buildTemplateItemRow(item, template) {
+      const row = document.createElement('div');
+      row.className = 'template-item-row';
+      row.dataset.itemId = item.id;
+
+      const icon = document.createElement('span');
+      icon.className = `icon ${item.type === 'text' ? 'icon-file-text' : 'icon-pen'} template-item-icon`;
+      icon.setAttribute('aria-hidden', 'true');
+
+      const name = document.createElement('span');
+      name.className = 'template-item-name';
+      name.textContent = item.name;
+      name.title = item.name;
+
+      const actions = document.createElement('div');
+      actions.className = 'template-item-actions';
+
+      const otherTemplates = templateStore.templates.filter((t) => t.id !== template.id);
+
+      const moveBtn = document.createElement('button');
+      moveBtn.type = 'button';
+      moveBtn.className = 'icon-btn template-item-btn';
+      moveBtn.innerHTML = '<span class="icon icon-arrow-right" aria-hidden="true"></span>';
+      moveBtn.setAttribute('aria-label', `Move or copy ${item.name} to another template`);
+      moveBtn.disabled = otherTemplates.length === 0;
+      moveBtn.title = otherTemplates.length
+        ? 'Move or copy this field into another template'
+        : 'Create a second template first to move or copy fields between lists';
+      moveBtn.addEventListener('click', () => openTemplateMoveItemModal(item, template.id));
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'icon-btn icon-btn-danger template-item-btn';
+      removeBtn.innerHTML = ICONS.x;
+      removeBtn.setAttribute('aria-label', `Remove ${item.name} from this template`);
+      removeBtn.title = 'Remove this field from the template';
+      removeBtn.addEventListener('click', () => openRemoveTemplateItemModal(template.id, item.id));
+
+      actions.append(moveBtn, removeBtn);
+      // The row is the drag handle, so a mousedown on either button must not
+      // start one.
+      actions.addEventListener('mousedown', (e) => e.stopPropagation());
+      actions.draggable = false;
+
+      row.append(icon, name, actions);
+
+      // Dragging a saved item back onto the page is the manual placement path,
+      // so it's only on when there's a document to drop onto and the user
+      // hasn't switched to automatic mode.
+      const draggable = !!pdfDoc && !isAutoPlaceOn();
+      row.draggable = draggable;
+      row.classList.toggle('is-draggable', draggable);
+      row.title = draggable
+        ? `${templateItemSummary(item)}\nDrag onto the document to place it`
+        : templateItemSummary(item);
+
+      if (draggable) {
+        row.addEventListener('dragstart', (e) => {
+          draggingTemplateItem = { item, templateId: template.id };
+          row.classList.add('is-dragging');
+          e.dataTransfer.effectAllowed = 'copy';
+          e.dataTransfer.setData(TEMPLATE_DRAG_MIME, item.id);
+          // Some browsers need a plain-text payload to start a drag at all.
+          e.dataTransfer.setData('text/plain', item.name);
+        });
+        row.addEventListener('dragend', () => {
+          draggingTemplateItem = null;
+          row.classList.remove('is-dragging');
+          pdfContainer.classList.remove('template-drop-active');
+        });
+      }
+
+      return row;
+    }
+
+    function renderTemplatesPanel() {
+      const picker = document.getElementById('templatePicker');
+      const select = document.getElementById('templateSelect');
+      const list = document.getElementById('templateItemList');
+      const listSummaryText = document.getElementById('templateItemListSummaryText');
+      const dropzone = document.getElementById('templateDropzone');
+      const cueText = document.getElementById('templateDropzoneCueText');
+      const placeBtn = document.getElementById('btnPlaceTemplate');
+      const placeLabel = document.getElementById('btnPlaceTemplateLabel');
+      const placeHint = document.getElementById('templatePlaceHint');
+      const renameBtn = document.getElementById('btnRenameTemplate');
+      const deleteBtn = document.getElementById('btnDeleteTemplate');
+      const autoPlaceInput = document.getElementById('templateAutoPlace');
+      if (!select || !list) return;
+
+      const hasTemplates = templateStore.templates.length > 0;
+      if (hasTemplates && !getSelectedTemplate()) selectedTemplateId = templateStore.templates[0].id;
+
+      if (picker) picker.hidden = !hasTemplates;
+      if (renameBtn) renameBtn.disabled = !hasTemplates;
+      if (deleteBtn) deleteBtn.disabled = !hasTemplates;
+      if (autoPlaceInput) autoPlaceInput.disabled = !hasTemplates;
+
+      select.replaceChildren(...templateStore.templates.map((template) => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        const count = template.items.length;
+        option.textContent = `${template.name} · ${count} field${count === 1 ? '' : 's'}`;
+        return option;
+      }));
+      if (selectedTemplateId) select.value = selectedTemplateId;
+
+      const template = getSelectedTemplate();
+      const isEmpty = !template || !template.items.length;
+
+      if (!hasTemplates) {
+        list.replaceChildren(templateEmptyState(
+          'No templates yet.',
+          'Create one, then drag fields off your document into it.',
+        ));
+      } else if (isEmpty) {
+        list.replaceChildren(templateEmptyState(
+          'Nothing saved here yet.',
+          pdfDoc
+            ? 'Place your fields on the document, then drag each one in here by its corner handle.'
+            : 'Upload a document and place your fields, then drag them in here to save them.',
+        ));
+      } else {
+        list.replaceChildren(...template.items.map((item) => buildTemplateItemRow(item, template)));
+      }
+
+      if (cueText) cueText.textContent = template ? `Drop to add to “${template.name}”` : 'Drop to start a new template';
+      if (listSummaryText) {
+        const itemCount = template ? template.items.length : 0;
+        listSummaryText.textContent = `Saved fields${hasTemplates ? ` (${itemCount})` : ''}`;
+      }
+      const autoPlace = isAutoPlaceOn();
+      const count = template ? template.items.length : 0;
+      if (placeLabel) placeLabel.textContent = count === 1 ? 'Place 1 field' : `Place all ${count} fields`;
+      if (placeBtn) {
+        placeBtn.hidden = !autoPlace;
+        placeBtn.disabled = !pdfDoc || !count;
+      }
+      if (placeHint) {
+        placeHint.hidden = !!pdfDoc || !hasTemplates;
+        placeHint.textContent = 'Upload a document to place these fields on it.';
+      }
+    }
+
+    // Empty states carry a headline plus the one action that fills them, so
+    // the panel always says what to do next rather than just that it's empty.
+    function templateEmptyState(title, hint) {
+      const wrap = document.createElement('div');
+      wrap.className = 'template-empty';
+
+      const icon = document.createElement('span');
+      icon.className = 'icon icon-layers template-empty-icon';
+      icon.setAttribute('aria-hidden', 'true');
+
+      const heading = document.createElement('p');
+      heading.className = 'template-empty-title';
+      heading.textContent = title;
+
+      const detail = document.createElement('p');
+      detail.className = 'template-empty-hint';
+      detail.textContent = hint;
+
+      wrap.append(icon, heading, detail);
+      return wrap;
+    }
+
+    function removeTemplateItem(templateId, itemId) {
+      const template = templateStore.templates.find((t) => t.id === templateId);
+      const item = template?.items.find((i) => i.id === itemId);
+      if (!template || !item) return;
+
+      saveTemplateStore({
+        ...templateStore,
+        templates: templateStore.templates.map((t) => (
+          t.id === templateId
+            ? { ...t, items: t.items.filter((i) => i.id !== itemId), updatedAt: Date.now() }
+            : t
+        )),
+      });
+      showNotification(`Removed "${item.name}" from "${template.name}".`, 'info');
+    }
+
+    // --- Remove-template-item modal ---
+
+    const removeTemplateItemModal = document.getElementById('removeTemplateItemModal');
+    let pendingRemoveTemplateItem = null;
+
+    function openRemoveTemplateItemModal(templateId, itemId) {
+      const template = templateStore.templates.find((t) => t.id === templateId);
+      const item = template?.items.find((i) => i.id === itemId);
+      if (!template || !item) return;
+      pendingRemoveTemplateItem = { templateId, itemId };
+      document.getElementById('removeTemplateItemModalName').textContent = item.name;
+      document.getElementById('removeTemplateItemModalTemplateName').textContent = template.name;
+      removeTemplateItemModal.classList.add('is-open');
+      removeTemplateItemModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeRemoveTemplateItemModal() {
+      removeTemplateItemModal.classList.remove('is-open');
+      removeTemplateItemModal.setAttribute('aria-hidden', 'true');
+      pendingRemoveTemplateItem = null;
+    }
+
+    document.getElementById('confirmRemoveTemplateItemBtn').addEventListener('click', () => {
+      if (!pendingRemoveTemplateItem) return;
+      const { templateId, itemId } = pendingRemoveTemplateItem;
+      closeRemoveTemplateItemModal();
+      removeTemplateItem(templateId, itemId);
+    });
+    document.getElementById('closeRemoveTemplateItemModalBtn').addEventListener('click', closeRemoveTemplateItemModal);
+    document.getElementById('cancelRemoveTemplateItemBtn').addEventListener('click', closeRemoveTemplateItemModal);
+    removeTemplateItemModal.addEventListener('click', (e) => {
+      if (e.target === removeTemplateItemModal) closeRemoveTemplateItemModal();
+    });
+
+    // --- Capture: drag a field off the page into the active template ---
+    //
+    // This is the only way a template gains fields. The user places and sizes
+    // everything on the document as normal, then drags each field in by the
+    // handle on its top-right corner -- so a saved item is always a copy of a
+    // field that really existed on a real page, and never a number typed into
+    // a form.
+    const DOCUMENT_FIELD_DRAG_MIME = 'application/x-pdfseal-document-field';
+
+    // The field being dragged off the page. Set on dragstart because
+    // dataTransfer's payload is unreadable during dragover, which is where the
+    // drop target has to decide whether to accept.
+    let draggingDocumentField = null;
+    // A field dropped before any template existed: held while the new-template
+    // modal asks for a name, then saved into whatever that creates.
+    let pendingTemplateCaptureField = null;
+
+    function beginDocumentFieldDrag(field, e) {
+      draggingDocumentField = field;
+      // Lights up the templates panel as a target for the whole drag.
+      document.body.classList.add('is-capturing-field');
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData(DOCUMENT_FIELD_DRAG_MIME, field.name);
+      e.dataTransfer.setData('text/plain', field.name);
+    }
+
+    function endDocumentFieldDrag() {
+      draggingDocumentField = null;
+      document.body.classList.remove('is-capturing-field');
+      templateDropzone?.classList.remove('is-drop-target');
+    }
+
+    // Copies one placed field into `templateId`, replacing the saved item of
+    // the same name if there is one -- re-dragging a field the user has since
+    // moved is how you update what's stored.
+    function saveFieldToTemplate(field, templateId) {
+      const template = templateStore.templates.find((t) => t.id === templateId);
+      if (!template || !field) return;
+
+      const item = templateItemFromField(field, makeTemplateId('itm'));
+      if (!item.name) {
+        showNotification('Give the field a name before saving it to a template.', 'error');
+        return;
+      }
+
+      const { items, replaced } = upsertTemplateItem(template.items, item);
+      saveTemplateStore({
+        ...templateStore,
+        templates: templateStore.templates.map((t) => (
+          t.id === templateId ? { ...t, items, updatedAt: Date.now() } : t
+        )),
+      });
+      showNotification(
+        replaced
+          ? `Updated "${item.name}" in "${template.name}".`
+          : `Saved "${item.name}" to "${template.name}".`,
+        'success',
+      );
+    }
+
+    const templateDropzone = document.getElementById('templateDropzone');
+
+    templateDropzone.addEventListener('dragover', (e) => {
+      if (!draggingDocumentField) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      templateDropzone.classList.add('is-drop-target');
+    });
+
+    templateDropzone.addEventListener('dragleave', (e) => {
+      if (!draggingDocumentField) return;
+      if (e.relatedTarget && templateDropzone.contains(e.relatedTarget)) return;
+      templateDropzone.classList.remove('is-drop-target');
+    });
+
+    templateDropzone.addEventListener('drop', (e) => {
+      if (!draggingDocumentField) return;
+      e.preventDefault();
+      const field = draggingDocumentField;
+      endDocumentFieldDrag();
+
+      if (!getSelectedTemplate()) {
+        // Nothing to drop into yet -- ask for a name and let the field land in
+        // the template that creates.
+        pendingTemplateCaptureField = field;
+        openTemplateNameModal(null);
+        return;
+      }
+      saveFieldToTemplate(field, selectedTemplateId);
+    });
+
+    // --- Manual placement: drag an item from the panel onto the page ---
+    //
+    // The file-drop handlers on #pdfContainer (see the dropzone wiring above)
+    // all bail out unless the drag carries `Files`, so a template drag passes
+    // straight through them; these handlers mirror that by ignoring any drag
+    // that does carry files, so dropping a PDF still replaces the document.
+    const TEMPLATE_DRAG_MIME = 'application/x-pdfseal-template-item';
+
+    function isTemplateDrag(e) {
+      if (!draggingTemplateItem) return false;
+      return !e.dataTransfer?.types?.includes('Files');
+    }
+
+    pdfContainer.addEventListener('dragover', (e) => {
+      if (!isTemplateDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+      pdfContainer.classList.add('template-drop-active');
+    });
+
+    pdfContainer.addEventListener('dragleave', (e) => {
+      if (!isTemplateDrag(e)) return;
+      if (e.relatedTarget && pdfContainer.contains(e.relatedTarget)) return;
+      pdfContainer.classList.remove('template-drop-active');
+    });
+
+    pdfContainer.addEventListener('drop', (e) => {
+      if (!isTemplateDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pdfContainer.classList.remove('template-drop-active');
+
+      const { item } = draggingTemplateItem;
+      draggingTemplateItem = null;
+      if (!pdfDoc || !currentViewport) return;
+
+      const rect = canvas.getBoundingClientRect();
+      placeTemplateItemAt(item, e.clientX - rect.left, e.clientY - rect.top);
+    });
+
+    // Drops one template item at a point on the current page. The item's saved
+    // page and x/y are deliberately ignored here -- those exist for automatic
+    // placing; a dragged field belongs where the user dropped it. Only its
+    // name, type, size and required flag come from the template.
+    function placeTemplateItemAt(item, clickX, clickY) {
+      const scaleX = currentViewport.scaleX ?? currentViewport.scale;
+      const scaleY = currentViewport.scaleY ?? scaleX;
+
+      const screenW = item.width * scaleX;
+      const screenH = item.height * scaleY;
+      // Centre on the cursor, then keep the field fully inside the page --
+      // same treatment placeFieldAt() gives a click-placed field.
+      const screenLeft = Math.max(0, Math.min(clickX - screenW / 2, canvas.width - screenW));
+      const screenTop = Math.max(0, Math.min(clickY - screenH / 2, canvas.height - screenH));
+
+      const name = uniqueFieldName(item.name, new Set(documentFields.map((f) => f.name)));
+      stageNewField({
+        name,
+        type: item.type,
+        required: item.required,
+        page: pageNum - 1,
+        rect: screenRectToPdf(screenLeft, screenTop, screenW, screenH),
+      });
+
+      const renamed = name !== item.name ? ` as "${name}"` : '';
+      showNotification(`"${item.name}" staged${renamed} — click Apply changes to save it.`, 'info');
+    }
+
+    // --- Automatic placing: stage the whole list in one batch ---
+
+    function placeTemplateBatch() {
+      const template = getSelectedTemplate();
+      if (!template || !pdfDoc || !template.items.length) return;
+
+      const plan = planAutoPlacement(template.items, new Set(documentFields.map((f) => f.name)), pdfDoc.numPages);
+
+      if (plan.placements.length) {
+        // One history entry for the whole batch, so a single Undo takes all of
+        // it back out rather than unwinding field by field.
+        pushFieldHistory();
+        plan.placements.forEach((placement) => stageNewField(placement, { history: false, redraw: false }));
+        if (currentViewport) drawFieldOverlays(currentViewport);
+        updatePendingChangesUi();
+
+        const count = plan.placements.length;
+        showNotification(
+          `Staged ${count} field${count === 1 ? '' : 's'} from "${template.name}" — click Apply changes to save ${count === 1 ? 'it' : 'them'}.`,
+          'info',
+        );
+      }
+
+      if (plan.skipped.length) {
+        const names = plan.skipped.map((s) => `"${s.name}" (page ${s.page + 1})`).join(', ');
+        showNotification(
+          `Skipped ${plan.skipped.length} field${plan.skipped.length === 1 ? '' : 's'} — this document only has ${pdfDoc.numPages} page${pdfDoc.numPages === 1 ? '' : 's'}: ${names}.`,
+          'error',
+          12000,
+        );
+      }
+    }
+
+    // --- Name modal (create + rename) ---
+    //
+    // The only form in this feature. A template is a name and nothing else --
+    // its fields arrive by drag, so there's nothing here to type but the label.
+    const templateNameModal = document.getElementById('templateNameModal');
+    const templateNameStatus = document.getElementById('templateNameStatus');
+    let templateNameEditingId = null;
+
+    function openTemplateNameModal(templateId) {
+      const existing = templateId ? templateStore.templates.find((t) => t.id === templateId) : null;
+      templateNameEditingId = existing?.id ?? null;
+
+      const captured = pendingTemplateCaptureField;
+      document.getElementById('templateNameTitle').textContent = existing ? 'Rename template' : 'New signature template';
+      document.getElementById('saveTemplateNameLabel').textContent = existing ? 'Save name' : 'Create template';
+      document.getElementById('templateNameHint').textContent = existing
+        ? 'Only the label changes — the fields saved in this template stay exactly as they are.'
+        : (captured
+          ? `Name the template and "${captured.name}" goes straight into it. Drag your other fields in the same way to fill it out.`
+          : 'Give the template a name. To fill it, place fields on your document as usual, then drag each one into the Signature Templates panel.');
+
+      const input = document.getElementById('templateNameInput');
+      input.value = existing?.name ?? '';
+      setModalStatus(templateNameStatus, '');
+
+      templateNameModal.classList.add('is-open');
+      templateNameModal.setAttribute('aria-hidden', 'false');
+      input.focus();
+      input.select();
+    }
+
+    function closeTemplateNameModal() {
+      templateNameModal.classList.remove('is-open');
+      templateNameModal.setAttribute('aria-hidden', 'true');
+      templateNameEditingId = null;
+      // A field waiting on a template it never got has nowhere to go.
+      pendingTemplateCaptureField = null;
+    }
+
+    function submitTemplateName() {
+      const name = document.getElementById('templateNameInput').value.trim();
+      if (!name) {
+        setModalStatus(templateNameStatus, 'Give the template a name.');
+        return;
+      }
+      const clash = templateStore.templates.some(
+        (t) => t.id !== templateNameEditingId && t.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (clash) {
+        setModalStatus(templateNameStatus, `A template named "${name}" already exists.`);
+        return;
+      }
+
+      const now = Date.now();
+      const isRename = !!templateNameEditingId;
+      const captured = pendingTemplateCaptureField;
+      let savedId = templateNameEditingId;
+      let templates;
+
+      if (isRename) {
+        templates = templateStore.templates.map((t) => (t.id === savedId ? { ...t, name, updatedAt: now } : t));
+      } else {
+        savedId = makeTemplateId('tpl');
+        templates = [...templateStore.templates, { id: savedId, name, createdAt: now, updatedAt: now, items: [] }];
+        selectedTemplateId = savedId;
+      }
+
+      saveTemplateStore({ ...templateStore, templates });
+      closeTemplateNameModal();
+
+      if (!isRename && captured) {
+        saveFieldToTemplate(captured, savedId);
+      } else {
+        showNotification(isRename ? `Renamed template to "${name}".` : `Created template "${name}".`, 'success');
+      }
+    }
+
+    // --- Move-item modal ---
+
+    const templateMoveItemModal = document.getElementById('templateMoveItemModal');
+    const templateMoveItemStatus = document.getElementById('templateMoveItemStatus');
+    let templateMoveTarget = null;   // { itemId, sourceTemplateId }
+
+    function openTemplateMoveItemModal(item, sourceTemplateId) {
+      const source = templateStore.templates.find((t) => t.id === sourceTemplateId);
+      const others = templateStore.templates.filter((t) => t.id !== sourceTemplateId);
+      if (!source || !others.length) return;
+
+      templateMoveTarget = { itemId: item.id, sourceTemplateId };
+      document.getElementById('templateMoveItemName').textContent = item.name || 'this field';
+      document.getElementById('templateMoveItemSource').textContent = source.name;
+      setModalStatus(templateMoveItemStatus, '');
+
+      const select = document.getElementById('templateMoveTargetSelect');
+      select.replaceChildren(...others.map((template) => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = template.name;
+        return option;
+      }));
+
+      templateMoveItemModal.classList.add('is-open');
+      templateMoveItemModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeTemplateMoveItemModal() {
+      templateMoveItemModal.classList.remove('is-open');
+      templateMoveItemModal.setAttribute('aria-hidden', 'true');
+      templateMoveTarget = null;
+    }
+
+    function confirmTemplateMoveItem(mode) {
+      const targetId = document.getElementById('templateMoveTargetSelect').value;
+      if (!templateMoveTarget || !targetId) return;
+
+      const { itemId, sourceTemplateId } = templateMoveTarget;
+      const isCopy = mode === 'copy';
+      const target = templateStore.templates.find((t) => t.id === targetId);
+      const item = templateStore.templates.find((t) => t.id === sourceTemplateId)?.items.find((i) => i.id === itemId);
+
+      saveTemplateStore(
+        isCopy
+          ? copyTemplateItem(templateStore, sourceTemplateId, targetId, itemId)
+          : moveTemplateItem(templateStore, sourceTemplateId, targetId, itemId),
+      );
+      closeTemplateMoveItemModal();
+      const verb = isCopy ? 'Copied' : 'Moved';
+      showNotification(`${verb} "${item?.name ?? 'Field'}" to "${target?.name ?? 'the other template'}".`, 'success');
+    }
+
+    // --- Delete-template modal ---
+
+    const deleteTemplateModal = document.getElementById('deleteTemplateModal');
+    let pendingDeleteTemplateId = null;
+
+    function openDeleteTemplateModal(templateId) {
+      const template = templateStore.templates.find((t) => t.id === templateId);
+      if (!template) return;
+      pendingDeleteTemplateId = templateId;
+      document.getElementById('deleteTemplateModalName').textContent = template.name;
+      document.getElementById('deleteTemplateModalCount').textContent =
+        template.items.length ? ` and its ${template.items.length} field${template.items.length === 1 ? '' : 's'}` : '';
+      deleteTemplateModal.classList.add('is-open');
+      deleteTemplateModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeDeleteTemplateModal() {
+      deleteTemplateModal.classList.remove('is-open');
+      deleteTemplateModal.setAttribute('aria-hidden', 'true');
+      pendingDeleteTemplateId = null;
+    }
+
+    // --- Wiring ---
+
+    document.getElementById('btnNewTemplate').addEventListener('click', () => openTemplateNameModal(null));
+    document.getElementById('btnOpenTemplateSettings')?.addEventListener('click', () => openSettingsModal('templates'));
+    document.getElementById('btnRenameTemplate').addEventListener('click', () => {
+      if (selectedTemplateId) openTemplateNameModal(selectedTemplateId);
+    });
+    document.getElementById('btnDeleteTemplate').addEventListener('click', () => {
+      if (selectedTemplateId) openDeleteTemplateModal(selectedTemplateId);
+    });
+    document.getElementById('templateSelect').addEventListener('change', (e) => {
+      selectedTemplateId = e.target.value;
+      renderTemplatesPanel();
+    });
+    document.getElementById('templateAutoPlace').addEventListener('change', renderTemplatesPanel);
+    document.getElementById('btnPlaceTemplate').addEventListener('click', placeTemplateBatch);
+
+    document.getElementById('saveTemplateNameBtn').addEventListener('click', submitTemplateName);
+    document.getElementById('templateNameInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitTemplateName();
+      }
+    });
+    document.getElementById('closeTemplateNameBtn').addEventListener('click', closeTemplateNameModal);
+    document.getElementById('cancelTemplateNameBtn').addEventListener('click', closeTemplateNameModal);
+    templateNameModal.addEventListener('click', (e) => {
+      if (e.target === templateNameModal) closeTemplateNameModal();
+    });
+
+    document.getElementById('confirmTemplateMoveItemBtn').addEventListener('click', () => confirmTemplateMoveItem('move'));
+    document.getElementById('confirmTemplateCopyItemBtn').addEventListener('click', () => confirmTemplateMoveItem('copy'));
+    document.getElementById('closeTemplateMoveItemBtn').addEventListener('click', closeTemplateMoveItemModal);
+    document.getElementById('cancelTemplateMoveItemBtn').addEventListener('click', closeTemplateMoveItemModal);
+    templateMoveItemModal.addEventListener('click', (e) => {
+      if (e.target === templateMoveItemModal) closeTemplateMoveItemModal();
+    });
+
+    document.getElementById('confirmDeleteTemplateBtn').addEventListener('click', () => {
+      if (!pendingDeleteTemplateId) return;
+      const template = templateStore.templates.find((t) => t.id === pendingDeleteTemplateId);
+      const templates = templateStore.templates.filter((t) => t.id !== pendingDeleteTemplateId);
+      if (selectedTemplateId === pendingDeleteTemplateId) selectedTemplateId = templates[0]?.id ?? null;
+      closeDeleteTemplateModal();
+      saveTemplateStore({ ...templateStore, templates });
+      showNotification(`Deleted template "${template?.name ?? ''}".`, 'info');
+    });
+    document.getElementById('closeDeleteTemplateModalBtn').addEventListener('click', closeDeleteTemplateModal);
+    document.getElementById('cancelDeleteTemplateBtn').addEventListener('click', closeDeleteTemplateModal);
+    deleteTemplateModal.addEventListener('click', (e) => {
+      if (e.target === deleteTemplateModal) closeDeleteTemplateModal();
+    });
+
+    // Escape closes the innermost open template modal first, so dismissing the
+    // move/delete confirmation doesn't also throw away the one behind it.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (templateImportModal.classList.contains('is-open')) return closeTemplateImportModal();
+      if (templateMoveItemModal.classList.contains('is-open')) return closeTemplateMoveItemModal();
+      if (removeTemplateItemModal.classList.contains('is-open')) return closeRemoveTemplateItemModal();
+      if (deleteTemplateModal.classList.contains('is-open')) return closeDeleteTemplateModal();
+      if (templateNameModal.classList.contains('is-open')) return closeTemplateNameModal();
+    });
+
+    renderTemplatesPanel();
+
+    // --- Backup: download / load the template store as a JSON file ---
+    //
+    // Templates live only in localStorage, so clearing browsing data wipes
+    // them. These two live in the Settings modal and act immediately, outside
+    // its Save/Cancel flow -- they're file operations, not preferences.
+    const TEMPLATE_EXPORT_APP = 'pdf-seal';
+
+    // Wraps the store in the shape written to disk, so the writer and
+    // parseTemplateExport() below share one definition of the file format.
+    function buildTemplateExport(store, now = new Date()) {
+      return {
+        app: TEMPLATE_EXPORT_APP,
+        version: TEMPLATE_STORE_VERSION,
+        exportedAt: now.toISOString(),
+        templates: normalizeTemplateStore(store).templates,
+      };
+    }
+
+    // Reads back an exported file (or any JSON with a `templates` array).
+    // Unlike normalizeTemplateStore, which silently returns an empty store for
+    // junk because a corrupt localStorage entry must never break the panel,
+    // this throws: an import the user explicitly asked for that turns out to
+    // contain nothing needs to say so rather than appear to succeed.
+    function parseTemplateExport(text) {
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (_err) {
+        throw new Error("That file isn't valid JSON.");
+      }
+
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.templates)) {
+        throw new Error('That file doesn’t look like a pdf-seal template export — it has no "templates" list.');
+      }
+
+      const store = normalizeTemplateStore(parsed);
+      if (!store.templates.length) {
+        throw new Error('That file doesn’t contain any usable signature templates.');
+      }
+      return store;
+    }
+
+    // Adds `incoming`'s templates to `current` without touching what's already
+    // there. Colliding names are suffixed and colliding ids re-minted, so
+    // re-importing a file the user still has produces a visible duplicate
+    // rather than silently overwriting their work.
+    function mergeTemplateStores(current, incoming) {
+      const base = normalizeTemplateStore(current);
+      const extra = normalizeTemplateStore(incoming);
+
+      const takenNames = new Set(base.templates.map((t) => t.name));
+      const takenIds = new Set(base.templates.map((t) => t.id));
+      const added = [];
+      const renamed = [];
+
+      const merged = extra.templates.map((template) => {
+        const name = uniqueTemplateName(template.name, takenNames);
+        if (name !== template.name) renamed.push({ from: template.name, to: name });
+        takenNames.add(name);
+
+        const id = takenIds.has(template.id) ? `${template.id}_${takenIds.size}` : template.id;
+        takenIds.add(id);
+
+        added.push(name);
+        return { ...template, id, name };
+      });
+
+      return {
+        store: { version: TEMPLATE_STORE_VERSION, templates: [...base.templates, ...merged] },
+        added,
+        renamed,
+      };
+    }
+
+    function countTemplateFields(store) {
+      return store.templates.reduce((total, template) => total + template.items.length, 0);
+    }
+
+    // Keeps the Settings copy honest about what a download would actually
+    // contain, and disables it when there's nothing to back up.
+    function updateTemplatesBackupUi() {
+      const summary = document.getElementById('templatesBackupSummary');
+      const exportBtn = document.getElementById('btnExportTemplates');
+      if (!summary || !exportBtn) return;
+
+      const templateCount = templateStore.templates.length;
+      const fieldCount = countTemplateFields(templateStore);
+      exportBtn.disabled = templateCount === 0;
+      summary.textContent = templateCount
+        ? `${templateCount} template${templateCount === 1 ? '' : 's'} saved in this browser, ${fieldCount} field${fieldCount === 1 ? '' : 's'} in total.`
+        : 'No templates saved in this browser yet — nothing to download.';
+    }
+
+    function exportTemplatesToFile() {
+      if (!templateStore.templates.length) return;
+
+      const payload = JSON.stringify(buildTemplateExport(templateStore), null, 2);
+      const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      // Date-stamped so successive backups sit side by side in Downloads
+      // instead of becoming "(1)", "(2)" copies.
+      a.download = `pdf-seal-templates-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      const count = templateStore.templates.length;
+      showNotification(`Downloaded ${count} template${count === 1 ? '' : 's'}.`, 'success');
+    }
+
+    // --- Import confirmation modal ---
+
+    const templateImportModal = document.getElementById('templateImportModal');
+    let pendingImportStore = null; // parsed + normalized, awaiting Add/Replace
+
+    function openTemplateImportModal(store, fileName) {
+      pendingImportStore = store;
+
+      const templateCount = store.templates.length;
+      const fieldCount = countTemplateFields(store);
+      document.getElementById('templateImportSummary').textContent =
+        `${fileName} contains ${templateCount} template${templateCount === 1 ? '' : 's'} with ${fieldCount} field${fieldCount === 1 ? '' : 's'}:`;
+
+      document.getElementById('templateImportPreview').replaceChildren(...store.templates.map((template) => {
+        const row = document.createElement('div');
+        row.className = 'template-import-row';
+        const name = document.createElement('span');
+        name.className = 'template-import-name';
+        name.textContent = template.name;
+        name.title = template.name;
+        const count = document.createElement('span');
+        count.className = 'template-item-badge';
+        count.textContent = `${template.items.length} field${template.items.length === 1 ? '' : 's'}`;
+        row.append(name, count);
+        return row;
+      }));
+
+      const existing = templateStore.templates.length;
+      document.getElementById('templateImportChoiceHint').textContent = existing
+        ? `Add keeps the ${existing} template${existing === 1 ? '' : 's'} you already have and appends these, renaming any whose name clashes. Replace all discards your current templates — that can't be undone.`
+        : 'You have no templates yet, so either button gives the same result.';
+
+      setModalStatus(document.getElementById('templateImportStatus'), '');
+      templateImportModal.classList.add('is-open');
+      templateImportModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeTemplateImportModal() {
+      templateImportModal.classList.remove('is-open');
+      templateImportModal.setAttribute('aria-hidden', 'true');
+      pendingImportStore = null;
+    }
+
+    async function handleTemplateImportFile(file) {
+      if (!file) return;
+      try {
+        const store = parseTemplateExport(await file.text());
+        openTemplateImportModal(store, file.name);
+      } catch (err) {
+        showNotification(`Could not load templates: ${err.message}`, 'error', 10000);
+      }
+    }
+
+    function applyTemplateImport(mode) {
+      if (!pendingImportStore) return;
+      const incoming = pendingImportStore;
+
+      if (mode === 'replace') {
+        const count = incoming.templates.length;
+        selectedTemplateId = incoming.templates[0]?.id ?? null;
+        closeTemplateImportModal();
+        saveTemplateStore(incoming);
+        showNotification(`Replaced your templates with the ${count} from the file.`, 'success');
+        return;
+      }
+
+      const result = mergeTemplateStores(templateStore, incoming);
+      // Land on the first thing that just arrived, so the user can see it.
+      const firstAdded = result.store.templates.find((t) => t.name === result.added[0]);
+      if (firstAdded) selectedTemplateId = firstAdded.id;
+      closeTemplateImportModal();
+      saveTemplateStore(result.store);
+
+      const count = result.added.length;
+      showNotification(`Added ${count} template${count === 1 ? '' : 's'} from the file.`, 'success');
+      if (result.renamed.length) {
+        const names = result.renamed.map((r) => `"${r.from}" → "${r.to}"`).join(', ');
+        showNotification(`Renamed to avoid clashing with templates you already had: ${names}.`, 'info', 10000);
+      }
+    }
+
+    document.getElementById('btnExportTemplates').addEventListener('click', exportTemplatesToFile);
+
+    const templateImportInput = document.getElementById('templateImportInput');
+    document.getElementById('btnImportTemplates').addEventListener('click', () => templateImportInput.click());
+    templateImportInput.addEventListener('change', () => {
+      const file = templateImportInput.files?.[0];
+      // Reset first so picking the same file twice in a row still fires.
+      templateImportInput.value = '';
+      handleTemplateImportFile(file);
+    });
+
+    document.getElementById('btnTemplateImportMerge').addEventListener('click', () => applyTemplateImport('merge'));
+    document.getElementById('btnTemplateImportReplace').addEventListener('click', () => applyTemplateImport('replace'));
+    document.getElementById('closeTemplateImportBtn').addEventListener('click', closeTemplateImportModal);
+    document.getElementById('cancelTemplateImportBtn').addEventListener('click', closeTemplateImportModal);
+    templateImportModal.addEventListener('click', (e) => {
+      if (e.target === templateImportModal) closeTemplateImportModal();
+    });
 
     // Replace the current active file with the API response, then re-render.
     // Returns whether the update succeeded (callers that need to chain further

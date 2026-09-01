@@ -23,6 +23,8 @@ The app opens as a web workspace with two main areas:
 8. Save the modified PDF, or copy the document as Base64 for further processing.
 9. Share it directly with another user via WebRTC connection.
 10. Compare two revisions of a PDF to see what changed (added/removed/modified signature fields, metadata changes).
+11. Save reusable signature templates — named lists of fields kept in your browser. Place your fields on the document as usual, then drag each one into the Signature Templates panel by the handle on its corner. Drop a saved field back onto any page one at a time, or place a whole list at its saved pages and positions in one batch.
+12. Back templates up: **Settings** can download all your signature templates as a JSON file and load one back, so clearing your browsing data (or moving to another computer) doesn't lose them.
 
 ## How it works
 

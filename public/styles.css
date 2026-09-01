@@ -420,6 +420,10 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 .icon-btn-danger { margin-left: auto; border-color: var(--coral); color: var(--coral-dark); }
 .icon-btn-danger:hover:not(:disabled) { background: rgba(230, 57, 70, 0.1); }
 
+/* Pushes a non-destructive header action (e.g. "New template") to the far
+   side of a flex h3, the same way .icon-btn-danger does for "Remove". */
+.panel-h3-action { margin-left: auto; }
+
 /* ---------- Dropdown buttons (Upload / Download) ---------- */
 .dropdown {
   position: relative;
@@ -1544,6 +1548,9 @@ body:not([data-active-section="signatures"]) .field-overlay {
 body:not([data-active-section="signatures"]) .field-overlay .resize-handle {
   pointer-events: none;
 }
+body:not([data-active-section="signatures"]) .field-overlay .template-save-handle {
+  display: none;
+}
 
 /* Placement mode: user is about to click on the PDF to drop a new field */
 .pdf-container.placing-mode canvas { cursor: crosshair; }
@@ -1555,6 +1562,15 @@ body:not([data-active-section="signatures"]) .field-overlay .resize-handle {
 @keyframes placingPulse {
   0%, 100% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.25); }
   50% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.7); }
+}
+
+/* Dragging a template field over the page -- same visual language as
+   placement mode above, in ocean rather than coral so the two read as
+   related but distinct. */
+.pdf-container.template-drop-active::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 0 3px rgba(69, 123, 157, 0.6);
+  background: rgba(69, 123, 157, 0.06);
 }
 
 /* Staged field (added/moved/resized/toggled but not yet Applied): a
@@ -1594,6 +1610,27 @@ body:not([data-active-section="signatures"]) .field-overlay .resize-handle {
   display: none;
 }
 .field-overlay.active .resize-handle { display: block; }
+
+/* Save-to-template grip. The overlay body is already a mouse-drag target for
+   repositioning, so capturing a field into a template gets its own corner
+   handle -- an HTML5 drag source, sitting opposite the resize handle. */
+.template-save-handle {
+  position: absolute; top: -9px; right: -9px;
+  width: 19px; height: 19px;
+  display: none; align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--navy);
+  color: #fff;
+  font-size: 0.66rem; line-height: 1;
+  cursor: grab; pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(30, 33, 51, 0.35);
+}
+.template-save-handle:hover { background: var(--ocean); }
+.template-save-handle:active { cursor: grabbing; }
+.field-overlay:hover .template-save-handle,
+.field-overlay.active .template-save-handle { display: flex; }
+.field-overlay.required .template-save-handle:hover { background: var(--coral); }
 
 @media (max-width: 960px) {
   .tools-panel { width: 100%; }
@@ -2059,6 +2096,10 @@ mark.meta-highlight {
 body.hide-raw-pdf-data #metaAdvancedDetails,
 body.hide-raw-pdf-data #fieldDetailsBlock,
 body.hide-raw-pdf-data .diff-raw-objects {
+  display: none;
+}
+
+body.hide-signature-templates-panel .templates-panel {
   display: none;
 }
 
@@ -3280,4 +3321,240 @@ body.hide-raw-pdf-data .diff-raw-objects {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---------- Form control: select ----------
+   Native selects render nothing like the app's inputs, so they're reset and
+   rebuilt to match input[type="text"] exactly, with the chevron drawn as a
+   masked icon in the same slot every other control uses. ---- */
+.select-field { position: relative; display: block; }
+.select-field select {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  padding: 10px 36px 10px 14px;
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  background: var(--cream);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--navy);
+  cursor: pointer;
+  outline: none;
+  text-overflow: ellipsis;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.select-field select:hover:not(:disabled) { border-color: var(--ocean); }
+.select-field select:focus-visible {
+  border-color: var(--ocean);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
+}
+.select-field select:disabled { opacity: 0.5; cursor: not-allowed; }
+.select-field-arrow {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  color: var(--ocean-dark);
+  pointer-events: none;
+}
+
+/* ---------- Signature templates panel ----------
+   Reusable, locally-stored lists of fields. Items are captured by dragging a
+   field off the page into the drop zone below, and spent by dragging one back
+   onto the page (or placing the whole list at once). Nothing here is typed:
+   every size and position came from a real field. ---- */
+.templates-panel .checkbox-group-block { margin-bottom: 12px; }
+
+.template-picker { margin-bottom: 12px; }
+.template-picker label {
+  display: block; margin-bottom: 6px;
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--ocean-dark);
+}
+.template-picker-row { display: flex; gap: 8px; align-items: center; }
+.template-picker-row .select-field { flex: 1; min-width: 0; }
+/* .icon-btn-danger pushes itself right by default; in this row the two
+   buttons sit together, right after the select. */
+.template-picker-row .template-delete-btn { margin-left: 0; }
+
+/* The drop target for fields dragged off the page. Hidden at rest — it only
+   appears while a field is actively being dragged off the document, so the
+   panel doesn't permanently dedicate space to a landing target. */
+.template-dropzone {
+  position: relative;
+  margin-bottom: 12px;
+  padding: 22px 14px;
+  min-height: 84px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--ice);
+  border-radius: var(--radius-m);
+  background: rgba(168, 218, 220, 0.09);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+/* While a field is being dragged off the page, the panel advertises itself. */
+body.is-capturing-field .template-dropzone { display: flex; border-color: var(--ocean); }
+.template-dropzone.is-drop-target {
+  border-color: var(--ocean);
+  background: rgba(69, 123, 157, 0.1);
+  box-shadow: 0 0 0 3px rgba(69, 123, 157, 0.2);
+}
+
+.template-dropzone-idle {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  font-size: 0.84rem; font-weight: 600; text-align: center;
+  color: var(--ocean-dark);
+}
+.template-dropzone-idle .icon { width: 20px; height: 20px; }
+.template-dropzone.is-drop-target .template-dropzone-idle { visibility: hidden; }
+
+.template-dropzone-cue {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center; justify-content: center; gap: 8px;
+  padding: 10px;
+  border-radius: inherit;
+  background: var(--cream);
+  color: var(--ocean-dark);
+  font-size: 0.82rem; font-weight: 700; text-align: center;
+  pointer-events: none;
+}
+.template-dropzone.is-drop-target .template-dropzone-cue { display: flex; }
+
+/* The saved-fields list, collapsed by default so a long list of templates
+   doesn't push the placement controls below the fold. */
+.template-item-list-details { margin-bottom: 14px; }
+.template-item-list-summary {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 2px;
+  font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--ocean-dark);
+  cursor: pointer;
+  list-style: none;
+}
+.template-item-list-summary::-webkit-details-marker { display: none; }
+.template-item-list-caret { transition: transform 0.15s ease; flex-shrink: 0; }
+.template-item-list-details[open] .template-item-list-caret { transform: rotate(90deg); }
+.template-item-list-details .template-item-list { margin-top: 8px; }
+
+.template-item-list { display: flex; flex-direction: column; gap: 6px; }
+
+.template-item-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px 7px 10px;
+  background: var(--cream);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  font-size: 0.82rem;
+  color: var(--navy);
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.template-item-row.is-draggable { cursor: grab; }
+.template-item-row.is-draggable:hover {
+  border-color: var(--ocean);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(30, 33, 51, 0.08);
+}
+.template-item-row.is-draggable:active { cursor: grabbing; }
+.template-item-row.is-dragging { opacity: 0.45; }
+
+.template-item-icon { color: var(--ocean); flex-shrink: 0; }
+.template-item-name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600;
+}
+/* Used outside the item row too (e.g. the import-preview field count). */
+.template-item-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--ice);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--ocean-dark);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.template-item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.template-item-btn { width: 22px; height: 22px; font-size: 0.7rem; }
+.template-item-btn.icon-btn-danger { margin-left: 0; }
+
+/* Empty states name the next action rather than just reporting emptiness. */
+.template-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 20px 16px;
+  text-align: center;
+}
+.template-empty-icon { font-size: 1.5rem; color: var(--ice); }
+.template-empty-title { margin: 0; font-size: 0.84rem; font-weight: 700; color: var(--navy); }
+.template-empty-hint {
+  margin: 0; max-width: 270px;
+  font-size: 0.78rem; line-height: 1.45; color: var(--ocean-dark);
+}
+
+.template-place-hint {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  color: var(--ocean-dark);
+}
+.template-place-hint[hidden] { display: none; }
+
+/* ---------- Signature template name modal ---------- */
+.template-name-modal-box { width: min(480px, 100%); }
+
+/* ---------- Settings modal tabs ---------- */
+.modal-tabs {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 16px;
+  border-bottom: 1.5px solid var(--ice);
+}
+.modal-tab {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 8px 4px 10px;
+  margin-bottom: -1.5px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ocean-dark);
+  border-bottom: 2.5px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.modal-tab:hover { color: var(--navy); }
+.modal-tab.is-active { color: var(--navy); border-bottom-color: var(--coral); }
+.modal-tab-panel[hidden] { display: none; }
+
+/* ---------- Settings: signature template backup ----------
+   Download/load act immediately, outside the modal's Save/Cancel flow. ---- */
+.settings-template-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 8px; }
+.settings-template-actions .btn { flex: 1; min-width: 160px; justify-content: center; }
+
+/* ---------- Template import confirmation ---------- */
+.template-import-preview {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 220px; overflow-y: auto;
+  margin: 12px 0;
+}
+.template-import-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px;
+  background: var(--cream);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  font-size: 0.82rem;
+  color: var(--navy);
+}
+.template-import-name {
+  flex: 1; min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
