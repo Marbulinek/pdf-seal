@@ -1631,6 +1631,9 @@ body:not([data-active-section="signatures"]) .field-overlay .template-save-handl
 .field-overlay:hover .template-save-handle,
 .field-overlay.active .template-save-handle { display: flex; }
 .field-overlay.required .template-save-handle:hover { background: var(--coral); }
+/* With the Signature Templates panel disabled in Settings, there's nowhere
+   to drag a captured field to, so the grip shouldn't invite the gesture. */
+body.hide-signature-templates-panel .field-overlay .template-save-handle { display: none; }
 
 @media (max-width: 960px) {
   .tools-panel { width: 100%; }
