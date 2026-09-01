@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/Marbulinek/pdf-seal/compare/v1.2.3...v1.3.0) (2026-09-01)
+
+
+### Features
+
+* implemented signature templates ([#42](https://github.com/Marbulinek/pdf-seal/issues/42)) ([396e8a6](https://github.com/Marbulinek/pdf-seal/commit/396e8a62095334c1a4bcf1ddf14f1c407052a77b))
+
 ## [1.2.3](https://github.com/Marbulinek/pdf-seal/compare/v1.2.2...v1.2.3) (2026-09-01)
 
 
