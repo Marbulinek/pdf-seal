@@ -418,6 +418,132 @@ class PdfSignatureTool {
   }
 
   /**
+   * Add a new, empty text field to a page, as a single merged Field+Widget
+   * object (same shape as addSignatureField() -- see class-level note).
+   *
+   * Text fields need a default appearance (/DA) naming a font that's
+   * resolvable via the AcroForm's /DR resource dictionary, or viewers have
+   * nothing to render the (currently empty) value with -- unlike signature
+   * fields, which stay visually blank until actually signed.
+   * _ensureAcroFormDefaultFont() sets that up (once) using the standard
+   * Helvetica font, which every viewer supports without embedding.
+   *
+   * @param {number} pageIndex zero-based page index
+   * @param {string} name fully qualified field name (must be unique)
+   * @param {object} [options]
+   * @param {number} [options.x=50]
+   * @param {number} [options.y=50]
+   * @param {number} [options.width=200]
+   * @param {number} [options.height=30]
+   * @param {boolean} [options.required=false] mark the field as required
+   * @param {boolean} [options.readOnly=false]
+   * @param {string}  [options.tooltip] alternate field name / tooltip (/TU)
+   * @returns {{name:string,page:number,required:boolean,rect:number[]}}
+   */
+  addTextField(pageIndex: number, name: string, options: any = {}) {
+    const {
+      x = 50,
+      y = 50,
+      width = 200,
+      height = 30,
+      required = false,
+      readOnly = false,
+      tooltip,
+    } = options;
+
+    const pdfDoc = this.pdfDoc;
+    const context = pdfDoc.context;
+    const pages = pdfDoc.getPages();
+    const page = pages[pageIndex];
+    if (!page) {
+      throw new Error(
+        `Page index ${pageIndex} does not exist (document has ${pages.length} page(s)).`
+      );
+    }
+
+    const form = pdfDoc.getForm();
+    if (form.getFieldMaybe(name)) {
+      throw new Error(`A form field named "${name}" already exists.`);
+    }
+
+    let flags = 0;
+    if (required) flags |= AcroFieldFlags.Required;
+    if (readOnly) flags |= AcroFieldFlags.ReadOnly;
+
+    this._ensureAcroFormDefaultFont();
+
+    const dictEntries: Record<string, any> = {
+      Type: 'Annot',
+      Subtype: 'Widget',
+      FT: 'Tx',
+      T: PDFString.of(name),
+      Rect: [x, y, x + width, y + height],
+      P: page.ref,
+      F: 4, // Print flag -- visible when printed/rendered normally
+      Ff: flags,
+      DA: PDFString.of('/Helv 12 Tf 0 g'),
+    };
+    if (tooltip) {
+      dictEntries.TU = PDFString.of(tooltip);
+    }
+
+    const mergedDict = context.obj(dictEntries);
+    const fieldRef = context.register(mergedDict);
+
+    form.acroForm.addField(fieldRef);
+    page.node.addAnnot(fieldRef);
+
+    return {
+      name,
+      page: pageIndex,
+      required: !!required,
+      rect: { x, y, width, height },
+    };
+  }
+
+  /**
+   * Make sure the AcroForm has a /DR resource dictionary exposing the
+   * standard Helvetica font under /Helv, and a fallback /DA, so text
+   * fields' own /DA (see addTextField()) resolves to something every
+   * viewer can render without embedding a font. Idempotent -- safe to
+   * call before adding any number of text fields.
+   */
+  _ensureAcroFormDefaultFont() {
+    const context = this.pdfDoc.context;
+    const acroFormDict = this.pdfDoc.getForm().acroForm.dict;
+
+    const drKey = PDFName.of('DR');
+    let dr = acroFormDict.lookupMaybe(drKey, PDFDict);
+    if (!dr) {
+      dr = context.obj({});
+      acroFormDict.set(drKey, dr);
+    }
+
+    const fontKey = PDFName.of('Font');
+    let fontDict = dr.lookupMaybe(fontKey, PDFDict);
+    if (!fontDict) {
+      fontDict = context.obj({});
+      dr.set(fontKey, fontDict);
+    }
+
+    const helvKey = PDFName.of('Helv');
+    if (!fontDict.has(helvKey)) {
+      const helvFont = context.obj({
+        Type: 'Font',
+        Subtype: 'Type1',
+        BaseFont: 'Helvetica',
+        Encoding: 'WinAnsiEncoding',
+      });
+      fontDict.set(helvKey, helvFont);
+    }
+
+    const daKey = PDFName.of('DA');
+    if (!acroFormDict.has(daKey)) {
+      acroFormDict.set(daKey, PDFString.of('/Helv 0 Tf 0 g'));
+    }
+  }
+
+  /**
    * List every AcroForm field in the document with the metadata that
    * matters for signature workflows (type, required/readOnly, page, rect).
    * Works transparently for both merged and split (Kids-based) fields --

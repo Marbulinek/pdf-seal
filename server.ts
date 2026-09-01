@@ -231,8 +231,13 @@ app.post(
       const width = parseFloat(req.body.width) || 200;
       const height = parseFloat(req.body.height) || 60;
       const required = req.body.required === "true";
+      const fieldType = req.body.type === "text" ? "text" : "signature";
 
-      tool.addSignatureField(page, name, { x, y, width, height, required });
+      if (fieldType === "text") {
+        tool.addTextField(page, name, { x, y, width, height, required });
+      } else {
+        tool.addSignatureField(page, name, { x, y, width, height, required });
+      }
       tool.setMetadata({ modificationDate: new Date() });
       // Always strip any revision-history chain that may have been embedded
       // in the uploaded file, so the output stays lean regardless of input.
@@ -368,13 +373,18 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
       if (op.op === "add") {
         const page = parseInt(op.page, 10) || 0;
         const name = String(op.name || `SigField_${Date.now()}`);
-        tool.addSignatureField(page, name, {
+        const fieldOptions = {
           x: parseFloat(op.x) || 50,
           y: parseFloat(op.y) || 50,
           width: parseFloat(op.width) || 200,
           height: parseFloat(op.height) || 60,
           required: op.required === true || op.required === "true",
-        });
+        };
+        if (op.type === "text") {
+          tool.addTextField(page, name, fieldOptions);
+        } else {
+          tool.addSignatureField(page, name, fieldOptions);
+        }
       } else if (op.op === "edit") {
         const originalName = String(op.originalName || "");
         const newName = String(op.name || originalName);
