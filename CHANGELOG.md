@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/Marbulinek/pdf-seal/compare/v1.3.1...v1.3.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* added unit tests, fixed textBoxes ([#44](https://github.com/Marbulinek/pdf-seal/issues/44)) ([e2ba5f3](https://github.com/Marbulinek/pdf-seal/commit/e2ba5f31e56cf1927b50516eb8200991600e1b8c))
+
 ## [1.3.1](https://github.com/Marbulinek/pdf-seal/compare/v1.3.0...v1.3.1) (2026-09-01)
 
 
