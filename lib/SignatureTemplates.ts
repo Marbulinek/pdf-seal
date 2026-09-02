@@ -23,6 +23,8 @@ export interface TemplateItem {
   y: number;
   page: number;
   required: boolean;
+  /** Text items only -- whether the field accepts multiple lines of input. */
+  multiline: boolean;
 }
 
 export interface SignatureTemplate {
@@ -42,6 +44,7 @@ export interface Placement {
   name: string;
   type: TemplateItemType;
   required: boolean;
+  multiline: boolean;
   page: number;
   rect: { x: number; y: number; width: number; height: number };
 }
@@ -147,6 +150,7 @@ function normalizeItem(raw: any, seenIds: Set<string>): TemplateItem | null {
     // Pages are 0-indexed; a negative page is nonsense, so clamp to the first.
     page: Math.max(0, Math.round(toFiniteNumber(raw.page, 0))),
     required: raw.required === true,
+    multiline: type === 'text' && raw.multiline === true,
   };
 }
 
@@ -253,6 +257,7 @@ export function planAutoPlacement(
       name,
       type: item.type,
       required: !!item.required,
+      multiline: item.type === 'text' && !!item.multiline,
       page: item.page,
       rect: { x: item.x, y: item.y, width: item.width, height: item.height },
     });
@@ -412,6 +417,7 @@ export interface DocumentFieldLike {
   /** pdf-lib's own naming: 'Signature' or 'TextField'. */
   type: string;
   required?: boolean;
+  multiline?: boolean;
   page: number;
   rect: { x: number; y: number; width: number; height: number };
 }
@@ -450,6 +456,7 @@ export function templateItemFromField(field: DocumentFieldLike, id: string): Tem
     y: roundPoint(rect.y),
     page: Math.max(0, Math.round(toFiniteNumber(field.page, 0))),
     required: field.required === true,
+    multiline: type === 'text' && field.multiline === true,
   };
 }
 

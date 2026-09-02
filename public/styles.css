@@ -388,6 +388,9 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 
 .btn-block { width: 100%; justify-content: center; margin-top: 8px; }
 
+.btn-place-template { padding: 10px 16px; font-size: 0.86rem; }
+.btn-place-template .icon { font-size: 1.05em; }
+
 .add-sig-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--ice); }
 .add-sig-actions[hidden] { display: none; }
 .add-sig-actions .btn { margin-top: 0; }
@@ -1048,6 +1051,7 @@ input[type="number"]:focus, input[type="text"]:focus {
 }
 
 .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.checkbox-group-block[hidden] { display: none !important; }
 .checkbox-group-block {
   margin-bottom: 8px;
   padding: 12px 14px;
@@ -1095,8 +1099,8 @@ input[type="number"]:focus, input[type="text"]:focus {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
-  width: 420px;
+  gap: 8px;
+  width: 560px;
   max-width: calc(100vw - 32px);
   font-size: 0.82rem;
   font-weight: 600;
@@ -1105,36 +1109,36 @@ input[type="number"]:focus, input[type="text"]:focus {
   border: 1px solid var(--ocean);
   border-radius: var(--radius-l);
   box-shadow: 0 8px 24px rgba(30, 33, 51, 0.14);
-  padding: 14px 16px;
+  padding: 6px 12px;
 }
 .pending-changes-bar[hidden] { display: none; }
-.pending-changes-top { display: flex; align-items: center; gap: 12px; }
+.pending-changes-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pending-changes-icon {
   flex-shrink: 0;
-  width: 110px;
-  height: 60px;
+  width: 88px;
+  height: 46px;
   border-radius: var(--radius-m, 10px);
   object-fit: cover;
 }
-.pending-changes-summary { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; overflow: hidden; }
+.pending-changes-summary { display: flex; flex-direction: column; gap: 1px; flex: 1 1 130px; min-width: 130px; overflow: hidden; }
 #pendingChangesLabel {
-  font-size: 1.05rem;
+  font-size: 0.92rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .pending-changes-desc {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: var(--ocean-dark);
   opacity: 0.8;
-  white-space: normal;
-  overflow-wrap: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pending-changes-desc:empty { display: none; }
-.pending-changes-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.pending-changes-actions-primary { display: flex; gap: 8px; flex-shrink: 0; }
-.pending-changes-actions .btn { margin-top: 0; }
+.pending-changes-actions-primary { display: flex; gap: 8px; flex-shrink: 0; align-items: center; margin-left: auto; }
+.pending-changes-actions-primary .btn { margin-top: 0; }
 .pending-changes-view-link {
   font-family: var(--font-body);
   font-size: 0.74rem;
@@ -1142,12 +1146,13 @@ input[type="number"]:focus, input[type="text"]:focus {
   color: var(--ocean-dark);
   background: none;
   border: none;
-  padding: 4px 2px;
+  padding: 2px;
   margin: 0;
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 .pending-changes-view-link:hover { color: var(--navy); }
 .pending-changes-view-link[aria-expanded="true"] { color: var(--navy); }
@@ -1216,6 +1221,7 @@ input[type="number"]:focus, input[type="text"]:focus {
 .pending-change-tag.move { background: rgba(94, 158, 214, 0.16); color: var(--navy); }
 .pending-change-tag.resize { background: rgba(139, 92, 246, 0.14); color: var(--navy); }
 .pending-change-tag.required { background: rgba(249, 115, 22, 0.12); color: var(--coral-dark); }
+.pending-change-tag.multiline { background: rgba(94, 158, 214, 0.16); color: var(--navy); }
 
 .pending-changes-bar.is-visible { animation: pendingBarIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .pending-changes-bar.is-leaving-apply { animation: pendingBarOutApply 0.34s cubic-bezier(0.4, 0, 0.6, 1) both; }
@@ -1551,6 +1557,9 @@ body:not([data-active-section="signatures"]) .field-overlay .resize-handle {
 body:not([data-active-section="signatures"]) .field-overlay .template-save-handle {
   display: none;
 }
+body:not([data-active-section="signatures"]) .field-overlay .field-delete-handle {
+  display: none;
+}
 
 /* Placement mode: user is about to click on the PDF to drop a new field */
 .pdf-container.placing-mode canvas { cursor: crosshair; }
@@ -1634,6 +1643,26 @@ body:not([data-active-section="signatures"]) .field-overlay .template-save-handl
 /* With the Signature Templates panel disabled in Settings, there's nowhere
    to drag a captured field to, so the grip shouldn't invite the gesture. */
 body.hide-signature-templates-panel .field-overlay .template-save-handle { display: none; }
+
+/* Delete handle -- top-left corner, opposite the save-to-template grip.
+   A plain button (not a drag source) that opens the same confirmation
+   modal as the "Remove field" button in the Edit panel. */
+.field-delete-handle {
+  position: absolute; top: -9px; left: -9px;
+  width: 19px; height: 19px;
+  display: none; align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--coral);
+  color: #fff;
+  font-size: 0.66rem; line-height: 1;
+  padding: 0;
+  cursor: pointer; pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(30, 33, 51, 0.35);
+}
+.field-delete-handle:hover { background: var(--coral-dark); }
+.field-overlay:hover .field-delete-handle,
+.field-overlay.active .field-delete-handle { display: flex; }
 
 @media (max-width: 960px) {
   .tools-panel { width: 100%; }
