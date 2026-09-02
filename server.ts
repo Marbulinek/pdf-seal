@@ -231,10 +231,11 @@ app.post(
       const width = parseFloat(req.body.width) || 200;
       const height = parseFloat(req.body.height) || 60;
       const required = req.body.required === "true";
+      const multiline = req.body.multiline === "true";
       const fieldType = req.body.type === "text" ? "text" : "signature";
 
       if (fieldType === "text") {
-        tool.addTextField(page, name, { x, y, width, height, required });
+        tool.addTextField(page, name, { x, y, width, height, required, multiline });
       } else {
         tool.addSignatureField(page, name, { x, y, width, height, required });
       }
@@ -291,6 +292,12 @@ app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (
     }
 
     tool.setFieldRequired(newName, required);
+    if (req.body.multiline !== undefined) {
+      const fieldInfo = tool.listFields().find((f: any) => f.name === newName);
+      if (fieldInfo?.type === "TextField") {
+        tool.setFieldMultiline(newName, String(req.body.multiline).toLowerCase() === "true");
+      }
+    }
     tool.setMetadata({ modificationDate: new Date() });
 
     tool.clearRevisionSnapshotChain();
@@ -381,7 +388,7 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
           required: op.required === true || op.required === "true",
         };
         if (op.type === "text") {
-          tool.addTextField(page, name, fieldOptions);
+          tool.addTextField(page, name, { ...fieldOptions, multiline: op.multiline === true || op.multiline === "true" });
         } else {
           tool.addSignatureField(page, name, fieldOptions);
         }
@@ -403,6 +410,12 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
         }
 
         tool.setFieldRequired(newName, op.required === true || op.required === "true");
+        if (op.multiline !== undefined) {
+          const fieldInfo = tool.listFields().find((f: any) => f.name === newName);
+          if (fieldInfo?.type === "TextField") {
+            tool.setFieldMultiline(newName, op.multiline === true || op.multiline === "true");
+          }
+        }
       } else if (op.op === "remove") {
         const name = String(op.name || "");
         if (!name) throw new Error("Field name is required.");

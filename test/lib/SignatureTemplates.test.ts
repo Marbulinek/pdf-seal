@@ -26,6 +26,7 @@ function item(overrides: Partial<TemplateItem> = {}): TemplateItem {
     y: 100,
     page: 0,
     required: false,
+    multiline: false,
     ...overrides,
   };
 }
@@ -153,6 +154,7 @@ describe('planAutoPlacement', () => {
       name: 'B',
       type: 'signature',
       required: false,
+      multiline: false,
       page: 2,
       rect: { x: 50, y: 100, width: 200, height: 60 },
     });
@@ -253,6 +255,14 @@ describe('moveTemplateItem', () => {
     const ids = next.templates[1].items.map((i) => i.id);
     expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(2);
+  });
+
+  it('leaves a third, uninvolved template untouched', () => {
+    const store = twoTemplates();
+    store.templates.push({ id: 't3', name: 'Three', createdAt: 0, updatedAt: 0, items: [item({ id: 'i3', name: 'C' })] });
+
+    const next = moveTemplateItem(store, 't1', 't2', 'i1');
+    expect(next.templates[2]).toBe(store.templates[2]);
   });
 });
 
@@ -422,12 +432,18 @@ describe('templateItemFromField', () => {
       y: 120.5,
       page: 2,
       required: true,
+      multiline: false,
     });
   });
 
   it("maps pdf-lib's TextField onto the template's own type name", () => {
     expect(templateItemFromField({ ...field, type: 'TextField' }, 'i').type).toBe('text');
     expect(templateItemFromField({ ...field, type: 'Signature' }, 'i').type).toBe('signature');
+  });
+
+  it('captures the multiline flag for text fields but not signature fields', () => {
+    expect(templateItemFromField({ ...field, type: 'TextField', multiline: true }, 'i').multiline).toBe(true);
+    expect(templateItemFromField({ ...field, type: 'Signature', multiline: true }, 'i').multiline).toBe(false);
   });
 
   it('trims the name and treats a missing required flag as optional', () => {

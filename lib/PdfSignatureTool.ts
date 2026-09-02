@@ -19,6 +19,7 @@ import {
   PDFCatalog,
   PDFPageTree,
   AcroFieldFlags,
+  AcroTextFlags,
 } from 'pdf-lib';
 
 /**
@@ -437,6 +438,7 @@ class PdfSignatureTool {
    * @param {number} [options.height=30]
    * @param {boolean} [options.required=false] mark the field as required
    * @param {boolean} [options.readOnly=false]
+   * @param {boolean} [options.multiline=false] allow the field to hold multiple lines of text
    * @param {string}  [options.tooltip] alternate field name / tooltip (/TU)
    * @returns {{name:string,page:number,required:boolean,rect:number[]}}
    */
@@ -448,6 +450,7 @@ class PdfSignatureTool {
       height = 30,
       required = false,
       readOnly = false,
+      multiline = false,
       tooltip,
     } = options;
 
@@ -469,6 +472,7 @@ class PdfSignatureTool {
     let flags = 0;
     if (required) flags |= AcroFieldFlags.Required;
     if (readOnly) flags |= AcroFieldFlags.ReadOnly;
+    if (multiline) flags |= AcroTextFlags.Multiline;
 
     this._ensureAcroFormDefaultFont();
 
@@ -497,6 +501,7 @@ class PdfSignatureTool {
       name,
       page: pageIndex,
       required: !!required,
+      multiline: !!multiline,
       rect: { x, y, width, height },
     };
   }
@@ -590,6 +595,7 @@ class PdfSignatureTool {
         type: field.constructor.name.replace('PDF', ''), // Signature, TextField, CheckBox, ...
         required: typeof field.isRequired === 'function' ? field.isRequired() : false,
         readOnly: typeof field.isReadOnly === 'function' ? field.isReadOnly() : false,
+        multiline: typeof field.isMultiline === 'function' ? field.isMultiline() : false,
         tooltip: this._getRawString(field.acroField.dict, 'TU'),
         page: pageIndex,
         rect,
@@ -678,6 +684,16 @@ class PdfSignatureTool {
     const field = this._requireField(name);
     if (readOnly) field.enableReadOnly();
     else field.disableReadOnly();
+  }
+
+  /** Toggle whether a text field accepts multiple lines of input. Text fields only. */
+  setFieldMultiline(name: string, multiline: boolean) {
+    const field = this._requireField(name);
+    if (typeof field.enableMultiline !== 'function' || typeof field.disableMultiline !== 'function') {
+      throw new Error(`Field "${name}" is not a text field and does not support the multiline flag.`);
+    }
+    if (multiline) field.enableMultiline();
+    else field.disableMultiline();
   }
 
   /** Set the tooltip / alternate field name (/TU). */

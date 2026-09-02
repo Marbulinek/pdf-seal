@@ -76,6 +76,14 @@ describe('FieldHistoryStack', () => {
     expect(history.canUndo()).toBe(false); // the original push(1) was evicted
   });
 
+  it('exposes redoLength alongside undoLength', () => {
+    const history = new FieldHistoryStack<number>();
+    expect(history.redoLength).toBe(0);
+    history.push(1);
+    history.undo(2);
+    expect(history.redoLength).toBe(1);
+  });
+
   it('reset clears both stacks', () => {
     const history = new FieldHistoryStack<number>();
     history.push(1);

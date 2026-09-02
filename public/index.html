@@ -72,14 +72,12 @@
   <div id="notificationStack" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
 
   <div class="pending-changes-bar" id="pendingChangesBar" hidden>
-    <div class="pending-changes-top">
+    <div class="pending-changes-row">
       <img class="pending-changes-icon" src="/assets/images/seal-apply-changes.jpg" alt="" aria-hidden="true">
       <div class="pending-changes-summary">
         <span id="pendingChangesLabel">0 unsaved changes</span>
         <span id="pendingChangesDescription" class="pending-changes-desc"></span>
       </div>
-    </div>
-    <div class="pending-changes-actions">
       <button type="button" class="pending-changes-view-link" id="pendingChangesToggle" aria-expanded="false" aria-controls="pendingChangesDetails">View changes</button>
       <div class="pending-changes-actions-primary">
         <button type="button" class="btn btn-ghost" id="btnDiscardFieldChanges">Discard</button>
@@ -375,6 +373,33 @@
     </div>
   </div>
 
+  <!-- Existing fields found on the document before an auto-placement batch -->
+  <div class="modal-backdrop" id="placeTemplateCleanupModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="placeTemplateCleanupTitle">
+      <div class="modal-header">
+        <h3 id="placeTemplateCleanupTitle">Existing fields on this document</h3>
+        <button type="button" class="modal-close" id="closePlaceTemplateCleanupBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <p class="modal-hint" id="placeTemplateCleanupHint">This document already has signature fields or text boxes on it (placed or applied). Remove any of them before placing the template?</p>
+      <div class="form-group">
+        <label for="placeTemplateCleanupSelect">Which field type?</label>
+        <div class="select-field">
+          <select id="placeTemplateCleanupSelect">
+            <option value="none">Don't remove anything — place every field in the template</option>
+            <option value="signature">Signature fields only — remove existing signature fields, place only the template's signature fields</option>
+            <option value="text">Text boxes only — remove existing text boxes, place only the template's text boxes</option>
+            <option value="both">Both — remove every existing field, place every field in the template</option>
+          </select>
+          <span class="icon icon-chevron-down select-field-arrow" aria-hidden="true"></span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelPlaceTemplateCleanupBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmPlaceTemplateCleanupBtn">Continue</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirm how an imported template file should be applied -->
   <div class="modal-backdrop" id="templateImportModal" aria-hidden="true">
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="templateImportTitle">
@@ -522,6 +547,13 @@
             </div>
           </label>
 
+          <label class="checkbox-group checkbox-group-block" for="editMultiline" id="editMultilineGroup" hidden>
+            <div class="checkbox-group-main">
+              <input type="checkbox" id="editMultiline">
+              <span>Multiline</span>
+            </div>
+          </label>
+
           <details class="field-details" id="fieldDetailsBlock">
             <summary>Field Details (raw PDF properties) <span class="raw-panel-badge">Raw</span></summary>
             <div class="field-details-body" id="fieldDetailsBody"></div>
@@ -549,7 +581,7 @@
         <h3><span class="panel-dot dot-coral"></span><span id="addFieldPanelTitle">Add New Signature</span></h3>
         <div class="field-type-tabs" id="fieldTypeTabs" role="tablist" aria-label="Field type">
           <button type="button" class="field-type-tab active" id="fieldTypeTabSignature" data-field-type="signature" role="tab" aria-selected="true"><span class="icon icon-pen" aria-hidden="true"></span> Signature</button>
-          <button type="button" class="field-type-tab" id="fieldTypeTabText" data-field-type="text" role="tab" aria-selected="false"><span class="icon icon-file-text" aria-hidden="true"></span> Text Box</button>
+          <button type="button" class="field-type-tab" id="fieldTypeTabText" data-field-type="text" role="tab" aria-selected="false"><span class="icon icon-file-text" aria-hidden="true"></span> TextBox</button>
         </div>
         <form id="addSigForm">
           <div class="form-group">
@@ -566,6 +598,13 @@
             <div class="checkbox-group-main">
               <input type="checkbox" id="sigRequired">
               <span>Required Field</span>
+            </div>
+          </label>
+
+          <label class="checkbox-group checkbox-group-block" for="sigMultiline" id="sigMultilineGroup" hidden>
+            <div class="checkbox-group-main">
+              <input type="checkbox" id="sigMultiline">
+              <span>Multiline</span>
             </div>
           </label>
 
@@ -630,7 +669,7 @@
         </label>
 
         <p class="template-place-hint" id="templatePlaceHint"></p>
-        <button type="button" id="btnPlaceTemplate" class="btn btn-primary btn-block" disabled><span class="icon icon-layers" aria-hidden="true"></span> <span id="btnPlaceTemplateLabel">Place all fields</span></button>
+        <button type="button" id="btnPlaceTemplate" class="btn btn-primary btn-block btn-place-template" disabled><span class="icon icon-layers" aria-hidden="true"></span> <span id="btnPlaceTemplateLabel">Place all fields</span></button>
       </div>
       </section>
 
@@ -961,8 +1000,8 @@
         placementHintIdle: 'Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.',
       },
       text: {
-        label: 'Text Box',
-        panelTitle: 'Add New Text Box',
+        label: 'TextBox',
+        panelTitle: 'Add New TextBox',
         namePlaceholder: 'e.g. TextField1',
         defaultWidth: 200,
         defaultHeight: 30,
@@ -998,6 +1037,13 @@
       if (placeIcon) placeIcon.className = `icon ${config.icon}`;
       const placeLabel = document.getElementById('btnPlaceFieldLabel');
       if (placeLabel) placeLabel.textContent = config.placeLabel;
+
+      const multilineGroup = document.getElementById('sigMultilineGroup');
+      if (multilineGroup) multilineGroup.hidden = type !== 'text';
+      if (type !== 'text') {
+        const multilineInput = document.getElementById('sigMultiline');
+        if (multilineInput) multilineInput.checked = false;
+      }
 
       setPlacementHint(config.placementHintIdle, 'idle');
     }
@@ -2417,6 +2463,24 @@
         templateGrip.addEventListener('dragend', endDocumentFieldDrag);
         div.appendChild(templateGrip);
 
+        // Delete straight from the overlay -- top-left corner, opposite the
+        // save-to-template grip. Reuses the same confirmation modal as the
+        // "Remove field" button in the Edit panel, keyed off the field name.
+        const deleteHandle = document.createElement('button');
+        deleteHandle.type = 'button';
+        deleteHandle.className = 'field-delete-handle';
+        deleteHandle.title = `Remove "${field.name || 'this field'}"`;
+        deleteHandle.setAttribute('aria-label', 'Remove field');
+        deleteHandle.innerHTML = ICONS.x;
+        deleteHandle.addEventListener('mousedown', (e) => e.stopPropagation());
+        deleteHandle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!activeFile) return;
+          selectFieldOverlay(div, field);
+          openRemoveFieldModal(field.name);
+        });
+        div.appendChild(deleteHandle);
+
         div.addEventListener('mouseenter', () => {
           overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
             if (el !== div) {
@@ -2583,6 +2647,11 @@
       document.getElementById('editHeight').value = field.rect.height.toFixed(1);
       document.getElementById('editRequired').checked = field.required;
 
+      const multilineGroup = document.getElementById('editMultilineGroup');
+      const isTextField = field.type === 'TextField';
+      if (multilineGroup) multilineGroup.hidden = !isTextField;
+      document.getElementById('editMultiline').checked = isTextField && !!field.multiline;
+
       renderFieldDetails(field);
     }
 
@@ -2650,6 +2719,13 @@
       pushFieldHistory();
       activeField.required = document.getElementById('editRequired').checked;
       if (currentViewport) drawFieldOverlays(currentViewport);
+      updatePendingChangesUi();
+    });
+
+    document.getElementById('editMultiline').addEventListener('change', () => {
+      if (!activeField || activeField.type !== 'TextField') return;
+      pushFieldHistory();
+      activeField.multiline = document.getElementById('editMultiline').checked;
       updatePendingChangesUi();
     });
 
@@ -2783,6 +2859,7 @@
         name,
         type: addFieldType === 'text' ? 'TextField' : 'Signature',
         required: document.getElementById('sigRequired').checked,
+        multiline: addFieldType === 'text' && document.getElementById('sigMultiline').checked,
         page: pendingFieldPage,
         rect: { x: pendingField.x, y: pendingField.y, width: pendingField.width, height: pendingField.height },
       });
@@ -2804,14 +2881,16 @@
     // batch instead, so a single Undo takes the batch back out.
     // Likewise `{ redraw: false }` lets a batch redraw once at the end
     // rather than once per field.
-    function stageNewField({ name, type, required, page, rect }, options = {}) {
+    function stageNewField({ name, type, required, multiline, page, rect }, options = {}) {
       const { history = true, redraw = true } = options;
       if (history) pushFieldHistory();
+      const resolvedType = type === 'TextField' || type === 'text' ? 'TextField' : 'Signature';
       documentFields.push({
         name,
-        type: type === 'TextField' || type === 'text' ? 'TextField' : 'Signature',
+        type: resolvedType,
         required: !!required,
         readOnly: false,
+        multiline: resolvedType === 'TextField' && !!multiline,
         tooltip: '',
         page,
         rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
@@ -2891,6 +2970,7 @@
         y: templateToFiniteNumber(raw.y, 0),
         page: Math.max(0, Math.round(templateToFiniteNumber(raw.page, 0))),
         required: raw.required === true,
+        multiline: type === 'text' && raw.multiline === true,
       };
     }
 
@@ -2946,6 +3026,7 @@
         y: roundTemplatePoint(rect.y),
         page: Math.max(0, Math.round(templateToFiniteNumber(field.page, 0))),
         required: field.required === true,
+        multiline: type === 'text' && field.multiline === true,
       };
     }
 
@@ -3011,6 +3092,7 @@
           name,
           type: item.type,
           required: !!item.required,
+          multiline: item.type === 'text' && !!item.multiline,
           page: item.page,
           rect: { x: item.x, y: item.y, width: item.width, height: item.height },
         });
@@ -3131,12 +3213,13 @@
     // tooltip rather than taking up space in the list.
     function templateItemSummary(item) {
       const parts = [
-        item.type === 'text' ? 'Text box' : 'Signature',
+        item.type === 'text' ? 'TextBox' : 'Signature',
         `${formatTemplateNumber(item.width)} × ${formatTemplateNumber(item.height)} pt`,
         `page ${item.page + 1}`,
         `X ${formatTemplateNumber(item.x)}, Y ${formatTemplateNumber(item.y)}`,
       ];
       if (item.required) parts.push('required');
+      if (item.type === 'text' && item.multiline) parts.push('multiline');
       return parts.join(' · ');
     }
 
@@ -3491,7 +3574,7 @@
     // Drops one template item at a point on the current page. The item's saved
     // page and x/y are deliberately ignored here -- those exist for automatic
     // placing; a dragged field belongs where the user dropped it. Only its
-    // name, type, size and required flag come from the template.
+    // name, type, size, required and multiline flags come from the template.
     function placeTemplateItemAt(item, clickX, clickY) {
       const scaleX = currentViewport.scaleX ?? currentViewport.scale;
       const scaleY = currentViewport.scaleY ?? scaleX;
@@ -3508,6 +3591,7 @@
         name,
         type: item.type,
         required: item.required,
+        multiline: item.multiline,
         page: pageNum - 1,
         rect: screenRectToPdf(screenLeft, screenTop, screenW, screenH),
       });
@@ -3518,25 +3602,73 @@
 
     // --- Automatic placing: stage the whole list in one batch ---
 
+    let pendingPlaceTemplate = null;
+
     function placeTemplateBatch() {
       const template = getSelectedTemplate();
       if (!template || !pdfDoc || !template.items.length) return;
 
-      const plan = planAutoPlacement(template.items, new Set(documentFields.map((f) => f.name)), pdfDoc.numPages);
+      const signatureCount = documentFields.filter((f) => f.type !== 'TextField').length;
+      const textCount = documentFields.filter((f) => f.type === 'TextField').length;
 
-      if (plan.placements.length) {
-        // One history entry for the whole batch, so a single Undo takes all of
-        // it back out rather than unwinding field by field.
+      if (signatureCount || textCount) {
+        pendingPlaceTemplate = template;
+        openPlaceTemplateCleanupModal(signatureCount, textCount);
+        return;
+      }
+
+      runPlaceTemplateBatch(template, null);
+    }
+
+    // removeKind: null/'none'/'both' places every item in the template;
+    // 'signature' or 'text' scopes the batch to just that item type -- it
+    // both strips that kind out of documentFields first AND limits what
+    // gets placed to matching template items, so "Text boxes only" doesn't
+    // also drop in the template's signature fields. One history entry for
+    // the whole batch (removals included), so a single Undo takes it all
+    // back out.
+    function runPlaceTemplateBatch(template, removeKind) {
+      const items = removeKind === 'signature' || removeKind === 'text'
+        ? template.items.filter((item) => item.type === removeKind)
+        : template.items;
+      const plan = planAutoPlacement(items, new Set(documentFields.map((f) => f.name)), pdfDoc.numPages);
+
+      if (plan.placements.length || (removeKind && removeKind !== 'none')) {
         pushFieldHistory();
+
+        let removedCount = 0;
+        if (removeKind && removeKind !== 'none') {
+          const before = documentFields.length;
+          documentFields = documentFields.filter((f) => {
+            const isText = f.type === 'TextField';
+            if (removeKind === 'both') return false;
+            if (removeKind === 'text') return !isText;
+            if (removeKind === 'signature') return isText;
+            return true;
+          });
+          removedCount = before - documentFields.length;
+          if (activeField && !documentFields.includes(activeField)) deselectActiveField();
+        }
+
         plan.placements.forEach((placement) => stageNewField(placement, { history: false, redraw: false }));
         if (currentViewport) drawFieldOverlays(currentViewport);
         updatePendingChangesUi();
 
         const count = plan.placements.length;
-        showNotification(
-          `Staged ${count} field${count === 1 ? '' : 's'} from "${template.name}" — click Apply changes to save ${count === 1 ? 'it' : 'them'}.`,
-          'info',
-        );
+        const removedNote = removedCount
+          ? `Removed ${removedCount} existing field${removedCount === 1 ? '' : 's'}, then `
+          : '';
+        if (count) {
+          showNotification(
+            `${removedNote}staged ${count} field${count === 1 ? '' : 's'} from "${template.name}" — click Apply changes to save ${count === 1 ? 'it' : 'them'}.`,
+            'info',
+          );
+        } else if (removedCount) {
+          showNotification(
+            `Removed ${removedCount} existing field${removedCount === 1 ? '' : 's'} — click Apply changes to save it.`,
+            'info',
+          );
+        }
       }
 
       if (plan.skipped.length) {
@@ -3548,6 +3680,44 @@
         );
       }
     }
+
+    const placeTemplateCleanupModal = document.getElementById('placeTemplateCleanupModal');
+    const placeTemplateCleanupSelect = document.getElementById('placeTemplateCleanupSelect');
+    const placeTemplateCleanupHint = document.getElementById('placeTemplateCleanupHint');
+
+    function openPlaceTemplateCleanupModal(signatureCount, textCount) {
+      const parts = [];
+      if (signatureCount) parts.push(`${signatureCount} signature field${signatureCount === 1 ? '' : 's'}`);
+      if (textCount) parts.push(`${textCount} text box${textCount === 1 ? '' : 'es'}`);
+      placeTemplateCleanupHint.textContent =
+        `This document already has ${parts.join(' and ')} on it (placed or applied). Remove any of them before placing the template?`;
+
+      placeTemplateCleanupSelect.value = 'none';
+      placeTemplateCleanupModal.classList.add('is-open');
+      placeTemplateCleanupModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closePlaceTemplateCleanupModal() {
+      placeTemplateCleanupModal.classList.remove('is-open');
+      placeTemplateCleanupModal.setAttribute('aria-hidden', 'true');
+      pendingPlaceTemplate = null;
+    }
+
+    document.getElementById('closePlaceTemplateCleanupBtn').addEventListener('click', closePlaceTemplateCleanupModal);
+    document.getElementById('cancelPlaceTemplateCleanupBtn').addEventListener('click', closePlaceTemplateCleanupModal);
+    placeTemplateCleanupModal.addEventListener('click', (e) => {
+      if (e.target === placeTemplateCleanupModal) closePlaceTemplateCleanupModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && placeTemplateCleanupModal.classList.contains('is-open')) closePlaceTemplateCleanupModal();
+    });
+    document.getElementById('confirmPlaceTemplateCleanupBtn').addEventListener('click', () => {
+      const template = pendingPlaceTemplate;
+      const removeKind = placeTemplateCleanupSelect.value;
+      closePlaceTemplateCleanupModal();
+      if (!template) return;
+      runPlaceTemplateBatch(template, removeKind);
+    });
 
     // --- Name modal (create + rename) ---
     //
@@ -4022,6 +4192,7 @@
         type: f.type,
         required: !!f.required,
         readOnly: !!f.readOnly,
+        multiline: f.type === 'TextField' && !!f.multiline,
         tooltip: f.tooltip,
         page: f.page,
         rect: f.rect ? { x: f.rect.x, y: f.rect.y, width: f.rect.width, height: f.rect.height } : null,
@@ -4248,7 +4419,8 @@
     function isFieldStaged(field) {
       const base = fieldsBaseline.find((f) => f.name === field.name);
       if (!base) return true;
-      return !rectsEqual(base.rect, field.rect) || !!base.required !== !!field.required;
+      return !rectsEqual(base.rect, field.rect) || !!base.required !== !!field.required
+        || !!base.multiline !== !!field.multiline;
     }
 
     // Diffs the working `documentFields` against the last server-confirmed
@@ -4277,6 +4449,7 @@
             page: field.page,
             x: field.rect.x, y: field.rect.y, width: field.rect.width, height: field.rect.height,
             required: !!field.required,
+            multiline: field.type === 'TextField' && !!field.multiline,
           });
           continue;
         }
@@ -4285,19 +4458,22 @@
         const positionChanged = !coordsEqual(base.rect, field.rect);
         const sizeChanged = !sizeEqual(base.rect, field.rect);
         const requiredChanged = !!base.required !== !!field.required;
-        if (renamed || positionChanged || sizeChanged || requiredChanged) {
+        const multilineChanged = field.type === 'TextField' && !!base.multiline !== !!field.multiline;
+        if (renamed || positionChanged || sizeChanged || requiredChanged || multilineChanged) {
           ops.push({
             op: 'edit',
             originalName: baselineKey,
             name: field.name,
             x: field.rect.x, y: field.rect.y, width: field.rect.width, height: field.rect.height,
             required: !!field.required,
+            multiline: field.type === 'TextField' ? !!field.multiline : undefined,
             // UI-only markers for describePendingFieldChanges() -- stripped
             // before the ops payload is sent to the server (see the replacer
             // in applyPendingFieldChanges()).
             _positionChanged: positionChanged,
             _sizeChanged: sizeChanged,
             _requiredChanged: requiredChanged,
+            _multilineChanged: multilineChanged,
           });
         }
       }
@@ -4373,6 +4549,7 @@
       const moved = nonRenamedEdits.filter((op) => op._positionChanged).length;
       const resized = nonRenamedEdits.filter((op) => op._sizeChanged).length;
       const requiredChanged = nonRenamedEdits.filter((op) => op._requiredChanged).length;
+      const multilineChanged = nonRenamedEdits.filter((op) => op._multilineChanged).length;
       const removed = ops.filter((op) => op.op === 'remove').length;
       const parts = [];
       if (added) parts.push(`Added ${added} field${added === 1 ? '' : 's'}`);
@@ -4380,6 +4557,7 @@
       if (moved) parts.push(`Moved ${moved} field${moved === 1 ? '' : 's'}`);
       if (resized) parts.push(`Resized ${resized} field${resized === 1 ? '' : 's'}`);
       if (requiredChanged) parts.push(`Changed ${requiredChanged} field requirement${requiredChanged === 1 ? '' : 's'}`);
+      if (multilineChanged) parts.push(`Changed multiline on ${multilineChanged} field${multilineChanged === 1 ? '' : 's'}`);
       if (removed) parts.push(`Removed ${removed} field${removed === 1 ? '' : 's'}`);
       return parts.join(', ');
     }
@@ -4399,6 +4577,7 @@
           if (op._positionChanged) tags.push({ cls: 'move', text: 'Moved' });
           if (op._sizeChanged) tags.push({ cls: 'resize', text: 'Resized' });
           if (op._requiredChanged) tags.push({ cls: 'required', text: 'Required' });
+          if (op._multilineChanged) tags.push({ cls: 'multiline', text: 'Multiline' });
         }
         const fromName = op.op === 'edit' && op.name !== op.originalName ? op.originalName : null;
         return { name: op.name, fromName, tags };
@@ -4970,8 +5149,9 @@ const ANNOTATION_FLAG_BITS = {
   6: 'NoView', 7: 'ReadOnly', 8: 'Locked', 9: 'ToggleNoView', 10: 'LockedContents',
 };
 
-// ISO 32000-1 Table 221 -- common /Ff field flag bit meanings (bits 1-3)
-const FIELD_FLAG_BITS = { 1: 'ReadOnly', 2: 'Required', 3: 'NoExport' };
+// ISO 32000-1 Table 221/228 -- common /Ff field flag bit meanings (bits 1-3
+// are shared by every field type; bit 13 is text-field-specific: Multiline)
+const FIELD_FLAG_BITS = { 1: 'ReadOnly', 2: 'Required', 3: 'NoExport', 13: 'Multiline' };
 
 function decodeFlags(rawValue, bitMap) {
   const num = parseInt(rawValue, 10);
@@ -5814,7 +5994,7 @@ async function encryptShareFile(file, keyBytes) {
       encryptedSize: ciphertext.byteLength,
       sha256: await sha256Hex(plaintext),
       iv: bytesToBase64Url(iv),
-      fields: documentFields.map(({ name, type, required, readOnly, tooltip, page, rect }) => ({ name, type, required, readOnly, tooltip, page, rect })),
+      fields: documentFields.map(({ name, type, required, readOnly, multiline, tooltip, page, rect }) => ({ name, type, required, readOnly, multiline, tooltip, page, rect })),
       algorithm: 'AES-GCM',
     },
   };
