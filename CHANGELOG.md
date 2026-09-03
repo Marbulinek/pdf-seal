@@ -1,3 +1,10 @@
+## [1.3.3](https://github.com/Marbulinek/pdf-seal/compare/v1.3.2...v1.3.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* fixed ui-ux performance ([#45](https://github.com/Marbulinek/pdf-seal/issues/45)) ([4542af2](https://github.com/Marbulinek/pdf-seal/commit/4542af2de8a94c033bcc500a412f621ad998e647))
+
 ## [1.3.2](https://github.com/Marbulinek/pdf-seal/compare/v1.3.1...v1.3.2) (2026-09-02)
 
 
