@@ -3,24 +3,27 @@
  *
  * Comparing two rendered PDF pages means touching width*height*4 bytes. On the
  * main thread that froze the tab outright (a letter page at 300% zoom is ~47M
- * array accesses), and it re-ran on every page-nav click and every highlight
- * colour change. Here it runs on a worker, so the UI stays live.
+ * array accesses), and it re-ran on every page-nav click. Here it runs on a
+ * worker, so the UI stays live.
  *
  * This worker also OWNS the rendered-page pixel cache. The main thread renders
  * a page once, transfers the pixels here under a key, and afterwards only ever
- * sends the key -- so a colour change re-tints from cached pixels with no
- * pdf.js render and no buffer copying at all. Transfers are zero-copy in both
- * directions, which is why the pixels live here rather than being shipped back
- * and forth per diff.
+ * sends the key -- so paging back and forth costs no pdf.js render and no
+ * buffer copying at all. Transfers are zero-copy in both directions, which is
+ * why the pixels live here rather than being shipped back and forth per diff.
+ *
+ * Both diff modes answer with geometry (a few hundred rectangles at most)
+ * rather than a whole tinted page, so nothing large travels back.
  *
  * Protocol (all messages carry an `id` echoed back on the reply):
  *   { type: 'put',   key, buf, width, height }  -> store pixels (buf transferred in)
  *   { type: 'evict', key }                      -> drop one entry
  *   { type: 'reset' }                           -> drop everything
- *   { type: 'diff',  mode: 'tint',    keyA, keyB, baseKey, highlight, alpha }
- *        -> { ok: true, buf, width, height }    (buf transferred out)
+ *   { type: 'diff',  mode: 'strokes', keyA, keyB, ...StrokeOptions }
+ *        -> { ok: true, strokes: [{ left, top, right, bottom }, ...], truncated,
+ *             coverage, width, height }                              (raster px)
  *   { type: 'diff',  mode: 'markers', keyA, keyB, cell, pad, maxRects }
- *        -> { ok: true, rects: [{ left, top, right, bottom }, ...] }  (screen px)
+ *        -> { ok: true, rects: [{ left, top, right, bottom }, ...] }  (raster px)
  */
 
 'use strict';
@@ -78,35 +81,179 @@ function scanDiff(a, b, onDiff) {
   return count;
 }
 
-// Composite the base page with a translucent tint over every changed pixel.
-function diffTint(msg) {
+// ---------------------------------------------------------------------------
+// Highlighter strokes.
+//
+// Hand-synced copy of lib/VisualDiffStrokes.ts -- see the comment at the top
+// of that file. Keep the two in sync.
+// ---------------------------------------------------------------------------
+
+// Group dirty rows into bands, merging bands separated by no more than
+// `rowGap` blank rows -- that gap is what keeps the ascenders and descenders
+// of one text line together, and what keeps two adjacent lines apart.
+function segmentBands(rowCounts, height, rowGap, minBandPixels) {
+  const bands = [];
+  let current = null;
+  let blankRun = 0;
+
+  for (let row = 0; row < height; row++) {
+    const count = rowCounts[row] || 0;
+    if (count > 0) {
+      if (current && blankRun > rowGap) {
+        bands.push(current);
+        current = null;
+      }
+      if (!current) current = { top: row, bottom: row, pixels: 0 };
+      current.bottom = row;
+      current.pixels += count;
+      blankRun = 0;
+    } else if (current) {
+      blankRun++;
+    }
+  }
+  if (current) bands.push(current);
+
+  return bands.filter((band) => band.pixels >= minBandPixels);
+}
+
+// Flatten one band's rows into a single column occupancy list: a cell counts
+// as dirty for the band if it was dirty on any of the band's rows.
+function bandColumns(dirty, cols, band) {
+  const occupied = new Array(cols).fill(false);
+  for (let row = band.top; row <= band.bottom; row++) {
+    const base = row * cols;
+    for (let col = 0; col < cols; col++) {
+      if (dirty[base + col]) occupied[col] = true;
+    }
+  }
+  return occupied;
+}
+
+// Give one run the shape of a pen stroke: padded, never thinner than
+// `minHeight` (grown around its own centre), clamped to the page.
+function penGeometry(startCell, endCell, band, opts, width, height) {
+  const left = startCell * opts.colCell - opts.padX;
+  const right = (endCell + 1) * opts.colCell + opts.padX;
+
+  let top = band.top - opts.padY;
+  let bottom = band.bottom + 1 + opts.padY;
+  const short = opts.minHeight - (bottom - top);
+  if (short > 0) {
+    const grow = short / 2;
+    top -= grow;
+    bottom += grow;
+  }
+
+  return {
+    left: Math.max(0, Math.round(left)),
+    top: Math.max(0, Math.round(top)),
+    right: Math.min(width, Math.round(right)),
+    bottom: Math.min(height, Math.round(bottom)),
+  };
+}
+
+function groupStrokes(dirty, rowCounts, opts) {
+  const { width, height, colCell } = opts;
+  const cols = Math.ceil(width / colCell);
+  const colGapCells = Math.max(0, Math.round(opts.colGap / colCell));
+
+  const bands = segmentBands(rowCounts, height, opts.rowGap, opts.minBandPixels);
+
+  const strokes = [];
+  let truncated = false;
+
+  for (const band of bands) {
+    if (strokes.length >= opts.maxStrokes) {
+      truncated = true;
+      break;
+    }
+
+    const occupied = bandColumns(dirty, cols, band);
+
+    // Walk the band's columns, closing off a run once more than colGapCells
+    // empty cells have gone by -- words inside a phrase merge, separate
+    // regions on the same line stay separate.
+    let runStart = -1;
+    let runEnd = -1;
+    let emptyRun = 0;
+    const runs = [];
+
+    for (let col = 0; col < cols; col++) {
+      if (occupied[col]) {
+        if (runStart !== -1 && emptyRun > colGapCells) {
+          runs.push([runStart, runEnd]);
+          runStart = -1;
+        }
+        if (runStart === -1) runStart = col;
+        runEnd = col;
+        emptyRun = 0;
+      } else if (runStart !== -1) {
+        emptyRun++;
+      }
+    }
+    if (runStart !== -1) runs.push([runStart, runEnd]);
+
+    for (const run of runs) {
+      if (strokes.length >= opts.maxStrokes) {
+        truncated = true;
+        break;
+      }
+      strokes.push(penGeometry(run[0], run[1], band, opts, width, height));
+    }
+  }
+
+  const area = strokes.reduce((sum, s) => sum + (s.right - s.left) * (s.bottom - s.top), 0);
+  const pageArea = width * height;
+  const coverage = pageArea > 0 ? Math.min(1, area / pageArea) : 0;
+
+  return { strokes, truncated, coverage };
+}
+
+// Reduce the changed pixels to highlighter strokes: one pass over the two
+// pages fills a coarse occupancy grid, which groupStrokes() then bands.
+function diffStrokes(msg) {
   const a = get(msg.keyA);
   const b = get(msg.keyB);
-  const base = get(msg.baseKey);
-  const width = base.width;
-  const height = base.height;
+  const width = Math.min(a.width, b.width);
+  const height = Math.min(a.height, b.height);
+  const colCell = msg.colCell;
+  const cols = Math.ceil(width / colCell);
+  const srcWidth = a.width;
 
-  const out = new Uint8ClampedArray(width * height * 4);
-  // Copy the base page in one memcpy, then only overwrite what changed --
-  // far cheaper than assigning four channels per pixel across the whole page.
-  new Uint32Array(out.buffer).set(base.words.subarray(0, width * height));
-
-  const alpha = msg.alpha;
-  const inv = 1 - alpha;
-  const hr = msg.highlight.r * alpha;
-  const hg = msg.highlight.g * alpha;
-  const hb = msg.highlight.b * alpha;
-  const basePixels = base.pixels;
+  const dirty = new Uint8Array(cols * height);
+  const rowCounts = new Uint32Array(height);
 
   scanDiff(a, b, (p) => {
-    const i = p << 2;
-    out[i] = basePixels[i] * inv + hr;
-    out[i + 1] = basePixels[i + 1] * inv + hg;
-    out[i + 2] = basePixels[i + 2] * inv + hb;
-    out[i + 3] = 255;
+    const row = (p / srcWidth) | 0;
+    const col = p % srcWidth;
+    if (row >= height || col >= width) return;
+    dirty[row * cols + ((col / colCell) | 0)] = 1;
+    rowCounts[row]++;
   });
 
-  return { payload: { buf: out.buffer, width, height }, transfer: [out.buffer] };
+  const result = groupStrokes(dirty, rowCounts, {
+    width,
+    height,
+    colCell,
+    rowGap: msg.rowGap,
+    colGap: msg.colGap,
+    minHeight: msg.minHeight,
+    padX: msg.padX,
+    padY: msg.padY,
+    maxStrokes: msg.maxStrokes,
+    minBandPixels: msg.minBandPixels,
+  });
+
+  return {
+    payload: {
+      strokes: result.strokes,
+      truncated: result.truncated,
+      coverage: result.coverage,
+      width,
+      height,
+    },
+    transfer: [],
+  };
 }
 
 // Reduce the changed pixels to a handful of bounding boxes: mark a coarse cell
@@ -182,7 +329,7 @@ self.onmessage = (event) => {
         self.postMessage({ id: msg.id, ok: true });
         return;
       case 'diff': {
-        const { payload, transfer } = msg.mode === 'tint' ? diffTint(msg) : diffMarkers(msg);
+        const { payload, transfer } = msg.mode === 'strokes' ? diffStrokes(msg) : diffMarkers(msg);
         self.postMessage(Object.assign({ id: msg.id, ok: true }, payload), transfer);
         return;
       }

@@ -44,6 +44,7 @@
 /* ---------- Icon catalog: one modifier class per unique icon shape, mapping
    to its standalone SVG file under /assets/images/icons/. ---- */
 .icon-hamburger { -webkit-mask-image: url(/assets/images/icons/hamburger.svg); mask-image: url(/assets/images/icons/hamburger.svg); }
+.icon-wrench { -webkit-mask-image: url(/assets/images/icons/wrench.svg); mask-image: url(/assets/images/icons/wrench.svg); }
 .icon-info-circle { -webkit-mask-image: url(/assets/images/icons/info-circle.svg); mask-image: url(/assets/images/icons/info-circle.svg); }
 .icon-pen { -webkit-mask-image: url(/assets/images/icons/pen.svg); mask-image: url(/assets/images/icons/pen.svg); }
 .icon-clock { -webkit-mask-image: url(/assets/images/icons/clock.svg); mask-image: url(/assets/images/icons/clock.svg); }
@@ -774,21 +775,28 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   white-space: nowrap;
 }
 
+/* The name shares one strip with the control pills, so it is the elastic item:
+   it takes what they leave (min 0 so the ellipsis can actually kick in) and
+   carries no pill chrome of its own -- two nested pills on one row read as
+   noise next to the controls they sit beside. */
 .viewer-file-name {
   display: none;
   align-items: center;
   gap: 8px;
-  justify-content: center;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 8px 18px;
-  background: #ffffff;
-  border: 1px solid var(--ice);
-  border-radius: 999px;
-  box-shadow: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  /* The hover target used to be just the icon+text's own tight box, which
+     was fiddly to land the pointer on before the reveal kicked in. Padding
+     plus an equal negative margin grows the actual hoverable/clickable area
+     (mouse events fire over padding too) to fill the toolbar row's height
+     and give some horizontal slack, without shifting where the icon/text
+     themselves sit or affecting sibling layout. */
+  padding: 8px 10px;
+  margin: -8px -10px;
+  border-radius: 10px;
 }
-.viewer-file-name.is-visible { display: inline-flex; }
+.viewer-file-name.is-visible { display: flex; }
 .viewer-file-name-icon {
   flex: 0 0 auto;
   width: 16px;
@@ -809,7 +817,7 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   font-family: var(--font-display);
   font-weight: 600;
   color: var(--navy);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -817,14 +825,19 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   min-width: 0;
 }
 @media (max-width: 640px) {
-  .viewer-controls-row { justify-content: center; }
-  .viewer-controls-group { flex: 0 1 auto; font-size: 0.78rem; padding: 5px 10px; gap: 6px; }
-  .viewer-file-name { padding: 7px 14px; }
+  /* Too narrow for one strip: the name gets its own line again, but as plain
+     text rather than the full-width pill it used to be. Touch has no real
+     hover, so the pill groups stay the default here rather than the wrench. */
+  .viewer-toolbar { flex-wrap: wrap; }
+  .viewer-file-name { flex: 1 1 100%; }
+  .viewer-controls-row { flex: 1 1 100%; justify-content: flex-end; }
+  .viewer-controls-group { flex: 0 1 auto; font-size: 0.78rem; padding: 4px 8px; gap: 4px; }
   .viewer-file-name-text { font-size: 0.8rem; }
+  .page-indicator-label { display: none; }
 }
 @media (max-width: 360px) {
   .viewer-controls-row { gap: 8px; }
-  .viewer-controls-group { padding: 5px 8px; }
+  .viewer-controls-group { padding: 4px 6px; }
 }
 
 .modal-textarea-toolbar {
@@ -987,7 +1000,6 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   100% { transform: scale(1.6); opacity: 0; }
 }
 
-.edit-panel { transition: opacity 0.25s ease; }
 .panel-overlay {
   position: absolute;
   inset: 0;
@@ -1070,6 +1082,15 @@ input[type="number"]:focus, input[type="text"]:focus {
   gap: 8px;
   width: 100%;
   justify-content: flex-start;
+}
+.checkbox-group-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.checkbox-group-row .checkbox-group-block {
+  flex: 1;
+  margin-bottom: 0;
 }
 .checkbox-group input { margin: 0; width: 17px; height: 17px; accent-color: var(--coral); cursor: pointer; }
 .checkbox-group label, .checkbox-group-block span { margin: 0; cursor: pointer; color: var(--navy); text-transform: none; letter-spacing: normal; font-size: 0.875rem; font-weight: 500; }
@@ -1288,19 +1309,110 @@ input[type="number"]:focus, input[type="text"]:focus {
 .status-text.loading:not(:empty) { background: rgba(168, 218, 220, 0.4); color: var(--navy); border: 1px solid var(--ice); }
 
 /* ---------- Viewer ---------- */
-.viewer-controls { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
-.viewer-controls-row { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.viewer-controls { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+/* Name left, controls right, on one line. The row is what gets hidden while no
+   document is open, so `margin-left: auto` on it (rather than on the name) is
+   what keeps the pills right-aligned either way. */
+.viewer-toolbar { display: flex; align-items: center; gap: 12px; min-height: 34px; }
+.viewer-controls-row {
+  margin-left: auto;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+}
 .viewer-controls-row:not([hidden]) { display: flex; }
+.viewer-controls-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 1;
+  transition: width 0.25s ease, opacity 0.2s ease;
+}
+/* Hovering (or focusing) the document name slides the pill groups out of the
+   way so a truncated name gets the room to un-ellipsis, instead of relying on
+   the browser's plain-text title tooltip alone. JS (initFileNameHoverReveal)
+   locks the row's current pixel width before adding this class so the
+   collapse animates as a clean slide -- animating straight from an
+   auto/max-width guess let it visibly squish instead of moving. `overflow`
+   only turns on for this collapsed state -- kept off the base rule so an open
+   popover elsewhere in the row is never at risk of being clipped by it. */
+.viewer-controls-inline.is-collapsed {
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* The wrench toggle + its popover, shown only in place of the collapsed pill
+   groups above (see .is-visible, toggled alongside .is-collapsed). Wrapping
+   div is the positioning context so the popover can hang off the toggle. */
+.viewer-tools {
+  position: relative;
+  flex-shrink: 0;
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.25s ease, opacity 0.2s ease;
+}
+.viewer-tools.is-visible {
+  width: 27px;
+  opacity: 1;
+  pointer-events: auto;
+  overflow: visible;
+}
+.viewer-tools-toggle.is-active { background: var(--cream); border-color: var(--coral); color: var(--coral-dark); }
+.viewer-tools-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid var(--ice);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(29, 53, 87, 0.18);
+  max-width: calc(100vw - 24px);
+}
+.viewer-tools-menu[hidden] { display: none; }
 .viewer-controls-group {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0;
   background: var(--cream);
   border: 1px solid var(--ice);
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 4px 8px;
   box-shadow: none;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+}
+.viewer-tools-menu .viewer-controls-group { white-space: nowrap; }
+.viewer-controls-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 3px 2px;
+  background: var(--ice);
 }
 .page-indicator, .zoom-level { font-weight: 600; color: var(--navy); white-space: nowrap; }
+.page-indicator { padding: 0 2px; }
+.page-indicator-sep { color: var(--ocean-dark); opacity: 0.55; }
+/* The readout is also the reset-to-fit button, so it needs to look pressable
+   without growing into a third pill. */
+.zoom-level {
+  min-width: 46px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--navy);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.zoom-level:hover:not(:disabled) { background: #fff; border-color: var(--ice); color: var(--ocean-dark); }
+.zoom-level:disabled { cursor: default; opacity: 0.55; }
 
 /* Empty State Viewer */
 .empty-state-viewer {
@@ -1855,6 +1967,10 @@ body.hide-signature-templates-panel .field-overlay .template-save-handle { displ
   z-index: 120;
 }
 
+/* The wrapper is a plain div with no layout of its own; without this it becomes
+   the backdrop's flex item at full width and the box inside it lands off-centre. */
+.field-info-overlay { display: contents; }
+
 .field-info-modal-box {
   width: min(560px, 100%);
 }
@@ -2131,9 +2247,27 @@ body.hide-raw-pdf-data .diff-raw-objects {
   display: none;
 }
 
+body.hide-signature-templates-panel #sigTabTemplates,
 body.hide-signature-templates-panel .templates-panel {
   display: none;
 }
+/* With only one tab left there is nothing to switch between -- but the strip is
+   also this panel's only title, so hiding it left the card with no header at
+   all while every other panel kept its <h3>. The strip stays; the lone control
+   just stops looking like a tab and reads as the heading instead (matching
+   .panel h3, whose bottom rule .sig-tabs already provides).
+   setSignatureTab() drops the tablist/tab roles to match. */
+body.hide-signature-templates-panel .sig-tabs { border-bottom-width: 1px; }
+body.hide-signature-templates-panel #sigTabAdd {
+  margin-bottom: 0;
+  padding-bottom: 12px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--navy);
+  border-bottom-color: transparent;
+  cursor: default;
+}
+body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 
 .meta-advanced {
   border: 1px solid var(--ice);
@@ -2414,23 +2548,42 @@ body.hide-signature-templates-panel .templates-panel {
   overflow: marquee;
 }
 
+/* .section-column is the sticky, fixed-height box; .section-scroll inside it does
+   the scrolling. Splitting the two is what lets .edit-sheet lie absolutely over the
+   whole column (sticky is a positioned value, so it is the sheet's containing block)
+   without the sheet scrolling away with the panels behind it. */
 .section-column {
   flex: 1 1 0;
   min-width: 360px;
   max-width: 560px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
   position: sticky;
   top: 54px;
+  height: calc(100vh - 70px);
   max-height: calc(100vh - 70px);
+  overflow: hidden;
+  /* The radius has to match .edit-sheet's: the sheet lies at inset:0 here, so a
+     square clip box would let the sheet's drop shadow paint into the four corner
+     arcs the rounded sheet leaves uncovered -- reading as dark square nubs at the
+     corners of an otherwise rounded panel. Matching radii means the sheet covers
+     the clip exactly at rest, while the shadow still shows as it slides in. */
+  border-radius: var(--radius-l);
+}
+
+.section-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   overflow-y: auto;
   padding: 2px 6px 2px 2px;
 }
-.section-column::-webkit-scrollbar { width: 10px; }
-.section-column::-webkit-scrollbar-track { background: transparent; }
-.section-column::-webkit-scrollbar-thumb { background: var(--ice); border-radius: 999px; border: 2px solid var(--cream); }
-.section-column::-webkit-scrollbar-thumb:hover { background: var(--ocean); }
+.section-scroll::-webkit-scrollbar { width: 10px; }
+.section-scroll::-webkit-scrollbar-track { background: transparent; }
+.section-scroll::-webkit-scrollbar-thumb { background: var(--ice); border-radius: 999px; border: 2px solid var(--cream); }
+.section-scroll::-webkit-scrollbar-thumb:hover { background: var(--ocean); }
 
 .section-panel { display: flex; flex-direction: column; gap: 20px; }
 .section-panel[hidden] { display: none; }
@@ -2457,6 +2610,11 @@ body.hide-signature-templates-panel .templates-panel {
     max-width: none;
     overflow: visible;
   }
+  .section-scroll {
+    overflow: visible;
+    padding: 0;
+    gap: 12px;
+  }
   /* The desktop rule sets an explicit `height: calc(100vh - 70px)` on
      .viewer-column (so it fills the sticky column next to .section-column).
      That `height` was never reset here before -- only `max-height` was --
@@ -2466,10 +2624,6 @@ body.hide-signature-templates-panel .templates-panel {
      this gives it a sane fixed height so it's still comfortably scrollable
      rather than collapsing or growing unpredictably. */
   .viewer-column { height: 60vh; min-height: 320px; }
-  .section-column {
-    padding: 0;
-    gap: 12px;
-  }
   .section-panel { width: 100%; }
 }
 
@@ -2480,22 +2634,263 @@ body.hide-signature-templates-panel .templates-panel {
 }
 
 /* =====================================================================
+   Signatures section chrome
+   ---------------------------------------------------------------------
+   Three pieces share the right column: a slim history strip, one panel
+   whose Add/Templates tabs take turns, and #editSheet, which slides in
+   over all of it while a field is selected.
+   ===================================================================== */
+.history-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 7px 8px 7px 16px;
+  background: #ffffff;
+  border: 1px solid var(--ice);
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(29, 53, 87, 0.05);
+}
+.history-strip-label {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--navy);
+  letter-spacing: 0.02em;
+}
+/* Undo/redo sit right after the label rather than pinned to the far edge of
+   the pill -- they're acted on together with "History", so keeping them
+   nearby reads as one control cluster instead of two things a whole strip
+   apart. */
+/* Pushed toward the right of the strip (this is where the eye lands after
+   reading "History") but held off the pill's actual edge with margin-right,
+   so it doesn't read as glued to the border like the old flush-right layout. */
+.history-strip .history-actions { margin-left: auto; margin-right: 12px; }
+.history-strip .history-actions .btn { padding: 7px 14px; font-size: 0.78rem; }
+
+/* Underline tabs (the settings-modal idiom) rather than pills, so the
+   Signature/TextBox pill switcher nested inside the Add tab stays readable
+   as a different level of choice. */
+.signature-panel { padding-top: 20px; }
+.sig-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 18px;
+  border-bottom: 1.5px solid var(--ice);
+}
+.sig-tab {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 2px 10px;
+  margin-bottom: -1.5px;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ocean-dark);
+  border-bottom: 2.5px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.sig-tab:hover { color: var(--navy); }
+.sig-tab.is-active { color: var(--navy); border-bottom-color: var(--coral); }
+.sig-tabs-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-bottom: 6px;
+}
+.sig-tabs-actions[hidden] { display: none; }
+
+.sig-tab-panel { position: relative; }
+.sig-tab-panel[hidden] { display: none; }
+/* .revisions-hint carries a negative top margin to tuck under a panel <h3>;
+   there is no <h3> in a tab panel. */
+.sig-tab-panel > .revisions-hint { margin-top: 0; }
+
+/* ---------------------------------------------------------------------
+   #editSheet -- the contextual editor.
+   Closed, it is fully out of the way (visibility keeps it unfocusable while
+   still letting it animate out; a transition *delay* would have survived the
+   prefers-reduced-motion override at the bottom of this file, a duration
+   does not).
+   --------------------------------------------------------------------- */
+.edit-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--ice);
+  border-radius: var(--radius-l);
+  box-shadow: -14px 0 36px rgba(29, 53, 87, 0.16);
+  transform: translateX(calc(100% + 28px));
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, visibility 0.34s;
+}
+.edit-sheet.is-open {
+  transform: translateX(0);
+  opacity: 1;
+  visibility: visible;
+}
+/* Dragging a field into the template dropzone needs the column back for the
+   length of the drag -- without dropping the selection. */
+.edit-sheet.is-open.is-suppressed {
+  transform: translateX(calc(100% + 28px));
+  opacity: 0;
+  visibility: hidden;
+  /* visibility only takes effect at the end of the transition; the drag needs
+     the column back immediately. */
+  pointer-events: none;
+}
+
+.edit-sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  padding: 20px 20px 14px 24px;
+  border-bottom: 1px solid var(--ice);
+}
+.edit-sheet-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.02rem;
+  color: var(--navy);
+}
+.edit-sheet-subject {
+  min-width: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--ice);
+  border-radius: 999px;
+  background: var(--cream);
+  color: var(--ocean-dark);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.edit-sheet-header .modal-close { margin-left: auto; }
+.edit-sheet-grabber { display: none; }
+
+/* The compare sheet's subject is the comparison's verdict -- a sentence
+   rather than a label -- so it wraps onto its own row under the title. */
+#revisionsCompareSheet .edit-sheet-header { flex-wrap: wrap; }
+#revisionsCompareSheet .edit-sheet-subject {
+  order: 3;
+  flex: 1 1 100%;
+  border-radius: var(--radius-s);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  white-space: normal;
+}
+#revisionsCompareSheet .edit-sheet-subject:empty { display: none; }
+
+.edit-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 24px 6px;
+}
+.edit-sheet-body::-webkit-scrollbar { width: 10px; }
+.edit-sheet-body::-webkit-scrollbar-track { background: transparent; }
+.edit-sheet-body::-webkit-scrollbar-thumb { background: var(--ice); border-radius: 999px; border: 2px solid #ffffff; }
+.edit-sheet-body::-webkit-scrollbar-thumb:hover { background: var(--ocean); }
+
+/* No card chrome here -- it's a label plus two form-rows just like the Add
+   field panel's own Width/Height, not a distinct boxed-off group. The title
+   itself needs no custom rule either: it's a plain <label>, so it already
+   matches "Field Name" and every other field label via the base `label` rule
+   below. */
+.field-geometry { margin-bottom: 16px; }
+.field-geometry .form-row-last { margin-bottom: 0; }
+.field-geometry-note {
+  margin: 10px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--ocean-dark);
+  opacity: 0.85;
+}
+@media (max-width: 640px) {
+  /* The global mobile rule stacks .form-row; four short numbers do not need it,
+     and stacking them makes this card taller than the phone sheet. */
+  .field-geometry .form-row { flex-direction: row; gap: 10px; }
+}
+
+.edit-sheet-footer {
+  flex: 0 0 auto;
+  padding: 14px 24px 20px;
+  border-top: 1px solid var(--ice);
+}
+
+/* Desktop has the whole column to slide over, so no backdrop is needed. */
+.edit-sheet-scrim { display: none; }
+
+@media (max-width: 960px) {
+  /* Stacked layout: the column is no longer a fixed-height positioned box, so
+     the sheet becomes a real bottom sheet over the viewport instead. z-index
+     clears .pending-changes-bar (90) and stays under modals (100). */
+  .edit-sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 95;
+    max-height: 86vh;
+    border-radius: 20px 20px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -14px 36px rgba(29, 53, 87, 0.22);
+    transform: translateY(100%);
+    transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, visibility 0.34s;
+  }
+  .edit-sheet.is-open { transform: translateY(0); }
+  .edit-sheet.is-open.is-suppressed { transform: translateY(100%); }
+  .edit-sheet-header { padding-top: 10px; flex-wrap: wrap; }
+  .revisions-compare-header { padding: 10px 20px 12px; }
+  .revisions-compare-header .btn { flex: 1 1 100%; }
+  .edit-sheet-grabber {
+    display: block;
+    flex: 0 0 100%;
+    width: 44px;
+    height: 4px;
+    margin: 0 auto 8px;
+    border-radius: 999px;
+    background: var(--ice);
+  }
+  .edit-sheet-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 94;
+    background: rgba(29, 53, 87, 0.38);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.24s ease, visibility 0.24s;
+  }
+  .edit-sheet-scrim.is-open { opacity: 1; visibility: visible; }
+  body.edit-sheet-open { overflow: hidden; }
+}
+
+/* =====================================================================
    Revisions section -- stacked (not side-by-side) inside the narrower
    right-hand column.
    ===================================================================== */
 .revisions-section-panel > .panel { flex: 0 0 auto; width: 100%; }
-.revisions-section-panel .revisions-compare-bar {
-  flex-direction: row;
-  align-items: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.revisions-section-panel .revisions-compare-arrow { display: inline-flex; }
 .revisions-list-panel,
 .revisions-diff-panel {
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+.revisions-diff-panel[hidden] {
+  display: none;
 }
 .revisions-hint {
   margin: -10px 0 16px;
@@ -2504,7 +2899,6 @@ body.hide-signature-templates-panel .templates-panel {
   line-height: 1.5;
 }
 
-.history-panel { position: relative; }
 .history-actions {
   display: flex;
   gap: 10px;
@@ -2747,18 +3141,30 @@ body.hide-signature-templates-panel .templates-panel {
 }
 
 
-.revisions-compare-bar {
+/* The two revisions being compared, in the compare sheet's own header: the
+   sheet slides over the column the selects used to live in, so leaving them
+   behind meant closing the results just to compare a different pair. */
+.revisions-compare-header {
   display: flex;
   align-items: flex-end;
   gap: 10px;
+  flex: 0 0 auto;
   flex-wrap: wrap;
-  margin-bottom: 18px;
-  padding: 14px;
+  padding: 12px 24px 14px;
   background: var(--cream);
-  border: 1px solid var(--ice);
-  border-radius: var(--radius-m);
+  border-bottom: 1px solid var(--ice);
 }
-.revisions-compare-bar[hidden] { display: none; }
+.revisions-compare-header[hidden] { display: none; }
+.revisions-compare-header .revisions-compare-select { flex: 1 1 120px; }
+.revisions-compare-header .revisions-compare-select select { width: 100%; }
+.revisions-compare-swap {
+  margin-bottom: 3px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
 .revisions-compare-select { display: flex; flex-direction: column; gap: 4px; }
 .revisions-compare-select label {
   font-size: 0.7rem;
@@ -2776,12 +3182,6 @@ body.hide-signature-templates-panel .templates-panel {
   border-radius: var(--radius-s);
   background: #fff;
   color: var(--navy);
-}
-.revisions-compare-arrow {
-  padding-bottom: 9px;
-  font-weight: 700;
-  color: var(--ice);
-  font-size: 1.1rem;
 }
 
 .revisions-diff-results { display: flex; flex-direction: column; gap: 18px; }
@@ -2884,10 +3284,6 @@ body.hide-signature-templates-panel .templates-panel {
 .diff-object-chip.chip-removed { border-left-color: var(--coral); }
 .diff-object-chip.chip-removed .diff-object-ref { color: var(--coral-dark); text-decoration: line-through; }
 .diff-object-chip.chip-modified { border-left-color: var(--ice); }
-.diff-object-chip.is-previewable {
-  cursor: pointer;
-}
-.diff-object-chip.is-previewable:hover,
 .diff-object-chip.is-hovered {
   background: var(--cream);
   box-shadow: 0 0 0 3px rgba(69, 123, 157, 0.14);
@@ -2962,15 +3358,7 @@ body.hide-signature-templates-panel .templates-panel {
 .diff-dict-added { color: var(--ocean-dark); font-weight: 700; }
 .diff-dict-removed { color: var(--coral-dark); font-weight: 700; }
 
-.diff-stream-details summary { cursor: pointer; list-style: none; }
-.diff-stream-details summary::-webkit-details-marker { display: none; }
-.diff-stream-details summary::before {
-  content: '▸ ';
-  display: inline-block;
-  transition: transform 0.1s ease;
-}
-.diff-stream-details[open] summary::before { transform: rotate(90deg); }
-.diff-stream-details .diff-stream-diff { margin-top: 5px; }
+.diff-stream-size-note { font-size: 0.7rem; color: var(--ocean-dark); margin: 4px 0 0; }
 .diff-stream-diff {
   font-family: monospace;
   font-size: 0.72rem;
@@ -2990,24 +3378,161 @@ body.hide-signature-templates-panel .templates-panel {
 .diff-stream-line.diff-stream-add { background: rgba(16, 185, 129, 0.14); color: var(--ocean-dark); }
 .diff-stream-line.diff-stream-remove { background: rgba(249, 115, 22, 0.12); color: var(--coral-dark); }
 
-.diff-object-raw { margin-top: 8px; }
-.diff-object-raw summary {
+.diff-truncated-note { font-size: 0.72rem; color: var(--coral-dark); font-style: italic; margin-top: 8px; }
+
+.diff-object-preview-status {
+  margin: 6px 0 0;
+  padding: 5px 8px;
+  border-radius: var(--radius-s);
+  background: var(--cream);
+  color: var(--ocean-dark);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.diff-object-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.diff-object-actions .btn-sm {
+  font-size: 0.68rem;
+  padding: 5px 10px;
+}
+.diff-object-chip.is-unmapped {
+  opacity: 0.85;
+}
+.diff-object-chip.is-unmapped .diff-object-actions {
+  /* Only the "PDF source" button remains for an unmapped object -- nothing
+     else in the card is clickable, unlike the old whole-card click target. */
+  justify-content: flex-start;
+}
+
+/* ---------- Raw PDF objects filter row ---------- */
+.raw-object-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.raw-object-filter-search {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+.raw-object-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.raw-object-filter-chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ice);
+  background: #fff;
+  color: var(--ocean-dark);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.raw-object-filter-chip:hover { background: var(--cream); }
+.raw-object-filter-chip.is-active {
+  background: var(--ocean);
+  border-color: var(--ocean);
+  color: #fff;
+}
+.raw-object-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ocean-dark);
+  white-space: nowrap;
+}
+.raw-object-filter-no-matches { margin-top: 6px; }
+
+/* ---------- Raw PDF object inspector modal ---------- */
+.raw-object-modal-box {
+  width: min(760px, 100%);
+  max-height: min(84vh, 900px);
+  display: flex;
+  flex-direction: column;
+}
+.raw-object-modal-heading { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.raw-object-modal-heading h3 { word-break: break-word; }
+.raw-object-modal-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-right: 2px;
+}
+.raw-object-modal-section {
+  border-top: 1px solid var(--ice);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+.raw-object-modal-section:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+.raw-object-modal-section:empty { display: none; }
+.raw-object-modal-section > .diff-object-subsection:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+.raw-object-where {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--cream);
+}
+.raw-object-where-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ocean-dark);
+}
+.raw-object-source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.raw-object-source-header .diff-section-title { margin: 0; }
+.raw-object-source-header .meta-search-input { flex: 1 1 auto; max-width: 260px; }
+.raw-object-source-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.raw-object-source-col {
+  border: 1px solid var(--ice);
+  border-top-width: 3px;
+  border-radius: var(--radius-s);
+  padding: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+.raw-object-source-col-before { border-top-color: var(--coral); }
+.raw-object-source-col-after { border-top-color: var(--ocean); }
+.raw-object-source-col-title {
   font-size: 0.64rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--ocean-dark);
   opacity: 0.85;
-  cursor: pointer;
+  margin-bottom: 6px;
 }
-.diff-object-raw-value {
-  font-family: monospace;
-  font-size: 0.72rem;
-  color: var(--ocean-dark);
-  margin-top: 5px;
-  word-break: break-word;
+.diff-dict-change-help { margin-left: 4px; }
+@media (max-width: 640px) {
+  .raw-object-source-columns { grid-template-columns: 1fr; }
 }
-.diff-truncated-note { font-size: 0.72rem; color: var(--coral-dark); font-style: italic; margin-top: 8px; }
 
 .diff-object-hover-overlay {
   position: absolute;
@@ -3033,42 +3558,10 @@ body.hide-signature-templates-panel .templates-panel {
 }
 
 
-/* Visual Diff Styles */
-.revisions-view-tabs {
-  display: inline-flex;
-  gap: 3px;
-  margin-bottom: 14px;
-  padding: 4px;
-  background: var(--cream);
-  border: 1px solid var(--ice);
-  border-radius: 999px;
-}
-.revisions-view-tabs[hidden] { display: none; }
-.revisions-view-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  font-weight: 700;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ocean-dark);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-.revisions-view-tab:hover:not(.active) {
-  background: rgba(69, 123, 157, 0.12);
-  color: var(--navy);
-}
-.revisions-view-tab.active {
-  background: var(--ocean);
-  color: #fff;
-  box-shadow: 0 2px 6px rgba(69, 123, 157, 0.35);
-}
-
+/* ---------- Pill tab bars ----------
+   The Signatures panel's field-type switch and the compare sheet's view
+   switch are the same control; only the active colour differs. */
+.revisions-view-tabs,
 .field-type-tabs {
   display: flex;
   gap: 3px;
@@ -3078,6 +3571,8 @@ body.hide-signature-templates-panel .templates-panel {
   border: 1px solid var(--ice);
   border-radius: 999px;
 }
+.revisions-view-tabs[hidden] { display: none; }
+.revisions-view-tab,
 .field-type-tab {
   flex: 1 1 0;
   display: inline-flex;
@@ -3095,15 +3590,34 @@ body.hide-signature-templates-panel .templates-panel {
   cursor: pointer;
   transition: all var(--transition-fast);
 }
+.revisions-view-tab:hover:not(.active),
 .field-type-tab:hover:not(.active) {
   background: rgba(69, 123, 157, 0.12);
   color: var(--navy);
+}
+.revisions-view-tab.active {
+  background: var(--ocean);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(69, 123, 157, 0.35);
 }
 .field-type-tab.active {
   background: var(--coral);
   color: #fff;
   box-shadow: 0 2px 6px rgba(230, 111, 81, 0.35);
 }
+
+/* ---------- Overview tab ---------- */
+.revisions-diff-overview { display: flex; flex-direction: column; gap: 16px; }
+.revisions-diff-overview[hidden] { display: none; }
+.diff-verdict-note { margin: 0; font-size: 0.78rem; color: var(--ocean-dark); }
+
+/* Jumped to from an Overview checklist row -- a brief flash is what says
+   "here it is" after the tab switch. */
+@keyframes diffSectionFlash {
+  from { background: rgba(230, 111, 81, 0.16); }
+  to { background: transparent; }
+}
+.diff-section.is-flashed { animation: diffSectionFlash 1.1s ease-out; }
 
 .visual-diff-panel {
   display: flex;
@@ -3135,11 +3649,51 @@ body.hide-signature-templates-panel .templates-panel {
   font-weight: 700;
   color: var(--navy);
 }
+.visual-diff-mode-select label.is-disabled { opacity: 0.45; }
 
 .visual-diff-page-nav .icon-btn { min-width: 26px; min-height: 26px; }
 
-@media (max-width: 960px) {
-  .revisions-workspace { flex-direction: column; }
+/* Replaces an inline style attribute that sat on the colour picker. */
+.visual-diff-select {
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--navy);
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 6px;
+}
+.visual-diff-select:disabled { opacity: 0.45; }
+
+.visual-diff-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ocean-dark);
+  line-height: 1.5;
+}
+
+/* What the marks on the page mean, and how many of them there are. */
+.visual-diff-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+.visual-diff-legend:empty { display: none; }
+.visual-diff-legend-note { color: var(--ocean-dark); font-weight: 600; }
+.visual-diff-swatch {
+  width: 22px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid rgba(30, 33, 51, 0.12);
+}
+.visual-diff-swatch.is-outline {
+  background: rgba(69, 123, 157, 0.1);
+  border: 1px dashed var(--ocean);
 }
 
 /* ---------- Revision checklist ("What changed") ---------- */
@@ -3148,7 +3702,12 @@ body.hide-signature-templates-panel .templates-panel {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+/* At bottom-sheet widths the hint just crowds the title. */
+@media (max-width: 480px) {
+  .revision-checklist-head .diff-empty-note { display: none; }
 }
 .revision-checklist {
   display: grid;
@@ -3167,6 +3726,16 @@ body.hide-signature-templates-panel .templates-panel {
   background: #fff;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
+/* A changed row is a button into the tab that can show the change. */
+button.revision-check-item {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.revision-check-item:focus-visible {
+  outline: 2px solid var(--ocean);
+  outline-offset: 2px;
+}
 .revision-check-icon { font-size: 0.85rem; line-height: 1; }
 .revision-check-label { font-weight: 700; font-size: 0.78rem; color: var(--navy); flex: 1 1 auto; min-width: 0; }
 .revision-check-detail {
@@ -3182,27 +3751,6 @@ body.hide-signature-templates-panel .templates-panel {
 .revision-check-item.is-changed .revision-check-icon { color: var(--coral-dark); }
 .revision-check-item.is-changed:hover { box-shadow: 0 2px 8px rgba(230, 57, 70, 0.14); transform: translateY(-1px); }
 .revision-check-item.is-unchanged:hover { box-shadow: 0 2px 8px rgba(30, 33, 51, 0.08); transform: translateY(-1px); }
-
-/* Condensed pill version shown in the Visual Page Diff toolbar. */
-.revision-checklist-mini {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.revision-check-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  border: 1px solid var(--ice);
-  background: #fff;
-  color: var(--navy);
-}
-.revision-check-chip.is-unchanged { color: var(--success-dark); }
-.revision-check-chip.is-changed { border-color: var(--coral); color: var(--coral-dark); background: rgba(230, 57, 70, 0.05); }
 
 /* ---------- Revision integrity / correctness check ---------- */
 .revision-integrity {

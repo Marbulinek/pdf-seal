@@ -351,3 +351,188 @@ describe('PdfRevisionTool.diffSnapshotBytes', () => {
     expect(contentDetail.previewMode).toBe('visual-page');
   });
 });
+
+describe('PdfRevisionTool.diffSnapshotBytes -- previewMode / noPreviewReason', () => {
+  it('gives a widget with a /Rect on a known page previewMode "rects" and no noPreviewReason', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.create();
+    after.addPage();
+    after.addSignatureField(0, 'signature1', { x: 10, y: 10, width: 150, height: 50 });
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    const widget = diff.objectChanges.addedDetails.find((d: any) => d.category === 'Signature' && d.fieldName === 'signature1');
+    expect(widget).toBeTruthy();
+    expect(widget.page).toBe(0);
+    expect(widget.previewMode).toBe('rects');
+    expect(widget.noPreviewReason).toBeNull();
+  });
+
+  it('gives a re-encoded but decoded-identical content stream previewMode "none" and reason "renders-identically"', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const pdfDocBefore: any = (before as any).pdfDoc;
+    const contextBefore = pdfDocBefore.context;
+    const pageBefore = pdfDocBefore.getPages()[0];
+    const text = '50 400 100 30 re f\n';
+    const beforeStreamRef = contextBefore.register(contextBefore.stream(text, {}));
+    pageBefore.node.set(PDFName.of('Contents'), beforeStreamRef);
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    const pdfDocAfter: any = (after as any).pdfDoc;
+    const contextAfter = pdfDocAfter.context;
+    const pageAfter = pdfDocAfter.getPages()[0];
+    const existingContentsRef = pageAfter.node.get(PDFName.of('Contents'));
+    // Same decoded text, re-written through a Flate-encoded stream so the
+    // dict itself (Filter, @rawByteLength) differs even though nothing
+    // about what actually renders has changed.
+    contextAfter.assign(existingContentsRef, contextAfter.flateStream(text, {}));
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    const contentDetail = diff.objectChanges.modifiedDetails.find((d: any) => d.category === 'Page Content');
+    expect(contentDetail).toBeTruthy();
+    expect(contentDetail.streamDiff.contentUnchanged).toBe(true);
+    expect(contentDetail.previewMode).toBe('none');
+    expect(contentDetail.noPreviewReason).toBe('renders-identically');
+  });
+
+  it('gives a content stream with a genuine, non-geometric change previewMode "visual-page"', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    // Stabilizer: give the document a real AcroForm up front, so
+    // getSignatureInfo() below doesn't lazily create one independently (and
+    // at a different object number) on each side of the diff.
+    before.addTextField(0, 'stabilizer', {});
+    const pdfDocBefore: any = (before as any).pdfDoc;
+    const contextBefore = pdfDocBefore.context;
+    const pageBefore = pdfDocBefore.getPages()[0];
+    const beforeStreamRef = contextBefore.register(contextBefore.stream('q\n0 0 0 rg\nQ\n', {}));
+    pageBefore.node.set(PDFName.of('Contents'), beforeStreamRef);
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    const pdfDocAfter: any = (after as any).pdfDoc;
+    const contextAfter = pdfDocAfter.context;
+    const pageAfter = pdfDocAfter.getPages()[0];
+    const existingContentsRef = pageAfter.node.get(PDFName.of('Contents'));
+    // Fill color changes -- a real content change, but not one that the
+    // rect/line/text operator extraction in extractRectsFromStreamDiff can
+    // turn into a precise on-page rect. A different length than the
+    // "before" text so the object dict itself registers as changed.
+    contextAfter.assign(existingContentsRef, contextAfter.stream('q\n0.3 0.3 0.3 rg\nQ\n', {}));
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    const contentDetail = diff.objectChanges.modifiedDetails.find((d: any) => d.category === 'Page Content');
+    expect(contentDetail).toBeTruthy();
+    expect(contentDetail.streamDiff.contentUnchanged).toBe(false);
+    expect(contentDetail.rects).toEqual([]);
+    expect(contentDetail.previewMode).toBe('visual-page');
+    expect(contentDetail.noPreviewReason).toBeNull();
+  });
+
+  it('gives a document-level object (XMP metadata) previewMode "none" and reason "document-level"', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    // Stabilizer -- see comment in the "visual-page" test above.
+    before.addTextField(0, 'stabilizer', {});
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    const pdfDocAfter: any = (after as any).pdfDoc;
+    const contextAfter = pdfDocAfter.context;
+    const xmpRef = contextAfter.register(
+      contextAfter.stream('<x:xmpmeta>after</x:xmpmeta>', { Type: 'Metadata', Subtype: 'XML' }),
+    );
+    pdfDocAfter.catalog.set(PDFName.of('Metadata'), xmpRef);
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    const xmpDetail = diff.objectChanges.addedDetails.find((d: any) => d.category === 'XMP Metadata');
+    expect(xmpDetail).toBeTruthy();
+    expect(xmpDetail.page).toBeNull();
+    expect(xmpDetail.previewMode).toBe('none');
+    expect(xmpDetail.noPreviewReason).toBe('document-level');
+  });
+
+  it('gives an object with a /Rect but no resolvable page previewMode "none" and reason "page-unknown"', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    // Stabilizer -- see comment in the "visual-page" test above.
+    before.addTextField(0, 'stabilizer', {});
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    const pdfDocAfter: any = (after as any).pdfDoc;
+    const contextAfter = pdfDocAfter.context;
+    // A free-floating annotation-shaped object: it has a /Rect, but it is
+    // not attached to any page's /Annots and carries no /P -- so its page
+    // genuinely cannot be resolved.
+    const orphanRef = contextAfter.register(
+      contextAfter.obj({ Subtype: 'Square', Rect: [10, 10, 60, 40] }),
+    );
+    // Force it to actually be reachable from the trailer, so it shows up
+    // in the "after" object dump at all.
+    pdfDocAfter.catalog.set(PDFName.of('OrphanAnnot'), orphanRef);
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    const orphanDetail = diff.objectChanges.addedDetails.find(
+      (d: any) => d.rects.length > 0 && d.page === null,
+    );
+    expect(orphanDetail).toBeTruthy();
+    expect(orphanDetail.previewMode).toBe('none');
+    expect(orphanDetail.noPreviewReason).toBe('page-unknown');
+  });
+});
+
+describe('PdfRevisionTool.diffSnapshotBytes -- source dump capping', () => {
+  it('marks sourceTruncated when an object has more than 40 dictionary keys', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    // Stabilizer -- see comment in the "visual-page" preview-mode test above.
+    before.addTextField(0, 'stabilizer', {});
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    const pdfDocAfter: any = (after as any).pdfDoc;
+    const contextAfter = pdfDocAfter.context;
+    const bigDict: Record<string, string> = {};
+    for (let i = 0; i < 50; i++) bigDict[`Custom${i}`] = `value${i}`;
+    const bigRef = contextAfter.register(contextAfter.obj(bigDict));
+    pdfDocAfter.catalog.set(PDFName.of('BigCustomDict'), bigRef);
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    const bigDetail = diff.objectChanges.addedDetails.find(
+      (d: any) => d.sourceAfter && Object.keys(d.sourceAfter).length <= 41 && Object.keys(d.sourceAfter).some((k: string) => k.startsWith('Custom')),
+    );
+    expect(bigDetail).toBeTruthy();
+    expect(bigDetail.sourceTruncated).toBe(true);
+    expect(Object.keys(bigDetail.sourceAfter).length).toBeLessThanOrEqual(41);
+  });
+
+  it('marks sourceTruncated when a /Page has more than 24 /Annots entries', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    for (let i = 0; i < 30; i++) {
+      after.addTextField(0, `field${i}`, { x: 10, y: 10 + i * 5, width: 40, height: 4 });
+    }
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    const pageDetail = diff.objectChanges.modifiedDetails.find((d: any) => d.category === 'Page');
+    expect(pageDetail).toBeTruthy();
+    expect(pageDetail.sourceTruncated).toBe(true);
+    expect(Array.isArray(pageDetail.sourceAfter.Annots)).toBe(true);
+    expect(pageDetail.sourceAfter.Annots.length).toBeLessThanOrEqual(25);
+  });
+});

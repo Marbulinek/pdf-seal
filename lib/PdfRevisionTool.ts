@@ -247,6 +247,8 @@ interface RawObjectPreview {
   subtype: string | null;
   previewMode: 'rects' | 'visual-page' | 'none';
   hasVisualLocation: boolean;
+  /** Why previewMode is 'none' -- null whenever previewMode isn't 'none'. Drives the inspector's "Where it is" strip. */
+  noPreviewReason: 'renders-identically' | 'document-level' | 'no-geometry' | 'page-unknown' | null;
   /** Human-readable bucket, e.g. "Signature", "Page", "Form Field". */
   category: string;
   /** AcroForm field name this object belongs to, if any (e.g. "Signature1"). */
@@ -263,6 +265,98 @@ interface RawObjectPreview {
   streamDiff: StreamDiffResult | null;
   /** One or more of: 'structural' | 'dictionary' | 'content-stream' | 'visual-content' | 'signing'. */
   classifications: string[];
+  /** Capped `pdfValueToPlain()`-shaped dump of this object's dict/stream-meta, before the change. Null if the object didn't exist on that side. */
+  sourceBefore: any | null;
+  sourceAfter: any | null;
+  /** True if either source node had keys/array entries elided by capSourceNode(). */
+  sourceTruncated: boolean;
+}
+
+// Bounds on the raw-source dump shipped for the PDF source inspector -- this
+// list already carries up to MAX_OBJECT_DIFF_ENTRIES entries per bucket, x2
+// sides, so an uncapped dict (e.g. a /Page with hundreds of /Annots) could
+// otherwise blow the payload up badly.
+const MAX_SOURCE_KEYS = 40;
+const MAX_SOURCE_ARRAY = 24;
+const MAX_SOURCE_DEPTH = 4;
+
+/** Bound a pdfValueToPlain()-shaped node for shipping to the client: caps dict keys, array entries, and nesting depth, replacing overflow with a "… +N more" marker. Returns whether anything was actually elided. */
+function capSourceNode(node: any, depth: number = 0): { node: any; truncated: boolean } {
+  if (node === null || node === undefined) return { node: null, truncated: false };
+
+  if (Array.isArray(node)) {
+    if (depth >= MAX_SOURCE_DEPTH) return { node: '[...]', truncated: node.length > 0 };
+    let truncated = false;
+    const shown = node.slice(0, MAX_SOURCE_ARRAY).map((item) => {
+      const capped = capSourceNode(item, depth + 1);
+      if (capped.truncated) truncated = true;
+      return capped.node;
+    });
+    if (node.length > MAX_SOURCE_ARRAY) {
+      shown.push(`… +${node.length - MAX_SOURCE_ARRAY} more`);
+      truncated = true;
+    }
+    return { node: shown, truncated };
+  }
+
+  if (typeof node === 'object') {
+    if (depth >= MAX_SOURCE_DEPTH) return { node: '{...}', truncated: Object.keys(node).length > 0 };
+    let truncated = false;
+    const keys = Object.keys(node);
+    const shownKeys = keys.slice(0, MAX_SOURCE_KEYS);
+    const out: Record<string, any> = {};
+    for (const key of shownKeys) {
+      const capped = capSourceNode(node[key], depth + 1);
+      if (capped.truncated) truncated = true;
+      out[key] = capped.node;
+    }
+    if (keys.length > shownKeys.length) {
+      out['…'] = `+${keys.length - shownKeys.length} more`;
+      truncated = true;
+    }
+    return { node: out, truncated };
+  }
+
+  return { node, truncated: false };
+}
+
+/**
+ * Shared previewMode/noPreviewReason derivation for describeRawObject() and
+ * describeRemovedObject(). An object can only ever be shown one of three
+ * ways: an exact rect on a known page, a whole-page pixel diff (content
+ * streams only, and only when the decoded content actually changed), or no
+ * on-page preview at all -- in which case noPreviewReason says why, so the
+ * UI never has to guess whether a dead click is a bug.
+ */
+function resolvePreviewMode(params: {
+  rects: RawObjectRect[];
+  page: number | null;
+  streamDiff: StreamDiffResult | null;
+  /** True only for an object that IS a page's own /Contents stream -- as opposed to any other decodable stream (XMP, fonts, DSS), which has no page-rendered visuals to fall back to. */
+  isContentStream: boolean;
+}): { previewMode: RawObjectPreview['previewMode']; noPreviewReason: RawObjectPreview['noPreviewReason'] } {
+  const { rects, page, streamDiff, isContentStream } = params;
+
+  if (rects.length > 0) {
+    return page !== null
+      ? { previewMode: 'rects', noPreviewReason: null }
+      : { previewMode: 'none', noPreviewReason: 'page-unknown' };
+  }
+
+  if (isContentStream) {
+    if (streamDiff && streamDiff.available && streamDiff.contentUnchanged) {
+      return { previewMode: 'none', noPreviewReason: 'renders-identically' };
+    }
+    return page !== null
+      ? { previewMode: 'visual-page', noPreviewReason: null }
+      : { previewMode: 'none', noPreviewReason: 'page-unknown' };
+  }
+
+  if (page !== null) {
+    return { previewMode: 'none', noPreviewReason: 'no-geometry' };
+  }
+
+  return { previewMode: 'none', noPreviewReason: 'document-level' };
 }
 
 function normalizeRect(rawRect: any): RawObjectRect | null {
@@ -872,14 +966,16 @@ function describeRawObject(
   }
 
   rects = uniqueRects(rects);
-  const previewMode = rects.length > 0
-    ? 'rects'
-    : (page !== null && contentStreamPages.has(key) ? 'visual-page' : 'none');
+  const { previewMode, noPreviewReason } = resolvePreviewMode({
+    rects, page, streamDiff, isContentStream: contentStreamPages.has(key),
+  });
 
   const fieldName = resolveFieldName(key, node, objectsB);
   const dictionaryChanges = buildDictionaryChanges(beforeNode, node);
   const classifications = classifyChanges({ dictionaryChanges, streamDiff, category, node });
   const humanName = humanObjectName(node, category, page, fieldName);
+  const beforeSource = capSourceNode(beforeNode ?? null);
+  const afterSource = capSourceNode(node ?? null);
 
   return {
     key,
@@ -889,6 +985,7 @@ function describeRawObject(
     subtype,
     previewMode,
     hasVisualLocation: previewMode !== 'none',
+    noPreviewReason,
     category: CATEGORY_LABELS[category],
     fieldName,
     changesText: formatObjectChanges(node),
@@ -897,6 +994,9 @@ function describeRawObject(
     dictionaryChanges,
     streamDiff,
     classifications,
+    sourceBefore: beforeNode == null ? null : beforeSource.node,
+    sourceAfter: node == null ? null : afterSource.node,
+    sourceTruncated: beforeSource.truncated || afterSource.truncated,
   };
 }
 
@@ -930,14 +1030,15 @@ function describeRemovedObject(
     rects = extractRectsFromStreamDiff(streamDiff);
   }
   rects = uniqueRects(rects);
-  const previewMode = rects.length > 0
-    ? 'rects'
-    : (page !== null && contentStreamPages.has(key) ? 'visual-page' : 'none');
+  const { previewMode, noPreviewReason } = resolvePreviewMode({
+    rects, page, streamDiff, isContentStream: contentStreamPages.has(key),
+  });
 
   const fieldName = resolveFieldName(key, node, objectsA);
   const dictionaryChanges = buildDictionaryChanges(node, null);
   const classifications = classifyChanges({ dictionaryChanges, streamDiff, category, node });
   const humanName = humanObjectName(node, category, page, fieldName);
+  const beforeSource = capSourceNode(node ?? null);
 
   return {
     key,
@@ -947,6 +1048,7 @@ function describeRemovedObject(
     subtype,
     previewMode,
     hasVisualLocation: previewMode !== 'none',
+    noPreviewReason,
     category: CATEGORY_LABELS[category],
     fieldName,
     changesText: formatObjectChanges(node),
@@ -955,6 +1057,9 @@ function describeRemovedObject(
     dictionaryChanges,
     streamDiff,
     classifications,
+    sourceBefore: node == null ? null : beforeSource.node,
+    sourceAfter: null,
+    sourceTruncated: beforeSource.truncated,
   };
 }
 
