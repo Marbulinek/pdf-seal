@@ -556,10 +556,12 @@ export function encodedName(name: any): Buffer | null {
 /* ---------------------------------------------------------------------------
    Public API
    ------------------------------------------------------------------------ */
-
 export function certificateFingerprints(der: Uint8Array): { sha1: string; sha256: string } {
   const buf = Buffer.from(der);
   return {
+    // codeql[js/weak-cryptographic-algorithm]: SHA-1 is intentionally used only
+    // as a legacy X.509 certificate fingerprint for identification/display.
+    // It is not used for security, integrity, authentication, trust, or signature validation.
     sha1: createHash('sha1').update(buf).digest('hex'),
     sha256: createHash('sha256').update(buf).digest('hex'),
   };
