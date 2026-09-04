@@ -560,6 +560,14 @@ class PdfSignatureTool {
     const pages = this.pdfDoc.getPages();
     const context = this.pdfDoc.context;
 
+    const signedFieldNames = new Set<string>();
+    for (const field of form.getFields()) {
+      const dict = field.acroField.dict;
+      const ft = dict.lookup(PDFName.of('FT'));
+      if (!ft || ft.toString() !== '/Sig') continue;
+      if (dict.lookup(PDFName.of('V')) instanceof PDFDict) signedFieldNames.add(field.getName());
+    }
+
     return form.getFields().map((field: any) => {
       const widgets = field.acroField.getWidgets();
       const widget = widgets[0];
@@ -596,6 +604,11 @@ class PdfSignatureTool {
         required: typeof field.isRequired === 'function' ? field.isRequired() : false,
         readOnly: typeof field.isReadOnly === 'function' ? field.isReadOnly() : false,
         multiline: typeof field.isMultiline === 'function' ? field.isMultiline() : false,
+        // A /Sig field carrying a populated /V has actually been signed, as
+        // opposed to the empty placeholders this app creates. The UI uses this
+        // to lock the field: moving or resizing a signed field's /Rect changes
+        // bytes the signature covers and would corrupt it.
+        signed: signedFieldNames.has(name),
         tooltip: this._getRawString(field.acroField.dict, 'TU'),
         page: pageIndex,
         rect,
@@ -640,6 +653,179 @@ class PdfSignatureTool {
       });
     }
     return out;
+  }
+
+  /**
+   * Like getSignatureInfo(), but for the certificate machinery: the values
+   * here stay in their raw form instead of going through pdfValueToPlain().
+   *
+   * That matters because pdfValueToPlain() runs PDFHexString through
+   * decodeText(), which is lossy -- fine for a human-readable summary, useless
+   * for the DER in /Cert. /Contents is deliberately *not* read here at all:
+   * PdfCertificateExtractor slices it straight out of the file bytes using the
+   * offsets /ByteRange implies, which is the only way to get those bytes back
+   * exactly as they were written.
+   *
+   * @returns {Array<object>} one entry per signed signature field
+   */
+  getSignatureDictionaries() {
+    const form = this.pdfDoc.getForm();
+    const context = this.pdfDoc.context;
+    const out: any[] = [];
+
+    for (const field of form.getFields()) {
+      const dict = field.acroField.dict;
+      const ft = dict.lookup(PDFName.of('FT'));
+      if (!ft || ft.toString() !== '/Sig') continue;
+
+      const vDict = dict.lookup(PDFName.of('V'));
+      if (!vDict || !(vDict instanceof PDFDict)) continue;
+
+      const byteRangeRaw = vDict.lookup(PDFName.of('ByteRange'));
+      let byteRange: number[] | null = null;
+      if (byteRangeRaw instanceof PDFArray) {
+        const numbers: number[] = [];
+        for (let i = 0; i < byteRangeRaw.size(); i++) {
+          const entry = byteRangeRaw.lookup(i);
+          if (entry instanceof PDFNumber) numbers.push(entry.asNumber());
+        }
+        if (numbers.length === byteRangeRaw.size()) byteRange = numbers;
+      }
+
+      // /Cert is one certificate or an array of them (adbe.x509.rsa_sha1).
+      const certRaw = vDict.lookup(PDFName.of('Cert'));
+      const certDer: Uint8Array[] = [];
+      const pushCert = (value: any) => {
+        if (value instanceof PDFHexString || value instanceof PDFString) {
+          const bytes = value.asBytes();
+          if (bytes.length > 0) certDer.push(bytes);
+        }
+      };
+      if (certRaw instanceof PDFArray) {
+        for (let i = 0; i < certRaw.size(); i++) pushCert(certRaw.lookup(i));
+      } else {
+        pushCert(certRaw);
+      }
+
+      // A DocMDP transform marks a certifying signature and states how much
+      // later modification it permits (/P 1, 2 or 3).
+      let docMdpLevel: number | null = null;
+      const referenceRaw = vDict.lookup(PDFName.of('Reference'));
+      if (referenceRaw instanceof PDFArray) {
+        for (let i = 0; i < referenceRaw.size(); i++) {
+          const entry = referenceRaw.lookup(i);
+          if (!(entry instanceof PDFDict)) continue;
+          const method = entry.lookup(PDFName.of('TransformMethod'));
+          if (!method || method.toString() !== '/DocMDP') continue;
+          const params = entry.lookup(PDFName.of('TransformParams'));
+          if (params instanceof PDFDict) {
+            const p = params.lookup(PDFName.of('P'));
+            if (p instanceof PDFNumber) docMdpLevel = p.asNumber();
+          }
+        }
+      }
+
+      const widgets = field.acroField.getWidgets();
+      let pageIndex: number | null = null;
+      if (widgets[0]) {
+        try {
+          pageIndex = this.pdfDoc.getPages().indexOf(form.findWidgetPage(widgets[0]));
+        } catch (_e) {
+          pageIndex = null;
+        }
+      }
+
+      const signatureRef = context.getObjectRef(vDict);
+
+      out.push({
+        fieldName: field.getName(),
+        page: pageIndex,
+        filter: this._getRawName(vDict, 'Filter'),
+        subFilter: this._getRawName(vDict, 'SubFilter'),
+        name: this._getTextValue(vDict, 'Name'),
+        reason: this._getTextValue(vDict, 'Reason'),
+        location: this._getTextValue(vDict, 'Location'),
+        contactInfo: this._getTextValue(vDict, 'ContactInfo'),
+        signingTime: this._getRawDate(vDict, 'M'),
+        byteRange,
+        certDer,
+        docMdpLevel,
+        objectRef: signatureRef ? signatureRef.toString() : null,
+      });
+    }
+
+    return out;
+  }
+
+  /**
+   * The Document Security Store: the certificates (and per-signature VRI
+   * groupings) a PAdES long-term-validation file carries outside the signature
+   * blobs themselves, so a verifier can still build the chain years later.
+   *
+   * Absent from most signed PDFs; returns empty structures when there is none.
+   *
+   * @returns {{certs: Array<{objectRef: ?string, bytes: Uint8Array}>, vri: Array<{key: string, certRefs: string[]}>}}
+   */
+  getDocumentSecurityStore() {
+    const empty = { certs: [] as any[], vri: [] as any[] };
+    const catalog = this.pdfDoc.catalog;
+    if (!catalog) return empty;
+
+    const dss = catalog.lookup(PDFName.of('DSS'));
+    if (!(dss instanceof PDFDict)) return empty;
+
+    const readCertArray = (array: any): Array<{ objectRef: string | null; bytes: Uint8Array }> => {
+      const found: Array<{ objectRef: string | null; bytes: Uint8Array }> = [];
+      if (!(array instanceof PDFArray)) return found;
+      for (let i = 0; i < array.size(); i++) {
+        const ref = array.get(i);
+        const stream = array.lookup(i);
+        if (!(stream instanceof PDFStream)) continue;
+        try {
+          const bytes =
+            stream instanceof PDFRawStream
+              ? decodePDFRawStream(stream).decode()
+              : stream.getContents();
+          if (bytes && bytes.length > 0) {
+            found.push({
+              objectRef: ref instanceof PDFRef ? ref.toString() : null,
+              bytes: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes),
+            });
+          }
+        } catch (_e) {
+          // A stream we cannot decode is skipped rather than failing the whole
+          // document -- the signature blobs are the primary source anyway.
+        }
+      }
+      return found;
+    };
+
+    const certs = readCertArray(dss.lookup(PDFName.of('Certs')));
+
+    // /VRI maps the uppercase hex SHA-1 of each signature's /Contents to the
+    // validation material for that one signature.
+    const vri: Array<{ key: string; certRefs: string[] }> = [];
+    const vriDict = dss.lookup(PDFName.of('VRI'));
+    if (vriDict instanceof PDFDict) {
+      for (const [key, value] of vriDict.entries()) {
+        const entry = vriDict.context.lookup(value);
+        if (!(entry instanceof PDFDict)) continue;
+        const certArray = entry.get(PDFName.of('Cert'));
+        const refs: string[] = [];
+        const resolved = entry.lookup(PDFName.of('Cert'));
+        if (resolved instanceof PDFArray) {
+          for (let i = 0; i < resolved.size(); i++) {
+            const ref = resolved.get(i);
+            if (ref instanceof PDFRef) refs.push(ref.toString());
+          }
+        } else if (certArray instanceof PDFRef) {
+          refs.push(certArray.toString());
+        }
+        vri.push({ key: key.toString().slice(1).toUpperCase(), certRefs: refs });
+      }
+    }
+
+    return { certs, vri };
   }
 
   /**
@@ -1266,6 +1452,50 @@ class PdfSignatureTool {
 
     // Properly unwrap PDFString object formats without breaking literal brackets
     return typeof value.value === 'function' ? value.value() : value.toString().replace(/^\(|\)$/g, '');
+  }
+
+  /**
+   * Text value of a string entry, or null when it is absent or unreadable.
+   *
+   * Separate from _getRawString(), which returns undefined and is shaped around
+   * the raw-properties table. The certificate code wants a plain `string|null`
+   * and wants decodeText() rather than a toString() with the parens trimmed.
+   */
+  _getTextValue(dict: any, key: string): string | null {
+    if (!dict || !dict.has(PDFName.of(key))) return null;
+    const value = dict.lookup(PDFName.of(key));
+    if (!(value instanceof PDFString) && !(value instanceof PDFHexString)) return null;
+    try {
+      return value.decodeText();
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  /** Name entry (e.g. /SubFilter) without its leading slash, or null. */
+  _getRawName(dict: any, key: string): string | null {
+    if (!dict || !dict.has(PDFName.of(key))) return null;
+    const value = dict.lookup(PDFName.of(key));
+    if (!(value instanceof PDFName)) return null;
+    try {
+      return value.decodeText();
+    } catch (_e) {
+      return value.toString().slice(1);
+    }
+  }
+
+  /** PDF date entry (e.g. /M) as an ISO-8601 string, or null. */
+  _getRawDate(dict: any, key: string): string | null {
+    if (!dict || !dict.has(PDFName.of(key))) return null;
+    const value = dict.lookup(PDFName.of(key));
+    if (!(value instanceof PDFString) && !(value instanceof PDFHexString)) return null;
+    try {
+      const date = value.decodeDate();
+      return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
+    } catch (_e) {
+      // A malformed date is reported as absent rather than guessed at.
+      return null;
+    }
   }
 
   _getRawDictEntries(dict: any) {

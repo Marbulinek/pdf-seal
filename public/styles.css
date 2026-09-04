@@ -10,6 +10,14 @@
   --bg: #fdfcf8;
   --success: #2a9d8f;
   --success-dark: #1f766e;
+  /* Warnings need their own colour: --coral is reserved for genuine failure,
+     and using it for "worth a look" would overstate every warning the
+     Certificates panel raises -- the opposite of that feature's point. */
+  --amber: #e9a23b;
+  --amber-dark: #b87a1c;
+  /* Referenced by the pill-tab and template-grip transitions but never
+     declared, which made those declarations invalid and killed the animation. */
+  --transition-fast: 0.15s ease;
   --radius-s: 8px;
   --radius-m: 12px;
   --radius-l: 18px;
@@ -2800,6 +2808,12 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   min-height: 0;
   overflow-y: auto;
   padding: 18px 24px 6px;
+  /* Lets the certificate tab strip react to the sheet's own width rather than
+     the viewport's -- the sheet is narrowest at desktop column widths, a band
+     no viewport media query covers. Inline-size containment only affects
+     inline-direction sizing, so the block-direction scrolling above is unaffected. */
+  container-type: inline-size;
+  container-name: sheet-body;
 }
 .edit-sheet-body::-webkit-scrollbar { width: 10px; }
 .edit-sheet-body::-webkit-scrollbar-track { background: transparent; }
@@ -2934,6 +2948,9 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   font-weight: 600;
   font-size: 0.85rem;
 }
+/* Load-bearing: the display above would otherwise beat the hidden attribute,
+   the same way .section-panel[hidden] has to restate it. */
+.panel-loading[hidden] { display: none; }
 .revisions-loading[hidden],
 .revisions-diff-loading[hidden] { display: none !important; }
 
@@ -3575,6 +3592,7 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 .revisions-view-tab,
 .field-type-tab {
   flex: 1 1 0;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4137,4 +4155,611 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 .template-import-name {
   flex: 1; min-width: 0; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ==========================================================================
+   Certificates section
+   ==========================================================================
+   Status is carried by one modifier set used everywhere -- chain nodes, list
+   rows, badges, check rows -- so a certificate reads the same wherever it
+   appears. Colour is never the only signal: every state also carries a glyph
+   and a word, because "is something wrong?" has to survive being printed in
+   greyscale or read by someone who cannot separate red from green.
+   -------------------------------------------------------------------------- */
+
+.cert-hint {
+  margin: -8px 0 16px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ocean-dark);
+}
+
+/* ---------- Status vocabulary ---------- */
+.cert-status-dot {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  font-size: 0.7rem; font-weight: 700; line-height: 1;
+  color: #fff;
+}
+.is-pass    > .cert-status-dot, .cert-status-dot.is-pass    { background: var(--success); }
+.is-warn    > .cert-status-dot, .cert-status-dot.is-warn    { background: var(--amber); }
+.is-fail    > .cert-status-dot, .cert-status-dot.is-fail    { background: var(--coral); }
+.is-unknown > .cert-status-dot, .cert-status-dot.is-unknown { background: transparent; color: var(--ocean); border: 1.5px dashed var(--ocean); }
+
+.cert-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.7rem; font-weight: 700;
+  white-space: nowrap;
+}
+.cert-badge.is-pass    { background: rgba(42, 157, 143, 0.14); color: var(--success-dark); }
+.cert-badge.is-warn    { background: rgba(233, 162, 59, 0.18); color: var(--amber-dark); }
+.cert-badge.is-fail    { background: rgba(230, 57, 70, 0.13);  color: var(--coral-dark); }
+.cert-badge.is-unknown { background: rgba(69, 123, 157, 0.12); color: var(--ocean-dark); }
+
+/* ---------- Trust banner: always present, never dismissible ---------- */
+.cert-trust-banner {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: rgba(233, 162, 59, 0.1);
+  border: 1.5px solid rgba(233, 162, 59, 0.45);
+  border-radius: var(--radius-m);
+  font-size: 0.76rem; line-height: 1.55;
+  color: var(--navy);
+}
+.cert-trust-banner[hidden] { display: none; }
+.cert-trust-banner .icon { flex: 0 0 auto; margin-top: 1px; color: var(--amber-dark); font-size: 1rem; }
+
+/* ---------- Summary ---------- */
+.cert-empty {
+  padding: 18px;
+  background: var(--cream);
+  border: 1.5px dashed var(--ice);
+  border-radius: var(--radius-m);
+  font-size: 0.82rem; line-height: 1.55;
+  color: var(--ocean-dark);
+}
+.cert-empty p { margin: 0 0 8px; }
+.cert-empty p:last-child { margin-bottom: 0; }
+.cert-empty-error { border-color: rgba(230, 57, 70, 0.5); background: rgba(230, 57, 70, 0.06); color: var(--coral-dark); }
+
+.cert-stat-row { display: flex; gap: 10px; margin-bottom: 10px; }
+.cert-stat {
+  flex: 1 1 0;
+  padding: 8px 11px;
+  background: var(--cream);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-m);
+}
+.cert-stat-value { font-size: 1.05rem; font-weight: 700; line-height: 1.1; color: var(--navy); }
+.cert-stat-label { margin-top: 2px; font-size: 0.68rem; font-weight: 600; color: var(--ocean-dark); }
+
+.cert-headline {
+  margin: 0 0 10px;
+  font-size: 0.8rem; line-height: 1.55; font-weight: 600;
+  color: var(--navy);
+}
+
+.cert-copy-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+
+.cert-filter-bar { margin-bottom: 10px; }
+.cert-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.cert-filter-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px;
+  font-size: 0.7rem; font-weight: 600;
+  color: var(--ocean-dark);
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.cert-filter-chip.is-active { opacity: 1; }
+.cert-filter-chip.is-fail.is-active    { border-color: var(--coral); }
+.cert-filter-chip.is-warn.is-active    { border-color: var(--amber); }
+.cert-filter-chip.is-pass.is-active    { border-color: var(--success); }
+.cert-filter-chip.is-unknown.is-active { border-color: var(--ocean); }
+.cert-filter-chip-count { color: var(--navy); }
+.cert-filter-search-row { display: flex; gap: 8px; align-items: center; }
+.cert-filter-search {
+  flex: 1 1 auto;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--navy);
+}
+.cert-filter-search:focus { outline: none; border-color: var(--ocean); }
+
+.cert-status-list { display: flex; flex-direction: column; gap: 7px; }
+.cert-status-row {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 9px 11px;
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-left-width: 3px;
+  border-radius: var(--radius-s);
+  font-size: 0.79rem; line-height: 1.45;
+  color: var(--navy);
+  /* Reuses the existing keyframe; the stagger makes the list read top-down as
+     it lands rather than appearing all at once. */
+  animation: fadeInUp 0.32s ease both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+.cert-status-row.is-pass    { border-left-color: var(--success); }
+.cert-status-row.is-warn    { border-left-color: var(--amber); }
+.cert-status-row.is-fail    { border-left-color: var(--coral); }
+.cert-status-row.is-unknown { border-left-color: var(--ocean); border-left-style: dashed; }
+.cert-status-label { font-weight: 700; }
+.cert-status-detail { color: var(--ocean-dark); }
+
+/* The summary's per-outcome rows are expandable -- .cert-details-block already
+   supplies the border/radius/disclosure chrome, this just adds the same
+   status-colour edge the plain rows above have. */
+.cert-status-block { border-left-width: 3px; animation: fadeInUp 0.32s ease both; animation-delay: calc(var(--i, 0) * 55ms); }
+.cert-status-block.is-pass    { border-left-color: var(--success); }
+.cert-status-block.is-warn    { border-left-color: var(--amber); }
+.cert-status-block.is-fail    { border-left-color: var(--coral); }
+.cert-status-block.is-unknown { border-left-color: var(--ocean); border-left-style: dashed; }
+
+/* Compact one-line summary blocks: without an explicit font-size these rows
+   fall back to the browser default (16px) while every sibling in the panel
+   runs 0.68-0.79rem, which is what forces the wrap in a narrow column. */
+.cert-status-list .cert-details-block { margin-top: 0; }
+.cert-status-block .cert-details-summary { padding: 6px 9px; }
+.cert-status-block .cert-status-label { font-size: 0.79rem; }
+.cert-status-block .cert-details-summary-main { gap: 6px; }
+.cert-status-block .cert-status-dot { width: 16px; height: 16px; font-size: 0.64rem; }
+.cert-status-block .cert-details-body { padding: 9px; }
+.cert-status-caption { margin: 0 0 8px; font-size: 0.72rem; line-height: 1.45; color: var(--ocean-dark); }
+
+/* ---------- Signature cards ---------- */
+.cert-signature-list, .cert-card-list { display: flex; flex-direction: column; gap: 14px; }
+
+.cert-signature-card {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-m);
+  animation: fadeInUp 0.36s ease both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+.cert-signature-head {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.cert-signature-title { font-size: 0.92rem; font-weight: 700; color: var(--navy); }
+.cert-signature-head .cert-badge { margin-left: auto; }
+.cert-signature-meta {
+  margin: 0 0 12px;
+  font-size: 0.75rem; line-height: 1.5;
+  color: var(--ocean-dark);
+}
+.cert-signature-meta strong { color: var(--navy); font-weight: 600; }
+
+.cert-bytemap { margin: 10px 0 14px; display: flex; flex-direction: column; gap: 7px; }
+.cert-bytemap-row { display: flex; align-items: center; gap: 9px; }
+.cert-bytemap-label { flex: 0 0 auto; width: 84px; font-size: 0.68rem; font-weight: 600; color: var(--ocean-dark); }
+.cert-bytemap-bar {
+  flex: 1 1 auto;
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--ice);
+  border: 1px solid var(--ice);
+}
+.cert-bytemap-seg { height: 100%; min-width: 1px; }
+.cert-bytemap-seg.is-signed    { background: var(--success); }
+.cert-bytemap-seg.is-gap       { background: var(--amber); }
+.cert-bytemap-seg.is-trailing  { background: var(--coral); }
+.cert-bytemap-seg.is-occupied  { background: var(--ocean); }
+.cert-bytemap-seg.is-headroom  { background: var(--ice); }
+.cert-bytemap-note { margin: -2px 0 0; font-size: 0.7rem; color: var(--coral-dark); }
+
+/* ---------- Chain ---------- */
+.cert-chain { list-style: none; margin: 0; padding: 0; }
+.cert-chain-node {
+  position: relative;
+  padding-left: calc(var(--depth, 0) * 20px);
+  margin-bottom: 8px;
+  animation: fadeInUp 0.34s ease both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+.cert-chain-node:last-child { margin-bottom: 0; }
+
+/* Every chain node is an only child, so one L-shaped connector per node is
+   enough: it drops out of the parent card's bottom edge and elbows over into
+   this node's status dot. No full-height rail needed. */
+.cert-chain-node:not(:first-child)::before {
+  content: ''; position: absolute; top: -8px; height: 28px; width: 8px;
+  left: calc((var(--depth, 1) - 1) * 20px + 12px);
+  border-left: 2px solid var(--ice);
+  border-bottom: 2px solid var(--ice);
+  border-bottom-left-radius: 6px;
+}
+
+/* The "Other certificates" list is a flat set of siblings -- no connectors. */
+.cert-chain.is-flat .cert-chain-node::before { content: none; }
+
+.cert-node-body {
+  display: flex; align-items: flex-start; gap: 9px;
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-left-width: 3px;
+  border-radius: var(--radius-s);
+  font-family: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+button.cert-node-body:hover {
+  transform: translateX(2px);
+  border-color: var(--ocean);
+  box-shadow: 0 2px 10px rgba(29, 53, 87, 0.08);
+}
+button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-offset: 2px; }
+.cert-chain-node.is-pass    > .cert-node-body { border-left-color: var(--success); }
+.cert-chain-node.is-warn    > .cert-node-body { border-left-color: var(--amber); }
+.cert-chain-node.is-fail    > .cert-node-body { border-left-color: var(--coral); }
+.cert-chain-node.is-unknown > .cert-node-body { border-left-color: var(--ocean); }
+.cert-chain-node.is-selected > .cert-node-body {
+  border-color: var(--ocean);
+  background: rgba(69, 123, 157, 0.06);
+}
+.cert-chain-node.is-root > .cert-node-body {
+  border-top-color: var(--ocean);
+  border-right-color: var(--ocean);
+  border-bottom-color: var(--ocean);
+}
+
+.cert-node-text { flex: 1; min-width: 0; }
+.cert-node-name {
+  font-size: 0.83rem; font-weight: 700; color: var(--navy);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cert-node-role { font-size: 0.7rem; font-weight: 600; color: var(--ocean-dark); }
+.cert-node-detail { margin-top: 2px; font-size: 0.7rem; color: var(--ocean-dark); }
+
+/* The signature itself, sitting at the bottom of the tree below its signer certificate. */
+.cert-chain-node.is-signature > .cert-node-body {
+  background: var(--cream);
+  border-left-color: var(--coral);
+}
+
+/* A gap in the chain has to be legible without reading the label. */
+.cert-chain-node.is-missing > .cert-node-body {
+  border-style: dashed;
+  border-left-style: dashed;
+  border-color: var(--amber);
+  cursor: default;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(233, 162, 59, 0.07) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+/* Jumped to from the Signatures section -- the same brief flash the revisions
+   Overview checklist uses to say "here it is". */
+.cert-chain-node.is-flashed > .cert-node-body,
+.cert-signature-card.is-flashed { animation: diffSectionFlash 1.1s ease-out; }
+
+.cert-chain-heading {
+  margin: 0 0 8px;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ocean-dark);
+}
+
+/* ---------- Certificate sheet ---------- */
+.cert-tab-panel[hidden] { display: none; }
+.cert-tab-panel { animation: fadeInUp 0.26s ease both; }
+
+.cert-section { margin-bottom: 18px; }
+.cert-section:last-child { margin-bottom: 0; }
+.cert-section-title {
+  margin: 0 0 8px;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ocean-dark);
+}
+.cert-field-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.cert-field-table th,
+.cert-field-table td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--ice);
+  text-align: left;
+  vertical-align: top;
+}
+.cert-field-table th {
+  width: 38%;
+  font-weight: 600;
+  color: var(--ocean-dark);
+  white-space: nowrap;
+}
+.cert-field-table td { color: var(--navy); word-break: break-word; }
+.cert-field-table tr:last-child th,
+.cert-field-table tr:last-child td { border-bottom: none; }
+.cert-mono { font-family: var(--font-mono); font-size: 0.72rem; word-break: break-all; }
+.cert-copyable { cursor: pointer; }
+.cert-copyable:hover { color: var(--ocean); }
+.cert-absent { color: var(--ocean-dark); opacity: 0.7; font-style: italic; }
+
+/* A lifetime bar reads faster than two dates: how much is used up, at a glance. */
+.cert-validity-bar {
+  position: relative;
+  height: 6px;
+  margin: 8px 0 5px;
+  background: var(--ice);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.cert-validity-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--success); }
+.cert-validity-fill.is-warn { background: var(--amber); }
+.cert-validity-fill.is-fail { background: var(--coral); }
+.cert-validity-legend { display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--ocean-dark); }
+
+.cert-ext-row {
+  padding: 9px 11px;
+  margin-bottom: 7px;
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  font-size: 0.76rem;
+}
+.cert-ext-head { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+.cert-ext-name { font-weight: 700; color: var(--navy); }
+.cert-ext-critical {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(230, 57, 70, 0.12);
+  color: var(--coral-dark);
+  font-size: 0.64rem; font-weight: 700;
+}
+.cert-ext-value { color: var(--ocean-dark); line-height: 1.5; word-break: break-word; }
+
+.cert-check-row {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 10px 11px;
+  margin-bottom: 7px;
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-left-width: 3px;
+  border-radius: var(--radius-s);
+}
+.cert-check-row.is-pass    { border-left-color: var(--success); }
+.cert-check-row.is-warn    { border-left-color: var(--amber); }
+.cert-check-row.is-fail    { border-left-color: var(--coral); }
+.cert-check-row.is-unknown { border-left-color: var(--ocean); border-left-style: dashed; }
+.cert-check-row.is-openable { cursor: pointer; transition: border-color var(--transition-fast); }
+.cert-check-row.is-openable:hover,
+.cert-check-row.is-openable:focus-visible { border-color: var(--ocean); }
+.cert-check-row.is-openable:focus-visible { outline: 2px solid var(--ocean); outline-offset: 1px; }
+.cert-check-text { flex: 1; min-width: 0; }
+.cert-check-source { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ocean-dark); margin-bottom: 2px; }
+.cert-check-label { font-size: 0.79rem; font-weight: 700; color: var(--navy); }
+.cert-check-detail { font-size: 0.75rem; color: var(--navy); }
+.cert-check-why { margin-top: 4px; font-size: 0.72rem; line-height: 1.5; color: var(--ocean-dark); }
+
+/* ---------- "What was checked" disclosure ---------- */
+.cert-details-block {
+  margin-top: 12px;
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+.cert-details-summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 11px;
+  background: var(--cream);
+  cursor: pointer;
+  list-style: none;
+  -webkit-user-select: none; user-select: none;
+  transition: background var(--transition-fast);
+}
+.cert-details-summary::-webkit-details-marker { display: none; }
+.cert-details-summary:hover { background: var(--ice); }
+.cert-details-summary:focus-visible { outline: 2px solid var(--ocean); outline-offset: -2px; }
+.cert-details-summary-main { display: flex; align-items: center; gap: 7px; }
+.cert-details-caret {
+  display: inline-flex;
+  color: var(--ocean-dark);
+  transition: transform var(--transition-fast);
+}
+.cert-details-block[open] .cert-details-caret { transform: rotate(90deg); }
+.cert-details-summary-label { font-size: 0.79rem; font-weight: 700; color: var(--navy); }
+.cert-details-summary-total {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--ice);
+  color: var(--ocean-dark);
+  font-size: 0.68rem; font-weight: 700;
+}
+.cert-details-summary-counts { display: flex; align-items: center; gap: 5px; }
+.cert-check-count {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.68rem; font-weight: 700;
+}
+.cert-check-count.is-pass    { background: rgba(42, 157, 143, 0.14);  color: var(--success-dark); }
+.cert-check-count.is-warn    { background: rgba(233, 162, 59, 0.18); color: var(--amber-dark); }
+.cert-check-count.is-fail    { background: rgba(230, 57, 70, 0.13);  color: var(--coral-dark); }
+.cert-check-count.is-unknown { background: rgba(69, 123, 157, 0.12); color: var(--ocean-dark); }
+.cert-details-body {
+  padding: 11px;
+  background: var(--surface);
+  border-top: 1.5px solid var(--ice);
+  animation: fadeInUp 0.22s ease both;
+}
+.cert-details-body .cert-check-row:last-child { margin-bottom: 0; }
+
+.cert-raw-block {
+  margin: 0;
+  padding: 11px;
+  background: var(--cream);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  font-family: var(--font-mono);
+  font-size: 0.68rem; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-all;
+  color: var(--navy);
+  max-height: 320px; overflow: auto;
+}
+
+.cert-sheet-footer { display: flex; flex-wrap: wrap; gap: 7px; }
+.cert-sheet-footer .btn { flex: 1 1 auto; font-size: 0.75rem; }
+
+/* Used-by links back to the signatures that reference this certificate. */
+.cert-usedby-row {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  padding: 9px 11px;
+  margin-bottom: 6px;
+  background: var(--cream);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  font-family: var(--font-body); font-size: 0.78rem; color: var(--navy);
+  text-align: left; cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.cert-usedby-row:hover { border-color: var(--ocean); }
+
+/* The raw tab follows the same setting as every other raw view in the app. */
+body.hide-raw-pdf-data .cert-tab-raw { display: none; }
+
+/* Modify tools are off by default -- see "Enable certificate modification
+   tools" in Settings. */
+body.hide-certificate-modify-panel #certificatesModifyPanel { display: none; }
+
+@media (max-width: 640px) {
+  .cert-stat-row { flex-direction: column; }
+  .cert-field-table th { width: 42%; }
+}
+
+/* Four tabs plus icons overflow the sheet body once it drops below ~460px.
+   That happens on phones, but also at desktop viewports of ~960-1210px,
+   where .section-column (min-width: 360px) is at its narrowest -- a band no
+   viewport media query covers, which is why this keys off the sheet's own
+   width via container query instead. The labels are what identify the tabs,
+   so the icons are what go. */
+@container sheet-body (max-width: 460px) {
+  #certificateSheetTabs .revisions-view-tab { padding: 8px 8px; }
+  #certificateSheetTabs .revisions-view-tab .icon { display: none; }
+}
+
+/* ---------- Signed fields are read-only ----------
+   A signed field's name, /Rect and flags all sit inside the byte range its
+   signature covers, so every edit affordance is withdrawn rather than offered
+   and then failing. */
+.field-overlay.is-signed {
+  border-style: solid;
+  border-color: var(--ocean);
+  background: rgba(69, 123, 157, 0.1);
+  cursor: default;
+}
+.field-overlay.is-signed:hover { border-color: var(--ocean-dark); }
+
+.edit-signed-notice {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  background: rgba(69, 123, 157, 0.08);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-m);
+  font-size: 0.76rem; line-height: 1.55;
+  color: var(--navy);
+}
+.edit-signed-notice[hidden] { display: none; }
+.edit-signed-notice .icon { flex: 0 0 auto; margin-top: 1px; color: var(--ocean); }
+
+/* ---------- Modify ----------
+   Visually set apart from the report above it: this rewrites the document, and
+   it must never read as part of the inspection. */
+.certificates-modify-panel { background: #fffdfb; border-color: rgba(230, 57, 70, 0.28); }
+.cert-modify-list { display: flex; flex-direction: column; gap: 14px; }
+
+.cert-modify-group {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-m);
+}
+.cert-modify-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.cert-modify-title { font-size: 0.88rem; font-weight: 700; color: var(--navy); }
+.cert-modify-room { margin: 0 0 12px; font-size: 0.73rem; line-height: 1.5; color: var(--ocean-dark); }
+.cert-modify-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.cert-modify-btn { flex: 1 1 auto; font-size: 0.75rem; }
+.cert-modify-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.cert-modify-choices { display: flex; flex-direction: column; gap: 7px; }
+.cert-modify-choice {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  font-size: 0.78rem; color: var(--navy);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.cert-modify-choice:hover { border-color: var(--ocean); }
+.cert-modify-choice.is-selected { border-color: var(--ocean); background: rgba(69, 123, 157, 0.06); }
+.cert-modify-choice.is-static { cursor: default; }
+.cert-modify-choice.is-static:hover { border-color: var(--ice); }
+.cert-modify-choice span { display: flex; flex-direction: column; gap: 2px; }
+
+.cert-compare { display: flex; align-items: stretch; gap: 10px; margin-top: 12px; }
+.cert-compare-card {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px;
+  background: var(--cream);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+}
+.cert-compare-card.is-empty { justify-content: center; }
+.cert-compare-label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ocean-dark); }
+.cert-compare-name { font-size: 0.8rem; font-weight: 700; color: var(--navy); word-break: break-word; }
+.cert-compare-meta { font-size: 0.7rem; color: var(--ocean-dark); }
+.cert-compare-arrow { align-self: center; font-size: 1.2rem; color: var(--ocean); flex: 0 0 auto; }
+
+.cert-modify-error {
+  margin-top: 10px; padding: 10px 12px;
+  background: rgba(230, 57, 70, 0.07);
+  border: 1.5px solid rgba(230, 57, 70, 0.4);
+  border-radius: var(--radius-s);
+  font-size: 0.76rem; line-height: 1.5; color: var(--coral-dark);
+}
+
+/* Two states, because the consequence genuinely differs: replacing the signer
+   breaks the signature, and the other operations do not. */
+.cert-danger-block {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--radius-m);
+  font-size: 0.77rem; line-height: 1.55; color: var(--navy);
+}
+.cert-danger-block.is-breaking { background: rgba(230, 57, 70, 0.07); border: 1.5px solid rgba(230, 57, 70, 0.4); }
+.cert-danger-block.is-breaking .icon { color: var(--coral-dark); }
+.cert-danger-block.is-preserving { background: rgba(69, 123, 157, 0.07); border: 1.5px solid var(--ice); }
+.cert-danger-block.is-preserving .icon { color: var(--ocean); }
+.cert-danger-block .icon { flex: 0 0 auto; margin-top: 1px; }
+.cert-modify-note { margin-top: 6px; font-size: 0.72rem; color: var(--ocean-dark); }
+
+.cert-modify-footer { display: flex; gap: 8px; }
+.cert-modify-footer .btn { flex: 1 1 0; }
+
+@media (max-width: 640px) {
+  .cert-compare { flex-direction: column; }
+  .cert-compare-arrow { transform: rotate(90deg); }
 }

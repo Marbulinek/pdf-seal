@@ -1,5 +1,6 @@
 'use strict';
 
+import { createHash } from 'node:crypto';
 import PdfSignatureTool from './PdfSignatureTool';
 
 /**
@@ -496,10 +497,21 @@ const NAME_VALUED_DICT_KEYS = new Set([
 const BINARY_VALUE_THRESHOLD = 80;
 const MAX_CHANGES_ENTRIES = 12;
 
+/** Eight hex characters -- enough to tell two blobs apart in a one-line summary. */
+function shortDigest(value: string): string {
+  return createHash('sha256').update(value, 'latin1').digest('hex').slice(0, 8);
+}
+
 function formatPdfDictValue(key: string, value: any): string {
   if (value === null || value === undefined) return 'null';
   if (key === 'Contents' && typeof value === 'string') {
-    return `<binary, ${value.length} bytes>`;
+    // A signer reserves a fixed-size /Contents slot and pads it, so rewriting a
+    // signature leaves the length identical. The change is still detected --
+    // raw values are compared, not these strings -- but rendering both sides as
+    // "<binary, 4096 bytes>" showed the reader two identical strings and no way
+    // to tell what changed. A short digest makes the difference visible without
+    // dumping the blob.
+    return `<binary, ${value.length} bytes, #${shortDigest(value)}>`;
   }
   if (Array.isArray(value)) {
     if (value.length > 6 || value.some((item) => item !== null && typeof item === 'object')) return '[...]';

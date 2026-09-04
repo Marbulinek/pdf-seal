@@ -134,10 +134,9 @@
               <span class="section-nav-icon" aria-hidden="true"><span class="icon icon-clock"></span></span>
               <span class="section-nav-label">Revisions</span>
             </button>
-            <button type="button" class="section-nav-btn" id="navBtnCertificates" data-section="certificates" disabled title="Coming soon">
+            <button type="button" class="section-nav-btn" id="navBtnCertificates" data-section="certificates">
               <span class="section-nav-icon" aria-hidden="true"><span class="icon icon-shield"></span></span>
               <span class="section-nav-label">Certificates</span>
-              <span class="section-nav-soon">Soon</span>
             </button>
           </nav>
         </div>
@@ -236,6 +235,13 @@
             <span>Show advanced PDF raw data</span>
           </div>
           <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions — each marked with a "Raw" badge, and opened automatically.</p>
+        </label>
+        <label class="checkbox-group checkbox-group-block" for="settingsCertModifyEnabled">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsCertModifyEnabled">
+            <span>Enable certificate modification tools</span>
+          </div>
+          <p class="modal-hint settings-hint">Shows the "Modify" panel in Certificates, which lets you swap or corrupt the certificates behind a signature to see how a verifier reacts. For building test documents only — off by default.</p>
         </label>
       </div>
 
@@ -730,11 +736,51 @@
         </section>
 
         <section class="section-panel" id="sectionCertificates" data-section-panel="certificates" hidden>
-          <div class="empty-state-viewer" style="flex: 1 1 auto;">
-            <div class="empty-icon-wrap"><span class="empty-icon icon-shield-thin" aria-hidden="true"></span></div>
-            <h3>Certificates</h3>
-            <p>Certificate management — inspecting and validating the certificates behind a signature — is coming soon.</p>
-          </div>
+
+          <section class="panel certificates-summary-panel" id="certificatesSummaryPanel">
+            <div class="panel-overlay" id="certificatesPanelOverlay">
+              <div class="panel-overlay-text">Upload a document first to inspect its certificates</div>
+            </div>
+            <h3><span class="panel-dot dot-ocean"></span>Certificates</h3>
+            <p class="cert-hint">The certificates behind this document's digital signatures — who signed it, which authority issued that identity, and what can actually be proven from the file itself.</p>
+
+            <!-- Always visible, never dismissible. The whole point of this
+                 feature is not overstating what it checked. -->
+            <div class="cert-trust-banner" id="certTrustBanner" hidden>
+              <span class="icon icon-alert-triangle" aria-hidden="true"></span>
+              <div class="cert-trust-banner-text" id="certTrustBannerText"></div>
+            </div>
+
+            <div class="cert-empty" id="certificatesEmptyState">
+              <p>Upload a document to see the certificates it carries.</p>
+            </div>
+            <div class="panel-loading" id="certificatesLoadingState" hidden>
+              <span class="spinner" aria-hidden="true"></span> Reading certificates…
+            </div>
+            <div class="cert-empty cert-empty-error" id="certificatesErrorState" hidden></div>
+            <div class="cert-summary" id="certificatesSummary" hidden></div>
+          </section>
+
+          <section class="panel certificates-signatures-panel" id="certificatesSignaturesPanel" hidden>
+            <h3><span class="panel-dot dot-coral"></span>Signatures</h3>
+            <p class="cert-hint">Each signature, the certificate that made it, and the chain behind that certificate.</p>
+            <div class="cert-signature-list" id="certSignatureList"></div>
+          </section>
+
+          <section class="panel certificates-other-panel" id="certificatesOtherPanel" hidden>
+            <h3><span class="panel-dot dot-ocean"></span>Other certificates</h3>
+            <p class="cert-hint">Present in the file but not reached by any signature — usually long-term validation material carried in the document security store.</p>
+            <div class="cert-card-list" id="certOtherList"></div>
+          </section>
+
+          <!-- Deliberately set apart from the report above it: this rewrites the
+               document, and it should never read as part of the inspection. -->
+          <section class="panel certificates-modify-panel" id="certificatesModifyPanel" hidden>
+            <h3><span class="panel-dot dot-coral"></span>Modify</h3>
+            <p class="cert-hint">Tools for building test documents: change the certificates embedded in a signature to see how a verifier reacts. The file you downloaded is a copy — the document loaded here is only replaced once you apply a change.</p>
+            <div class="cert-modify-list" id="certModifyList"></div>
+          </section>
+
         </section>
       </div>
 
@@ -753,6 +799,10 @@
           <button type="button" class="modal-close" id="btnEditSheetClose" aria-label="Close editor"><span class="icon icon-close" aria-hidden="true"></span></button>
         </div>
         <div class="edit-sheet-body">
+          <div class="edit-signed-notice" id="editSignedNotice" hidden>
+            <span class="icon icon-lock" aria-hidden="true"></span>
+            <div>This field has been signed. Its name, position and size are covered by the signature, so editing or removing it here would break it. The <strong>Certificates</strong> section shows what the signature contains.</div>
+          </div>
           <form id="editFieldForm">
             <input type="hidden" id="editOriginalName">
             <div class="form-group">
@@ -770,7 +820,7 @@
                 <div><label for="editWidth">Width</label><input type="number" id="editWidth" step="0.1" required></div>
                 <div><label for="editHeight">Height</label><input type="number" id="editHeight" step="0.1" required></div>
               </div>
-              <p class="field-geometry-note">Dragging the field on the document edits these too.</p>
+              <p class="field-geometry-note" id="fieldGeometryNote">Dragging the field on the document edits these too.</p>
             </div>
 
             <div class="checkbox-group-row">
@@ -874,6 +924,69 @@
           </div>
         </div>
       </aside>
+
+      <!-- Mobile only: the bottom sheet's backdrop for the certificate sheet. -->
+      <div class="edit-sheet-scrim" id="certificateSheetScrim"></div>
+
+      <!-- One certificate in full. Same sliding sheet as #editSheet and
+           #revisionsCompareSheet rather than a modal: this is a long, tabbed,
+           scrollable document, which is the shape a sheet suits and a modal
+           does not. -->
+      <aside class="edit-sheet" id="certificateSheet" tabindex="-1" aria-hidden="true" aria-labelledby="certificateSheetTitle">
+        <div class="edit-sheet-header">
+          <span class="edit-sheet-grabber" aria-hidden="true"></span>
+          <span class="panel-dot dot-ocean"></span>
+          <h3 id="certificateSheetTitle">Certificate</h3>
+          <span class="edit-sheet-subject" id="certificateSheetSubject"></span>
+          <button type="button" class="modal-close" id="btnCertificateSheetClose" aria-label="Close certificate"><span class="icon icon-close" aria-hidden="true"></span></button>
+        </div>
+
+        <div class="edit-sheet-body">
+          <div class="revisions-view-tabs" id="certificateSheetTabs" role="tablist" aria-label="Certificate views">
+            <button type="button" class="revisions-view-tab active" data-cert-tab="overview" role="tab" aria-selected="true" aria-controls="certTabOverview"><span class="icon icon-list" aria-hidden="true"></span> Overview</button>
+            <button type="button" class="revisions-view-tab" data-cert-tab="extensions" role="tab" aria-selected="false" aria-controls="certTabExtensions"><span class="icon icon-layers" aria-hidden="true"></span> Extensions</button>
+            <button type="button" class="revisions-view-tab" data-cert-tab="validation" role="tab" aria-selected="false" aria-controls="certTabValidation"><span class="icon icon-shield" aria-hidden="true"></span> Validation</button>
+            <button type="button" class="revisions-view-tab cert-tab-raw" data-cert-tab="raw" role="tab" aria-selected="false" aria-controls="certTabRaw"><span class="icon icon-code" aria-hidden="true"></span> Raw</button>
+          </div>
+
+          <div class="cert-tab-panel" id="certTabOverview" role="tabpanel"></div>
+          <div class="cert-tab-panel" id="certTabExtensions" role="tabpanel" hidden></div>
+          <div class="cert-tab-panel" id="certTabValidation" role="tabpanel" hidden></div>
+          <div class="cert-tab-panel" id="certTabRaw" role="tabpanel" hidden></div>
+        </div>
+
+        <div class="edit-sheet-footer cert-sheet-footer">
+          <button type="button" class="btn btn-ghost" data-cert-action="copy-pem"><span class="icon icon-copy" aria-hidden="true"></span> Copy PEM</button>
+          <button type="button" class="btn btn-ghost" data-cert-action="export-pem"><span class="icon icon-download" aria-hidden="true"></span> Export PEM</button>
+          <button type="button" class="btn btn-ghost" data-cert-action="export-der"><span class="icon icon-download" aria-hidden="true"></span> Export DER</button>
+          <button type="button" class="btn btn-ghost" data-cert-action="export-chain" id="btnExportChain" hidden><span class="icon icon-layers" aria-hidden="true"></span> Export chain</button>
+        </div>
+      </aside>
+
+      <div class="edit-sheet-scrim" id="certificateModifySheetScrim"></div>
+
+      <!-- The modify flow gets its own sheet rather than a modal: it is a
+           three-step review (what will change, what it will change to, what
+           that costs) and it has to show certificate cards and a chain, which
+           is more than a dialog should carry. -->
+      <aside class="edit-sheet" id="certificateModifySheet" tabindex="-1" aria-hidden="true" aria-labelledby="certificateModifySheetTitle">
+        <div class="edit-sheet-header">
+          <span class="edit-sheet-grabber" aria-hidden="true"></span>
+          <span class="panel-dot dot-coral"></span>
+          <h3 id="certificateModifySheetTitle">Modify certificates</h3>
+          <span class="edit-sheet-subject" id="certificateModifySheetSubject"></span>
+          <button type="button" class="modal-close" id="btnCertificateModifySheetClose" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+        </div>
+
+        <div class="edit-sheet-body" id="certificateModifyBody"></div>
+
+        <div class="edit-sheet-footer cert-modify-footer">
+          <button type="button" class="btn btn-ghost" id="btnCertificateModifyCancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="btnCertificateModifyApply" disabled>Apply change</button>
+        </div>
+      </aside>
+
+      <input type="file" id="certificateFileInput" accept=".cer,.crt,.der,.pem,.p7b,application/x-x509-ca-cert,application/x-pem-file" hidden>
     </div>
   </div>
 
@@ -1501,6 +1614,7 @@
     const settingsShowRawDataInput = document.getElementById('settingsShowRawData');
     const settingsIncludeRevisionHistoryInput = document.getElementById('settingsIncludeRevisionHistory');
     const settingsTemplatesEnabledInput = document.getElementById('settingsTemplatesEnabled');
+    const settingsCertModifyEnabledInput = document.getElementById('settingsCertModifyEnabled');
     const settingsSaveBtn = document.getElementById('saveSettingsBtn');
     const settingsCancelBtn = document.getElementById('cancelSettingsBtn');
     const settingsCloseBtn = document.getElementById('closeSettingsModalBtn');
@@ -1524,7 +1638,12 @@
       if (btn) btn.addEventListener('click', () => setSettingsTab(btn));
     });
 
-    const DEFAULT_SETTINGS = { showRawPdfData: false, includeRevisionHistoryByDefault: false, templatesEnabled: false };
+    const DEFAULT_SETTINGS = {
+      showRawPdfData: false,
+      includeRevisionHistoryByDefault: false,
+      templatesEnabled: false,
+      certificateModifyEnabled: false,
+    };
 
     function loadSettings() {
       try {
@@ -1536,6 +1655,8 @@
           includeRevisionHistoryByDefault:
             parsed && typeof parsed.includeRevisionHistoryByDefault === 'boolean' ? parsed.includeRevisionHistoryByDefault : false,
           templatesEnabled: parsed && typeof parsed.templatesEnabled === 'boolean' ? parsed.templatesEnabled : false,
+          certificateModifyEnabled:
+            parsed && typeof parsed.certificateModifyEnabled === 'boolean' ? parsed.certificateModifyEnabled : false,
         };
       } catch (_err) {
         return { ...DEFAULT_SETTINGS };
@@ -1574,13 +1695,19 @@
       }
     }
 
+    function applyCertificateModifyVisibility(settings) {
+      document.body.classList.toggle('hide-certificate-modify-panel', !settings.certificateModifyEnabled);
+    }
+
     function applySettingsToUi() {
       const settings = loadSettings();
       if (settingsShowRawDataInput) settingsShowRawDataInput.checked = settings.showRawPdfData;
       if (settingsIncludeRevisionHistoryInput) settingsIncludeRevisionHistoryInput.checked = settings.includeRevisionHistoryByDefault;
       if (settingsTemplatesEnabledInput) settingsTemplatesEnabledInput.checked = settings.templatesEnabled;
+      if (settingsCertModifyEnabledInput) settingsCertModifyEnabledInput.checked = settings.certificateModifyEnabled;
       applyRawPdfDataVisibility(settings);
       applyTemplatesPanelVisibility(settings);
+      applyCertificateModifyVisibility(settings);
       return settings;
     }
 
@@ -1603,6 +1730,7 @@
       const initialSettings = loadSettings();
       applyRawPdfDataVisibility(initialSettings);
       applyTemplatesPanelVisibility(initialSettings);
+      applyCertificateModifyVisibility(initialSettings);
     })();
 
     if (settingsOpenBtn) {
@@ -1618,6 +1746,7 @@
           showRawPdfData: Boolean(settingsShowRawDataInput?.checked),
           includeRevisionHistoryByDefault: Boolean(settingsIncludeRevisionHistoryInput?.checked),
           templatesEnabled: Boolean(settingsTemplatesEnabledInput?.checked),
+          certificateModifyEnabled: Boolean(settingsCertModifyEnabledInput?.checked),
         };
         saveSettings(nextSettings);
         applySettingsToUi();
@@ -1648,6 +1777,16 @@
         if (nextSettings.templatesEnabled !== previousSettings.templatesEnabled) {
           showNotification(
             nextSettings.templatesEnabled ? 'Signature Templates panel enabled.' : 'Signature Templates panel disabled.',
+            'info',
+            8000,
+          ).classList.add('notification-subtle');
+        }
+
+        if (nextSettings.certificateModifyEnabled !== previousSettings.certificateModifyEnabled) {
+          showNotification(
+            nextSettings.certificateModifyEnabled
+              ? 'Certificate modification tools enabled.'
+              : 'Certificate modification tools disabled.',
             'info',
             8000,
           ).classList.add('notification-subtle');
@@ -1849,11 +1988,13 @@
           document.body.dataset.activeSection = target;
           if (target !== 'signatures' && activeField) deselectActiveField();
           if (target !== 'revisions') suspendRevisionsView();
+          if (target !== 'certificates') { closeCertificateSheet(); closeCertificateModifySheet(); }
           if (target === 'metadata') loadMetadataIfNeeded();
           if (target === 'revisions') {
             loadRevisionsIfNeeded();
             resumeRevisionsView();
           }
+          if (target === 'certificates') loadCertificatesIfNeeded();
           closeSectionNav();
         });
       });
@@ -2117,11 +2258,15 @@
       }
 
       const hasSelectedField = hasDocument && Boolean(activeField);
+      // A signed field is shown read-only: its name, /Rect and flags all live
+      // inside the byte range its signature covers, so offering the edit and
+      // then breaking the signature would be worse than not offering it.
+      const selectedFieldIsSigned = hasSelectedField && activeField.signed === true;
       // The sheet's own header/close button is deliberately outside this loop --
       // it has to stay clickable while the sheet animates out.
       if (editForm) {
         editForm.querySelectorAll('input, select, textarea, button').forEach((el) => {
-          el.disabled = !hasSelectedField;
+          el.disabled = !hasSelectedField || selectedFieldIsSigned;
         });
       }
       // Safety net: a reload or snapshot restore can drop the selection without
@@ -2144,7 +2289,7 @@
         tab.disabled = !hasDocument;
       });
 
-      if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !activeField;
+      if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !activeField || activeField.signed === true;
       const sigNameFilled = Boolean(document.getElementById('sigName').value.trim());
       if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument || !sigNameFilled;
 
@@ -2156,6 +2301,8 @@
       if (metaSearchInput) metaSearchInput.disabled = !hasDocument;
       if (revisionsListPanelOverlay) revisionsListPanelOverlay.classList.toggle('is-hidden', hasDocument);
       if (revisionsDiffPanelOverlay) revisionsDiffPanelOverlay.classList.toggle('is-hidden', hasDocument);
+      const certificatesPanelOverlay = document.getElementById('certificatesPanelOverlay');
+      if (certificatesPanelOverlay) certificatesPanelOverlay.classList.toggle('is-hidden', hasDocument);
       // The Templates panel has no overlay (templates are editable with no
       // document open) -- re-rendering it is what enables/disables placing and
       // row dragging as a document comes and goes.
@@ -2323,6 +2470,11 @@
       resetRevisionsDiffState();
       if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
         loadRevisionsIfNeeded();
+      }
+
+      resetCertificatesState();
+      if (document.getElementById('sectionCertificates') && !document.getElementById('sectionCertificates').hidden) {
+        loadCertificatesIfNeeded();
       }
       updateViewerControlsState();
 
@@ -2642,8 +2794,15 @@
 
         const div = document.createElement('div');
         div.className = `field-overlay${field.required ? ' required' : ''}${isFieldStaged(field) ? ' is-staged' : ''}`;
-        div.title = field.tooltip ? `${field.name} — ${field.tooltip}` : (field.name || 'Signature field');
-        div.innerHTML = field.type === 'Signature' ? ICONS.pen : ICONS.fileText;
+        // Lets other sections address one overlay by name -- the Certificates
+        // panel jumps here to select the field a signature belongs to.
+        div.dataset.fieldName = field.name || '';
+        div.title = field.signed === true
+          ? `${field.name} — signed, so it cannot be moved or removed without breaking the signature`
+          : (field.tooltip ? `${field.name} — ${field.tooltip}` : (field.name || 'Signature field'));
+        div.innerHTML = field.signed === true
+          ? ICONS.lock
+          : (field.type === 'Signature' ? ICONS.pen : ICONS.fileText);
         applyRectToOverlay(div, field.rect);
 
         const label = document.createElement('div');
@@ -2657,9 +2816,19 @@
         }
         div.appendChild(label);
 
-        const handle = document.createElement('div');
-        handle.className = 'resize-handle';
-        div.appendChild(handle);
+        // A signed field's /Rect is inside the bytes its signature covers, so
+        // moving, resizing or removing it corrupts that signature. Lock the
+        // whole set of edit affordances rather than letting the edit be made
+        // and fail later.
+        const isSignedField = field.signed === true;
+        if (isSignedField) div.classList.add('is-signed');
+
+        let handle = null;
+        if (!isSignedField) {
+          handle = document.createElement('div');
+          handle.className = 'resize-handle';
+          div.appendChild(handle);
+        }
 
         // Saving a field into a signature template is a drag off the page and
         // into the Signature Templates panel. The overlay body already owns
@@ -2668,6 +2837,7 @@
         // its own mousedown so grabbing it never starts a reposition.
         const templateGrip = document.createElement('div');
         templateGrip.className = 'template-save-handle';
+        if (isSignedField) templateGrip.hidden = true;
         templateGrip.draggable = true;
         templateGrip.title = `Drag "${field.name || 'this field'}" into Signature Templates to save it`;
         templateGrip.innerHTML = ICONS.layers;
@@ -2685,6 +2855,7 @@
         deleteHandle.title = `Remove "${field.name || 'this field'}"`;
         deleteHandle.setAttribute('aria-label', 'Remove field');
         deleteHandle.innerHTML = ICONS.x;
+        if (isSignedField) deleteHandle.hidden = true;
         deleteHandle.addEventListener('mousedown', (e) => e.stopPropagation());
         deleteHandle.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -2718,11 +2889,14 @@
           // Outside Signatures, overlays keep pointer-events on only so hover
           // can show the name/tooltip label -- they must stay non-interactive.
           if (document.body.dataset.activeSection !== 'signatures') return;
-          if (e.target === handle) return;
+          if (handle && e.target === handle) return;
           if (isPanning) return; // let the pointerdown bubble up to the pan handler instead
           e.preventDefault();
           const wasActive = activeField === field;
           selectFieldOverlay(div, field);
+          // Selectable so its properties can be read, but not draggable: the
+          // /Rect is inside the bytes the signature covers.
+          if (isSignedField) return;
 
           const startX = e.clientX, startY = e.clientY;
           const startLeft = parseFloat(div.style.left);
@@ -2753,8 +2927,9 @@
           document.addEventListener('mouseup', onUp);
         });
 
-        // Drag the handle to resize
-        handle.addEventListener('mousedown', (e) => {
+        // Drag the handle to resize. Signed fields have no handle -- resizing
+        // rewrites the /Rect the signature covers.
+        handle?.addEventListener('mousedown', (e) => {
           if (isPanning) return;
           e.preventDefault();
           e.stopPropagation();
@@ -2804,6 +2979,9 @@
 
     function openEditSheet(field) {
       if (!editSheet) return;
+      // Only one sheet slides over the column at a time -- they occupy the
+      // same space, so whichever opens last has to take the others down.
+      closeCertificateSheet();
       setEditSheetSubject(field);
       editSheet.classList.add('is-open');
       editSheet.setAttribute('aria-hidden', 'false');
@@ -2914,6 +3092,14 @@
       const isTextField = field.type === 'TextField';
       if (multilineGroup) multilineGroup.hidden = !isTextField;
       document.getElementById('editMultiline').checked = isTextField && !!field.multiline;
+
+      // The inputs themselves are disabled by updateViewerControlsState(), which
+      // owns that decision and runs after this; this only explains why.
+      const signedNotice = document.getElementById('editSignedNotice');
+      if (signedNotice) signedNotice.hidden = field.signed !== true;
+      // "Dragging edits these too" would contradict the notice directly above.
+      const geometryNote = document.getElementById('fieldGeometryNote');
+      if (geometryNote) geometryNote.hidden = field.signed === true;
 
       renderFieldDetails(field);
     }
@@ -4469,6 +4655,7 @@
         multiline: f.type === 'TextField' && !!f.multiline,
         tooltip: f.tooltip,
         page: f.page,
+        signed: f.signed === true,
         rect: f.rect ? { x: f.rect.x, y: f.rect.y, width: f.rect.width, height: f.rect.height } : null,
       }));
     }
@@ -9232,6 +9419,1444 @@ async function renderVisualDiffHighlights(pageNum) {
   inkStrokes(result.strokes);
   renderVisualDiffLegend(result.strokes.length, result.truncated ? 'Showing the first marks only' : '');
 }
+/* ==========================================================================
+   Certificates section
+   ==========================================================================
+   A pure renderer. Every label, verdict and explanation printed here comes from
+   the report the server built (lib/PdfCertificateReport.ts); nothing about
+   certificates is decided in the browser. That keeps the one rule this feature
+   lives by -- never claim a check that was not actually run -- in a single
+   testable place instead of spread across markup.
+
+   Certificate subjects are attacker-controlled text, so every interpolated
+   value goes through escapeHtml().
+   -------------------------------------------------------------------------- */
+
+let certificatesData = null;
+let certificatesLoadedForFile = null; // cache key: the file this report describes
+let certificatesLoading = false;
+let certificatesReloadPending = false;
+let activeCertificateId = null;
+let activeCertificateTab = 'overview';
+
+// Filter chips over the summary's check list: which statuses are shown, plus
+// free text matched against a check's id, label, detail and source label.
+let certFilterStatuses = new Set(['fail', 'warn', 'pass', 'unknown']);
+let certFilterText = '';
+let certFilterSearchHadFocus = false;
+
+const CERT_STATUS_GLYPH = { pass: '✓', warn: '!', fail: '✕', unknown: '?' };
+const CERT_STATUS_WORD = { pass: 'Pass', warn: 'Warning', fail: 'Failed', unknown: 'Not checked' };
+const CERT_ROLE_LABEL = {
+  signer: 'Signing certificate',
+  intermediate: 'Intermediate CA',
+  root: 'Root CA',
+  unknown: 'Certificate',
+};
+
+function resetCertificatesState() {
+  certificatesData = null;
+  certificatesLoadedForFile = null;
+  certificatesLoading = false;
+  certificatesReloadPending = false;
+  activeCertificateId = null;
+  certFilterStatuses = new Set(['fail', 'warn', 'pass', 'unknown']);
+  certFilterText = '';
+  certFilterSearchHadFocus = false;
+  closeCertificateSheet();
+  closeCertificateModifySheet();
+}
+
+function certById(id) {
+  return certificatesData?.certificates.find((c) => c.id === id) ?? null;
+}
+
+/**
+ * Mirrors `collectAllChecks` in lib/PdfCertificateReport.ts -- keep the two in
+ * sync by hand, the same way lib/SignatureTemplates.ts and lib/FieldHistory.ts
+ * are mirrored here. Traversal order (signatures -> chains -> chain links ->
+ * certificates) must match exactly, since it is what `report.summary.counts`
+ * was computed over server-side.
+ */
+function certCollectAllChecks(report) {
+  const certificatesById = new Map((report.certificates || []).map((c) => [c.id, c]));
+  const withSource = (checks, source) => (checks || []).map((c) => ({ ...c, source }));
+
+  const all = [];
+
+  for (const signature of report.signatures || []) {
+    all.push(...withSource(signature.checks, {
+      kind: 'signature',
+      label: `Signature: ${signature.fieldName}`,
+      signatureFieldName: signature.fieldName,
+    }));
+  }
+
+  for (const chain of report.chains || []) {
+    const leaf = chain.certificateIds[0] ? certificatesById.get(chain.certificateIds[0]) : undefined;
+    const chainLabel = leaf ? certDisplayName(leaf) : chain.signatureFieldName ?? chain.id;
+    all.push(...withSource(chain.checks, {
+      kind: 'chain',
+      label: `Chain: ${chainLabel}`,
+      signatureFieldName: chain.signatureFieldName,
+    }));
+    for (const link of chain.links) {
+      const subject = certificatesById.get(link.subjectId);
+      all.push(...withSource(link.checks, {
+        kind: 'link',
+        label: subject ? certDisplayName(subject) : link.subjectId,
+        certificateId: link.subjectId,
+        signatureFieldName: chain.signatureFieldName,
+      }));
+    }
+  }
+
+  for (const cert of report.certificates || []) {
+    all.push(...withSource(cert.checks, {
+      kind: 'certificate',
+      label: certDisplayName(cert),
+      certificateId: cert.id,
+    }));
+  }
+
+  return all;
+}
+
+/** True if `check` (with its `.source` attached) matches the free-text filter. */
+function certCheckMatchesFilterText(check, query) {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return (
+    (check.id || '').toLowerCase().includes(q) ||
+    (check.label || '').toLowerCase().includes(q) ||
+    (check.detail || '').toLowerCase().includes(q) ||
+    (check.source?.label || '').toLowerCase().includes(q)
+  );
+}
+
+/**
+ * Paste-ready Markdown for a bug ticket: every failing and warning check,
+ * with its source, the signature field it belongs to and the fingerprint of
+ * the certificate it's about, when there is one.
+ */
+function buildCertificateSummaryMarkdown(report) {
+  const allChecks = certCollectAllChecks(report);
+  const notable = allChecks.filter((c) => c.status === 'fail' || c.status === 'warn');
+
+  const lines = [`# Certificate report — ${report.summary.headline}`, ''];
+  lines.push(`${report.certificates.length} certificate${report.certificates.length === 1 ? '' : 's'}, ${report.signatures.length} signature${report.signatures.length === 1 ? '' : 's'}.`);
+  lines.push('');
+
+  if (!notable.length) {
+    lines.push('No failing or warning checks.');
+  } else {
+    for (const check of notable) {
+      const cert = check.source?.certificateId ? certById(check.source.certificateId) : null;
+      lines.push(`- **${check.status === 'fail' ? 'FAIL' : 'WARN'}** ${check.label} — ${check.source?.label ?? 'Document'}`);
+      lines.push(`  - ${check.detail}`);
+      if (check.source?.signatureFieldName) lines.push(`  - Signature field: ${check.source.signatureFieldName}`);
+      if (cert) lines.push(`  - Certificate: ${certDisplayName(cert)} (SHA-256 ${cert.fingerprints.sha256})`);
+    }
+  }
+
+  for (const warning of report.warnings || []) {
+    lines.push(`- **READ** ${warning}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * The raw report, minus fields that make two reports of the same file
+ * byte-different -- what a tester actually diffs between two runs.
+ */
+function certificateReportForDiff(report) {
+  const { generatedAt, ...stable } = report;
+  return stable;
+}
+
+function certDisplayName(cert) {
+  return cert.subject.commonName || cert.subject.organization || cert.subject.formatted || 'Unnamed certificate';
+}
+
+/** Status pill: glyph plus word, so colour is never the only signal. */
+function certBadge(status) {
+  return `<span class="cert-badge is-${escapeHtml(status)}">${CERT_STATUS_GLYPH[status] ?? '?'} ${escapeHtml(CERT_STATUS_WORD[status] ?? status)}</span>`;
+}
+
+function certDot(status) {
+  return `<span class="cert-status-dot is-${escapeHtml(status)}" aria-hidden="true">${CERT_STATUS_GLYPH[status] ?? '?'}</span>`;
+}
+
+function certWorstStatus(statuses) {
+  if (statuses.includes('fail')) return 'fail';
+  if (statuses.includes('warn')) return 'warn';
+  if (statuses.includes('unknown')) return 'unknown';
+  return statuses.length ? 'pass' : 'unknown';
+}
+
+function certStatusOf(cert) {
+  return certWorstStatus((cert.checks || []).map((c) => c.status));
+}
+
+function certFormatDate(iso) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/* ---------- Loading ---------- */
+
+async function loadCertificatesIfNeeded() {
+  const emptyEl = document.getElementById('certificatesEmptyState');
+  const loadingEl = document.getElementById('certificatesLoadingState');
+  const errorEl = document.getElementById('certificatesErrorState');
+  const summaryEl = document.getElementById('certificatesSummary');
+  const sigPanel = document.getElementById('certificatesSignaturesPanel');
+  const otherPanel = document.getElementById('certificatesOtherPanel');
+  const banner = document.getElementById('certTrustBanner');
+  if (!emptyEl) return;
+
+  const show = (which) => {
+    emptyEl.hidden = which !== 'empty';
+    loadingEl.hidden = which !== 'loading';
+    errorEl.hidden = which !== 'error';
+    summaryEl.hidden = which !== 'content';
+    if (which !== 'content') {
+      sigPanel.hidden = true;
+      otherPanel.hidden = true;
+      banner.hidden = true;
+      const modifyPanel = document.getElementById('certificatesModifyPanel');
+      if (modifyPanel) modifyPanel.hidden = true;
+    }
+  };
+
+  if (!activeFile) {
+    certificatesData = null;
+    certificatesLoadedForFile = null;
+    emptyEl.innerHTML = '<p>Upload a document to see the certificates it carries.</p>';
+    show('empty');
+    return;
+  }
+
+  const cacheKey = `${documentSessionId || ''}:${documentRevisionCount}:${activeFile.name}:${activeFile.size}`;
+  if (certificatesLoadedForFile === cacheKey && certificatesData) {
+    renderCertificatesPanel(certificatesData);
+    return;
+  }
+
+  // Coalesce: a second request while one is in flight re-runs once, rather than
+  // racing the first.
+  if (certificatesLoading) {
+    certificatesReloadPending = true;
+    return;
+  }
+  certificatesLoading = true;
+  show('loading');
+
+  // Capture what we are loading for, and re-check after every await: the user
+  // can load another document while this request is out.
+  const requestedFile = activeFile;
+
+  try {
+    const formData = new FormData();
+    formData.append('pdfDocument', requestedFile);
+    const response = await fetch('/api/certificates', { method: 'POST', body: formData });
+    if (requestedFile !== activeFile) return;
+
+    const payload = await response.json().catch(() => ({}));
+    if (requestedFile !== activeFile) return;
+
+    if (!response.ok) throw new Error(payload?.error || 'The certificates could not be read.');
+
+    certificatesData = payload.report;
+    certificatesLoadedForFile = cacheKey;
+    renderCertificatesPanel(certificatesData);
+  } catch (error) {
+    if (requestedFile !== activeFile) return;
+    certificatesData = null;
+    certificatesLoadedForFile = null;
+    errorEl.innerHTML = `<p>${escapeHtml(error.message || 'The certificates could not be read.')}</p>`;
+    show('error');
+  } finally {
+    certificatesLoading = false;
+    if (certificatesReloadPending) {
+      certificatesReloadPending = false;
+      loadCertificatesIfNeeded();
+    }
+  }
+}
+
+/* ---------- Rendering ---------- */
+
+function renderCertificatesPanel(report) {
+  const emptyEl = document.getElementById('certificatesEmptyState');
+  const loadingEl = document.getElementById('certificatesLoadingState');
+  const errorEl = document.getElementById('certificatesErrorState');
+  const summaryEl = document.getElementById('certificatesSummary');
+  const sigPanel = document.getElementById('certificatesSignaturesPanel');
+  const otherPanel = document.getElementById('certificatesOtherPanel');
+  const banner = document.getElementById('certTrustBanner');
+  if (!summaryEl || !report) return;
+
+  loadingEl.hidden = true;
+  errorEl.hidden = true;
+
+  // The common case for this app: it prepares signature fields, it does not
+  // sign, so most documents loaded here carry no certificates at all. That
+  // deserves an explanation rather than an empty panel.
+  if (!report.documentHasSignatures) {
+    summaryEl.hidden = true;
+    sigPanel.hidden = true;
+    otherPanel.hidden = true;
+    banner.hidden = true;
+    const modifyPanel = document.getElementById('certificatesModifyPanel');
+    if (modifyPanel) modifyPanel.hidden = true;
+    emptyEl.hidden = false;
+
+    const unsigned = report.unsignedSignatureFieldNames || [];
+    let html = `<p>${escapeHtml(report.summary.headline)}</p>`;
+    html += '<p>pdf-seal prepares signature fields; it does not sign documents itself. Certificates appear here once the document has been signed somewhere else and loaded back in.</p>';
+    if (unsigned.length) {
+      html += `<p><strong>Waiting to be signed:</strong> ${unsigned.map((n) => escapeHtml(n)).join(', ')} — place and edit these in the Signatures section.</p>`;
+    }
+    for (const warning of report.warnings || []) {
+      html += `<p>${escapeHtml(warning)}</p>`;
+    }
+    emptyEl.innerHTML = html;
+    return;
+  }
+
+  emptyEl.hidden = true;
+  summaryEl.hidden = false;
+
+  banner.hidden = false;
+  document.getElementById('certTrustBannerText').textContent = report.trust.note;
+
+  renderCertificateSummary(report);
+  renderCertificateSignatureList(report);
+  renderOtherCertificates(report);
+  renderCertificateModifyPanel(report);
+}
+
+function renderCertificateSummary(report) {
+  const el = document.getElementById('certificatesSummary');
+  const counts = report.summary.counts;
+  const allChecks = certCollectAllChecks(report);
+
+  // One expandable row per outcome that actually occurred, worst first. Rows
+  // for outcomes with a zero count are simply absent -- there is nothing to
+  // say about them. Expanding a row lists exactly the checks counted in it, so
+  // the headline number and what is findable underneath can never disagree.
+  const rows = [];
+  const push = (status, label, detail) => rows.push({ status, label, detail });
+  if (counts.fail) push('fail', `${counts.fail} check${counts.fail === 1 ? '' : 's'} failed`, 'Something here does not hold up.');
+  if (counts.warn) push('warn', `${counts.warn} warning${counts.warn === 1 ? '' : 's'}`, 'Worth reading before relying on this document.');
+  if (counts.pass) push('pass', `${counts.pass} check${counts.pass === 1 ? '' : 's'} passed`, 'Verified against what this file contains.');
+  if (counts.unknown) push('unknown', `${counts.unknown} not checked`, 'Includes trust and revocation, which pdf-seal never evaluates.');
+
+  const certCount = report.certificates.length;
+  const sigCount = report.signatures.length;
+
+  // Extraction-level parse problems -- unrelated to the counted checks above,
+  // so they get their own heading rather than sitting in the same amber list.
+  const readingWarnings = report.warnings || [];
+
+  const filterActive = certFilterText.trim().length > 0 || rows.some((r) => !certFilterStatuses.has(r.status));
+
+  el.innerHTML = `
+    <div class="cert-stat-row">
+      <div class="cert-stat">
+        <div class="cert-stat-value">${certCount}</div>
+        <div class="cert-stat-label">certificate${certCount === 1 ? '' : 's'}</div>
+      </div>
+      <div class="cert-stat">
+        <div class="cert-stat-value">${sigCount}</div>
+        <div class="cert-stat-label">signature${sigCount === 1 ? '' : 's'}</div>
+      </div>
+    </div>
+    <p class="cert-headline">${certBadge(report.summary.status)} ${escapeHtml(report.summary.headline)}</p>
+    <div class="cert-copy-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-cert-action="copy-cert-summary"><span class="icon icon-copy" aria-hidden="true"></span> Copy summary</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-cert-action="copy-cert-json"><span class="icon icon-copy" aria-hidden="true"></span> Copy JSON</button>
+    </div>
+    ${rows.length ? `
+    <div class="cert-filter-bar">
+      <div class="cert-filter-chips">
+        ${rows.map((r) => `
+          <button type="button" class="cert-filter-chip is-${escapeHtml(r.status)}${certFilterStatuses.has(r.status) ? ' is-active' : ''}"
+            data-cert-action="toggle-cert-filter-status" data-status="${escapeHtml(r.status)}" aria-pressed="${certFilterStatuses.has(r.status)}">
+            ${certDot(r.status)} ${CERT_STATUS_WORD[r.status]} <span class="cert-filter-chip-count">${counts[r.status]}</span>
+          </button>`).join('')}
+      </div>
+      <div class="cert-filter-search-row">
+        <input type="search" class="cert-filter-search" id="certFilterSearchInput" placeholder="Filter by check id or text…" value="${escapeHtml(certFilterText)}" aria-label="Filter checks">
+        ${filterActive ? `<button type="button" class="btn btn-ghost btn-sm" data-cert-action="clear-cert-filter">Clear</button>` : ''}
+      </div>
+    </div>` : ''}
+    <div class="cert-status-list">
+      ${rows.map((r, i) => {
+        if (!certFilterStatuses.has(r.status)) return '';
+        const checksForStatus = allChecks
+          .filter((c) => c.status === r.status)
+          .filter((c) => certCheckMatchesFilterText(c, certFilterText));
+        if (!checksForStatus.length) return '';
+        return `
+        <details class="cert-details-block cert-status-block is-${escapeHtml(r.status)}" style="--i:${i}" ${filterActive ? 'open' : ''}>
+          <summary class="cert-details-summary">
+            <span class="cert-details-summary-main">
+              <span class="icon icon-chevron-right cert-details-caret" aria-hidden="true"></span>
+              ${certDot(r.status)}
+              <span class="cert-status-label">${escapeHtml(r.label)}${filterActive ? ` — ${checksForStatus.length} shown` : ''}</span>
+            </span>
+          </summary>
+          <div class="cert-details-body">
+            <p class="cert-status-caption">${escapeHtml(r.detail)}</p>
+            ${renderValidationList(checksForStatus, { showSource: true })}
+          </div>
+        </details>`;
+      }).join('')}
+      ${filterActive && !rows.some((r) => certFilterStatuses.has(r.status) && allChecks.some((c) => c.status === r.status && certCheckMatchesFilterText(c, certFilterText)))
+        ? '<p class="cert-status-caption">No checks match this filter.</p>' : ''}
+    </div>
+    ${readingWarnings.length ? `
+      <p class="cert-section-title" style="margin-top:14px">Reading this file</p>
+      <div class="cert-status-list">
+        ${readingWarnings.map((w, i) => `
+          <div class="cert-status-row is-warn" style="--i:${i}">
+            ${certDot('warn')}<div><span class="cert-status-detail">${escapeHtml(w)}</span></div>
+          </div>`).join('')}
+      </div>` : ''}`;
+
+  // innerHTML wipes the input on every re-render (e.g. a status chip toggle);
+  // keep typing feel continuous by restoring focus and caret when it had it.
+  const searchInput = document.getElementById('certFilterSearchInput');
+  if (searchInput && certFilterSearchHadFocus) {
+    searchInput.focus();
+    searchInput.setSelectionRange(certFilterText.length, certFilterText.length);
+  }
+}
+
+/**
+ * One node of a chain. `depth` drives the indent and the connector offsets;
+ * `index` drives the reveal stagger so the chain draws itself top-down.
+ */
+function renderChainNode(opts) {
+  const { status, depth, index, name, role, detail, certId, signatureField, missing, extraClass, isRoot } = opts;
+  const classes = ['cert-chain-node', `is-${status}`];
+  if (signatureField) classes.push('is-signature');
+  if (missing) classes.push('is-missing');
+  if (isRoot) classes.push('is-root');
+  if (extraClass) classes.push(extraClass);
+
+  const attrs = [`class="${classes.join(' ')}"`, `style="--depth:${depth};--i:${index}"`];
+  if (certId) attrs.push(`data-cert-id="${escapeHtml(certId)}"`);
+  if (signatureField) attrs.push(`data-cert-signature-field="${escapeHtml(signatureField)}"`);
+
+  const inner = `
+    ${certDot(status)}
+    <span class="cert-node-text">
+      <span class="cert-node-name">${escapeHtml(name)}</span>
+      <span class="cert-node-role">${escapeHtml(role)}</span>
+      ${detail ? `<span class="cert-node-detail">${escapeHtml(detail)}</span>` : ''}
+    </span>`;
+
+  // A missing certificate is not clickable -- there is nothing to open.
+  const body = missing
+    ? `<div class="cert-node-body">${inner}</div>`
+    : `<button type="button" class="cert-node-body" data-cert-action="${signatureField ? 'show-field' : 'open-cert'}">${inner}</button>`;
+
+  return `<li ${attrs.join(' ')}>${body}</li>`;
+}
+
+function renderCertificateChain(report, chain, signature) {
+  const nodes = [];
+  let depth = 0;
+  let index = 0;
+
+  // Where the chain runs out, say what it was looking for -- and offer the way
+  // to fix it rather than leaving a dead end. What is absent is the issuer
+  // above the highest cert present, so it belongs at the top of the tree.
+  if (chain?.missingIssuerDn) {
+    // The DN is the precise answer but a poor label; lead with the common name
+    // and keep the full DN as the detail underneath.
+    const cn = /CN=([^,]+)/.exec(chain.missingIssuerDn);
+    nodes.push(renderChainNode({
+      status: 'warn',
+      depth: depth++,
+      index: index++,
+      name: cn ? cn[1].trim() : chain.missingIssuerDn,
+      role: 'Issuer not present in this file',
+      detail: chain.missingIssuerDn,
+      missing: true,
+      isRoot: depth === 1,
+    }));
+  }
+
+  // chain.certificateIds is leaf-first (signer, then each issuer in turn) --
+  // reverse it so the tree renders root at top, signer just above the signature.
+  const certIds = [...(chain?.certificateIds || [])].reverse();
+  for (const certId of certIds) {
+    const cert = certById(certId);
+    if (!cert) continue;
+    const validity = cert.isExpired ? 'Expired' : cert.isNotYetValid ? 'Not yet valid' : 'Within validity period';
+    nodes.push(renderChainNode({
+      status: certStatusOf(cert),
+      depth: depth++,
+      index: index++,
+      name: certDisplayName(cert),
+      role: CERT_ROLE_LABEL[cert.role] ?? CERT_ROLE_LABEL.unknown,
+      detail: validity,
+      certId: cert.id,
+      isRoot: depth === 1,
+    }));
+  }
+
+  if (signature) {
+    nodes.push(renderChainNode({
+      status: signature.status,
+      depth: depth++,
+      index: index++,
+      name: signature.name || signature.fieldName,
+      role: `Signature — field ${signature.fieldName}`,
+      detail: signature.page !== null && signature.page !== undefined ? `Page ${signature.page + 1}` : '',
+      signatureField: signature.fieldName,
+      isRoot: depth === 1,
+    }));
+  }
+
+  return nodes.length ? `<ol class="cert-chain">${nodes.join('')}</ol>` : '';
+}
+
+/**
+ * Two thin bars scaled to the file's own byte length, from data already in
+ * `sig.cmsSlot` (lib/PdfCertificateExtractor.ts) but never drawn anywhere:
+ * what the signature covers vs. the unsigned /Contents gap and any trailing
+ * bytes, and how much of that gap's hex slot the CMS actually fills.
+ */
+function renderCertByteMap(sig) {
+  const slot = sig.cmsSlot;
+  if (!slot) return '';
+  const [a, b, c, d] = slot.byteRange;
+  const signed1End = a + b;
+  const gapLength = Math.max(0, c - signed1End);
+  const signed2End = c + d;
+  const totalLength = signed2End + slot.trailingBytes;
+  if (!totalLength) return '';
+
+  const pct = (n) => Math.max(0, (n / totalLength) * 100);
+  const fmt = (n) => n.toLocaleString();
+  const segments = [
+    { cls: 'is-signed', width: pct(signed1End), label: `Signed: bytes 0–${fmt(signed1End)}` },
+    { cls: 'is-gap', width: pct(gapLength), label: `/Contents gap (unsigned): bytes ${fmt(signed1End)}–${fmt(c)}` },
+    { cls: 'is-signed', width: pct(d), label: `Signed: bytes ${fmt(c)}–${fmt(signed2End)}` },
+  ];
+  if (slot.trailingBytes) {
+    segments.push({ cls: 'is-trailing', width: pct(slot.trailingBytes), label: `Not covered: bytes ${fmt(signed2End)}–${fmt(totalLength)} (${fmt(slot.trailingBytes)} bytes)` });
+  }
+
+  const occupiedPct = slot.capacityBytes ? Math.min(100, (slot.derLength / slot.capacityBytes) * 100) : 0;
+  const headroomPct = Math.max(0, 100 - occupiedPct);
+
+  return `
+    <div class="cert-bytemap">
+      <div class="cert-bytemap-row">
+        <span class="cert-bytemap-label">File coverage</span>
+        <div class="cert-bytemap-bar">
+          ${segments.map((s) => `<span class="cert-bytemap-seg ${s.cls}" style="width:${s.width}%" title="${escapeHtml(s.label)}"></span>`).join('')}
+        </div>
+      </div>
+      ${slot.trailingBytes ? `<p class="cert-bytemap-note">This signature does not cover the last ${fmt(slot.trailingBytes)} byte${slot.trailingBytes === 1 ? '' : 's'} of the file.</p>` : ''}
+      <div class="cert-bytemap-row">
+        <span class="cert-bytemap-label">Slot occupancy</span>
+        <div class="cert-bytemap-bar">
+          <span class="cert-bytemap-seg is-occupied" style="width:${occupiedPct}%" title="CMS: ${fmt(slot.derLength)} of ${fmt(slot.capacityBytes)} bytes"></span>
+          <span class="cert-bytemap-seg is-headroom" style="width:${headroomPct}%" title="Headroom: ${fmt(slot.headroomBytes)} bytes"></span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderCertificateSignatureList(report) {
+  const panel = document.getElementById('certificatesSignaturesPanel');
+  const list = document.getElementById('certSignatureList');
+  if (!report.signatures.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  list.innerHTML = report.signatures.map((sig, i) => {
+    const chain = report.chains.find((c) => c.id === sig.chainId);
+    const meta = [];
+    if (sig.name) meta.push(`<strong>${escapeHtml(sig.name)}</strong>`);
+    if (sig.page !== null && sig.page !== undefined) meta.push(`Page ${sig.page + 1}`);
+    meta.push(`Field: ${escapeHtml(sig.fieldName)}`);
+    if (sig.reason) meta.push(escapeHtml(sig.reason));
+    const signedAt = certFormatDate(sig.signedAttributes?.signingTime || sig.signingTimeClaimed);
+    if (signedAt) meta.push(`Claimed ${escapeHtml(signedAt)}`);
+
+    const chainChecks = chain ? [...chain.checks, ...chain.links.flatMap((l) => l.checks)] : [];
+    const chainCertChecks = chain
+      ? chain.certificateIds.map(certById).filter(Boolean).flatMap((c) => c.checks)
+      : [];
+    const totalChecks = sig.checks.length + chainChecks.length + chainCertChecks.length;
+
+    return `
+      <article class="cert-signature-card" data-cert-signature-card="${escapeHtml(sig.fieldName)}" style="--i:${i}">
+        <div class="cert-signature-head">
+          <span class="icon icon-lock" aria-hidden="true"></span>
+          <span class="cert-signature-title">Signature ${i + 1}</span>
+          ${certBadge(sig.status)}
+        </div>
+        <p class="cert-signature-meta">${meta.join(' &middot; ')}</p>
+        ${renderCertByteMap(sig)}
+        ${renderCertificateChain(report, chain, sig)}
+        <details class="cert-details-block">
+          <summary class="cert-details-summary">
+            <span class="cert-details-summary-main">
+              <span class="icon icon-chevron-right cert-details-caret" aria-hidden="true"></span>
+              <span class="cert-details-summary-label">What was checked</span>
+              <span class="cert-details-summary-total">${totalChecks}</span>
+            </span>
+            <span class="cert-details-summary-counts">${renderChecksSummaryCounts([...sig.checks, ...chainChecks, ...chainCertChecks])}</span>
+          </summary>
+          <div class="cert-details-body">
+            ${renderValidationList(sig.checks)}
+            ${chainChecks.length ? `<p class="cert-section-title" style="margin-top:12px">Chain</p>${renderValidationList(chainChecks)}` : ''}
+            ${chainCertChecks.length ? `<p class="cert-section-title" style="margin-top:12px">Certificates</p>${renderValidationList(chainCertChecks)}` : ''}
+          </div>
+        </details>
+      </article>`;
+  }).join('');
+}
+
+function renderOtherCertificates(report) {
+  const panel = document.getElementById('certificatesOtherPanel');
+  const list = document.getElementById('certOtherList');
+  const others = (report.unchainedCertificateIds || []).map(certById).filter(Boolean);
+  if (!others.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  list.innerHTML = `<ol class="cert-chain is-flat">${others.map((cert, i) => renderChainNode({
+    status: certStatusOf(cert),
+    depth: 0,
+    index: i,
+    name: certDisplayName(cert),
+    role: CERT_ROLE_LABEL[cert.role] ?? CERT_ROLE_LABEL.unknown,
+    detail: `Issued by ${cert.issuer.commonName || cert.issuer.formatted || 'unknown'}`,
+    certId: cert.id,
+  })).join('')}</ol>`;
+}
+
+/** Small pass/warn/fail/unknown pill counts for a details summary -- worst first. */
+function renderChecksSummaryCounts(checks) {
+  const counts = { fail: 0, warn: 0, unknown: 0, pass: 0 };
+  for (const check of checks) counts[check.status] = (counts[check.status] ?? 0) + 1;
+  return ['fail', 'warn', 'unknown', 'pass']
+    .filter((status) => counts[status])
+    .map((status) => `<span class="cert-check-count is-${status}">${CERT_STATUS_GLYPH[status]} ${counts[status]}</span>`)
+    .join('');
+}
+
+/** `opts.showSource` renders each check's provenance and, when it names a
+ * certificate, makes the row open that certificate's sheet on Validation. */
+function renderValidationList(checks, opts = {}) {
+  if (!checks?.length) return '';
+  const { showSource = false } = opts;
+  return checks.map((check) => {
+    const source = showSource ? check.source : null;
+    const openable = Boolean(source?.certificateId);
+    const attrs = openable
+      ? ` data-cert-action="open-cert" data-cert-id="${escapeHtml(source.certificateId)}" data-cert-tab="validation" role="button" tabindex="0"`
+      : '';
+    return `
+    <div class="cert-check-row is-${escapeHtml(check.status)}${openable ? ' is-openable' : ''}"${attrs}>
+      ${certDot(check.status)}
+      <div class="cert-check-text">
+        ${source ? `<div class="cert-check-source">${escapeHtml(source.label)}</div>` : ''}
+        <div class="cert-check-label">${escapeHtml(check.label)}</div>
+        <div class="cert-check-detail">${escapeHtml(check.detail)}</div>
+        <div class="cert-check-why">${escapeHtml(check.explanation)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- The certificate sheet ---------- */
+
+const certificateSheet = document.getElementById('certificateSheet');
+const certificateSheetScrim = document.getElementById('certificateSheetScrim');
+
+function isCertificateSheetOpen() {
+  return Boolean(certificateSheet && certificateSheet.classList.contains('is-open'));
+}
+
+function openCertificateSheet(certId, tab) {
+  const cert = certById(certId);
+  if (!cert || !certificateSheet) return;
+
+  // Only one sheet slides over the column at a time; they occupy the same space.
+  if (typeof closeEditSheet === 'function') deselectActiveField();
+  if (typeof closeRevisionsCompareSheet === 'function') closeRevisionsCompareSheet();
+
+  activeCertificateId = certId;
+  activeCertificateTab = tab || 'overview';
+  renderCertificateSheet(cert);
+
+  certificateSheet.classList.add('is-open');
+  certificateSheet.setAttribute('aria-hidden', 'false');
+  certificateSheetScrim?.classList.add('is-open');
+  document.body.classList.add('edit-sheet-open');
+  certificateSheet.focus({ preventScroll: true });
+
+  // Keep the chain and the sheet agreeing on what is being looked at.
+  document.querySelectorAll('.cert-chain-node').forEach((node) => {
+    node.classList.toggle('is-selected', node.getAttribute('data-cert-id') === certId);
+  });
+}
+
+function closeCertificateSheet() {
+  if (!certificateSheet) return;
+  certificateSheet.classList.remove('is-open');
+  certificateSheet.setAttribute('aria-hidden', 'true');
+  certificateSheetScrim?.classList.remove('is-open');
+  if (!isEditSheetOpen()) document.body.classList.remove('edit-sheet-open');
+  activeCertificateId = null;
+  document.querySelectorAll('.cert-chain-node.is-selected').forEach((n) => n.classList.remove('is-selected'));
+}
+
+function setCertificateSheetTab(tab) {
+  activeCertificateTab = tab;
+  document.querySelectorAll('#certificateSheetTabs .revisions-view-tab').forEach((btn) => {
+    const isActive = btn.getAttribute('data-cert-tab') === tab;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  ['overview', 'extensions', 'validation', 'raw'].forEach((name) => {
+    const panel = document.getElementById(`certTab${name.charAt(0).toUpperCase()}${name.slice(1)}`);
+    if (panel) panel.hidden = name !== tab;
+  });
+}
+
+function certRow(label, value, opts = {}) {
+  // An absent value is shown as absent, never filled in with a plausible
+  // default -- inventing one would be exactly the kind of quiet lie this
+  // feature exists to avoid.
+  const shown = value === null || value === undefined || value === ''
+    ? '<span class="cert-absent">Not present</span>'
+    : `<span class="${opts.mono ? 'cert-mono' : ''}${opts.copy ? ' cert-copyable' : ''}"${opts.copy ? ` data-cert-action="copy-text" data-cert-text="${escapeHtml(value)}" title="Click to copy"` : ''}>${escapeHtml(value)}</span>`;
+  return `<tr><th>${escapeHtml(label)}</th><td>${shown}</td></tr>`;
+}
+
+function renderCertificateSheet(cert) {
+  const status = certStatusOf(cert);
+  document.getElementById('certificateSheetTitle').textContent = certDisplayName(cert);
+  document.getElementById('certificateSheetSubject').innerHTML =
+    `${escapeHtml(CERT_ROLE_LABEL[cert.role] ?? CERT_ROLE_LABEL.unknown)} ${certBadge(status)}`;
+
+  renderCertificateOverviewTab(cert);
+  renderCertificateExtensionsTab(cert);
+  document.getElementById('certTabValidation').innerHTML =
+    renderValidationList(cert.checks) || '<p class="cert-absent">No checks were run on this certificate.</p>';
+  document.getElementById('certTabRaw').innerHTML = `
+    <div class="cert-section">
+      <p class="cert-section-title">PEM</p>
+      <pre class="cert-raw-block">${escapeHtml(cert.pem)}</pre>
+    </div>
+    <div class="cert-section">
+      <p class="cert-section-title">DER</p>
+      <p class="cert-check-why">${cert.derLength} bytes, base64-encoded below.</p>
+      <pre class="cert-raw-block">${escapeHtml(cert.derBase64)}</pre>
+    </div>`;
+
+  // Exporting a chain only means something for a certificate that is in one.
+  const chain = certificatesData?.chains.find((c) => c.certificateIds.includes(cert.id));
+  const chainBtn = document.getElementById('btnExportChain');
+  if (chainBtn) chainBtn.hidden = !chain;
+
+  // The Raw tab follows the showRawPdfData setting, which can be turned off
+  // while it is the open tab -- don't leave its panel showing with no tab.
+  const rawTab = document.querySelector('#certificateSheetTabs .cert-tab-raw');
+  if (activeCertificateTab === 'raw' && rawTab && rawTab.offsetParent === null) {
+    activeCertificateTab = 'overview';
+  }
+
+  setCertificateSheetTab(activeCertificateTab);
+}
+
+function renderCertificateOverviewTab(cert) {
+  const from = certFormatDate(cert.validFrom);
+  const to = certFormatDate(cert.validTo);
+
+  // How much of the certificate's life is used up reads faster than two dates.
+  let validityBar = '';
+  const start = new Date(cert.validFrom).getTime();
+  const end = new Date(cert.validTo).getTime();
+  if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+    const pct = Math.max(0, Math.min(100, ((Date.now() - start) / (end - start)) * 100));
+    const fillClass = cert.isExpired || cert.isNotYetValid ? 'is-fail' : (cert.daysUntilExpiry !== null && cert.daysUntilExpiry <= 30) ? 'is-warn' : '';
+    validityBar = `
+      <div class="cert-validity-bar"><div class="cert-validity-fill ${fillClass}" style="width:${pct.toFixed(1)}%"></div></div>
+      <div class="cert-validity-legend"><span>${escapeHtml(from || '—')}</span><span>${escapeHtml(to || '—')}</span></div>`;
+  }
+
+  const state = cert.isExpired ? 'Expired'
+    : cert.isNotYetValid ? 'Not valid yet'
+    : cert.daysUntilExpiry !== null ? `Valid — ${cert.daysUntilExpiry} day${cert.daysUntilExpiry === 1 ? '' : 's'} left`
+    : 'Valid';
+
+  const sans = cert.extensions.subjectAltNames || [];
+  const usedBy = (certificatesData?.signatures || []).filter((s) =>
+    s.signerCertificateId === cert.id || (s.certificateIds || []).includes(cert.id),
+  );
+
+  document.getElementById('certTabOverview').innerHTML = `
+    <div class="cert-section">
+      <p class="cert-section-title">Identity</p>
+      <table class="cert-field-table">
+        ${certRow('Subject', cert.subject.formatted)}
+        ${certRow('Common name', cert.subject.commonName)}
+        ${certRow('Organization', cert.subject.organization)}
+        ${certRow('Organizational unit', cert.subject.organizationalUnit)}
+        ${certRow('Country', cert.subject.country)}
+        ${sans.length ? certRow('Subject alt names', sans.map((s) => `${s.type}: ${s.value}`).join(', ')) : ''}
+      </table>
+    </div>
+
+    <div class="cert-section">
+      <p class="cert-section-title">Issuer</p>
+      <table class="cert-field-table">
+        ${certRow('Issuer', cert.issuer.formatted)}
+        ${certRow('Issuer organization', cert.issuer.organization)}
+        ${certRow('Relationship', cert.selfIssued ? (cert.selfSigned ? 'Self-signed — it issued itself' : 'Names itself as issuer, but the self-signature does not verify') : 'Issued by another certificate')}
+      </table>
+    </div>
+
+    <div class="cert-section">
+      <p class="cert-section-title">Validity</p>
+      ${validityBar}
+      <table class="cert-field-table">
+        ${certRow('Not before', from)}
+        ${certRow('Not after', to)}
+        ${certRow('Current status', state)}
+      </table>
+    </div>
+
+    <div class="cert-section">
+      <p class="cert-section-title">Serial &amp; fingerprints</p>
+      <table class="cert-field-table">
+        ${certRow('Serial number', cert.serialNumber, { mono: true, copy: true })}
+        ${certRow('SHA-256', cert.fingerprints.sha256, { mono: true, copy: true })}
+      </table>
+    </div>
+
+    <div class="cert-section">
+      <p class="cert-section-title">Public key &amp; signature</p>
+      <table class="cert-field-table">
+        ${certRow('Key algorithm', cert.publicKey.algorithm)}
+        ${certRow('Key size', cert.publicKey.keySize ? `${cert.publicKey.keySize} bits` : null)}
+        ${certRow('Curve', cert.publicKey.namedCurve)}
+        ${certRow('Exponent', cert.publicKey.exponent)}
+        ${certRow('Signature algorithm', cert.signatureAlgorithm.name)}
+        ${certRow('Signature hash', cert.signatureAlgorithm.hash)}
+        ${certRow('Version', `X.509 v${cert.version}`)}
+      </table>
+    </div>
+
+    <div class="cert-section">
+      <p class="cert-section-title">Found in</p>
+      <table class="cert-field-table">
+        ${cert.sources.map((s) => certRow(
+          { cms: 'Signature content', 'dss-certs': 'Document security store', 'sig-cert': 'Signature /Cert entry', vri: 'Validation info (VRI)' }[s.kind] || s.kind,
+          s.signatureFieldName ? `Field ${s.signatureFieldName}` : 'Document-level',
+        )).join('')}
+      </table>
+    </div>
+
+    ${usedBy.length ? `
+      <div class="cert-section">
+        <p class="cert-section-title">Used by</p>
+        ${usedBy.map((s) => `
+          <button type="button" class="cert-usedby-row" data-cert-action="show-field" data-cert-signature-field="${escapeHtml(s.fieldName)}">
+            <span class="icon icon-lock" aria-hidden="true"></span>
+            <span>${escapeHtml(s.name || s.fieldName)}${s.page !== null && s.page !== undefined ? ` — page ${s.page + 1}` : ''} &middot; field ${escapeHtml(s.fieldName)}</span>
+          </button>`).join('')}
+      </div>` : ''}`;
+}
+
+function renderCertificateExtensionsTab(cert) {
+  const ext = cert.extensions;
+  const rows = [];
+  const add = (name, critical, value) => {
+    if (value === null || value === undefined || value === '') return;
+    rows.push(`
+      <div class="cert-ext-row">
+        <div class="cert-ext-head">
+          <span class="cert-ext-name">${escapeHtml(name)}</span>
+          ${critical ? '<span class="cert-ext-critical">CRITICAL</span>' : ''}
+        </div>
+        <div class="cert-ext-value">${escapeHtml(value)}</div>
+      </div>`);
+  };
+
+  if (ext.basicConstraints) {
+    add('Basic Constraints', ext.basicConstraints.critical,
+      `${ext.basicConstraints.isCa ? 'Certificate authority' : 'End-entity certificate'}${ext.basicConstraints.pathLenConstraint !== null ? ` · path length limit ${ext.basicConstraints.pathLenConstraint}` : ''}`);
+  }
+  if (ext.keyUsage) add('Key Usage', ext.keyUsage.critical, ext.keyUsage.usages.join(', ') || 'No bits set');
+  if (ext.extendedKeyUsage) add('Extended Key Usage', ext.extendedKeyUsage.critical, ext.extendedKeyUsage.names.join(', '));
+  add('Subject Key Identifier', false, ext.subjectKeyIdentifier);
+  if (ext.authorityKeyIdentifier) {
+    const aki = ext.authorityKeyIdentifier;
+    add('Authority Key Identifier', false, [aki.keyIdentifier, aki.issuerDn, aki.serial].filter(Boolean).join(' · '));
+  }
+  if (ext.subjectAltNames?.length) add('Subject Alternative Names', false, ext.subjectAltNames.map((s) => `${s.type}: ${s.value}`).join(', '));
+  if (ext.crlDistributionPoints?.length) add('CRL Distribution Points', false, ext.crlDistributionPoints.join(', '));
+  if (ext.authorityInfoAccess?.ocsp?.length) add('OCSP responder', false, ext.authorityInfoAccess.ocsp.join(', '));
+  if (ext.authorityInfoAccess?.caIssuers?.length) add('CA issuers', false, ext.authorityInfoAccess.caIssuers.join(', '));
+  if (ext.certificatePolicies?.length) {
+    add('Certificate Policies', false, ext.certificatePolicies.map((p) => p.cps ? `${p.oid} (${p.cps})` : p.oid).join(', '));
+  }
+  if (ext.unrecognizedCritical?.length) add('Critical, not decoded', true, ext.unrecognizedCritical.join(', '));
+
+  const note = (ext.crlDistributionPoints?.length || ext.authorityInfoAccess?.ocsp?.length)
+    ? '<p class="cert-check-why" style="margin-top:12px">The CRL and OCSP addresses above are shown for reference only. pdf-seal makes no network requests and does not check whether this certificate has been revoked.</p>'
+    : '';
+
+  document.getElementById('certTabExtensions').innerHTML = rows.length
+    ? rows.join('') + note
+    : '<p class="cert-absent">This certificate carries no extensions we recognise. Extensions that are absent are not listed.</p>';
+}
+
+/* ---------- Export ---------- */
+// Everything exported here is already in the report the browser holds, so no
+// round trip is needed -- and the original PDF is never touched by an export.
+
+function certDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showNotification(`Downloaded ${filename}`, 'success');
+}
+
+function certSafeFilename(cert) {
+  return (certDisplayName(cert).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'certificate').slice(0, 60);
+}
+
+function exportCertificate(certId, format) {
+  const cert = certById(certId);
+  if (!cert) return;
+  if (format === 'pem') {
+    certDownload(new Blob([cert.pem], { type: 'application/x-pem-file' }), `${certSafeFilename(cert)}.pem`);
+    return;
+  }
+  const binary = atob(cert.derBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  certDownload(new Blob([bytes], { type: 'application/pkix-cert' }), `${certSafeFilename(cert)}.cer`);
+}
+
+function exportCertificateChain(certId) {
+  const chain = certificatesData?.chains.find((c) => c.certificateIds.includes(certId));
+  if (!chain) return;
+  // Chain order: leaf first, then each issuer in turn -- the order a verifier
+  // walks it, and the order the chain is displayed in.
+  const pem = chain.certificateIds.map(certById).filter(Boolean).map((c) => c.pem).join('');
+  certDownload(new Blob([pem], { type: 'application/x-pem-file' }), 'chain.pem');
+}
+
+async function copyCertificateText(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showNotification(`${label} copied`, 'success', 3000);
+  } catch (_e) {
+    showNotification('Could not copy to the clipboard.', 'error');
+  }
+}
+
+/* ---------- Cross-links with the Signatures section ---------- */
+
+function flashElement(el) {
+  if (!el) return;
+  el.classList.remove('is-flashed');
+  void el.offsetWidth; // restart the animation
+  el.classList.add('is-flashed');
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+/** Signatures -> Certificates: open the section and land on that signature. */
+async function focusCertificateForField(fieldName) {
+  document.getElementById('navBtnCertificates')?.click();
+  await loadCertificatesIfNeeded();
+  flashElement(document.querySelector(`[data-cert-signature-card="${CSS.escape(fieldName)}"]`));
+}
+
+/** Certificates -> Signatures: open the section and select that field. */
+function showSignatureFieldOnDocument(fieldName) {
+  const field = documentFields.find((f) => f.name === fieldName);
+  if (!field) {
+    showNotification(`This signature's field (${fieldName}) is not on the document.`, 'info');
+    return;
+  }
+  closeCertificateSheet();
+  document.getElementById('navBtnSignatures')?.click();
+
+  const goToField = () => {
+    const overlay = document.querySelector(`.field-overlay[data-field-name="${CSS.escape(fieldName)}"]`);
+    if (overlay) selectFieldOverlay(overlay, field);
+  };
+
+  if (typeof field.page === 'number' && field.page + 1 !== pageNum) {
+    pageNum = field.page + 1;
+    Promise.resolve(renderPage(pageNum)).then(goToField).catch(() => {});
+  } else {
+    goToField();
+  }
+}
+
+/* ---------- Event wiring ---------- */
+
+document.getElementById('sectionCertificates')?.addEventListener('click', (e) => {
+  const target = e.target.closest('[data-cert-action]');
+  if (!target) return;
+  const action = target.getAttribute('data-cert-action');
+
+  if (action === 'open-cert') {
+    const certEl = target.closest('[data-cert-id]');
+    const certId = certEl?.getAttribute('data-cert-id');
+    const tab = certEl?.getAttribute('data-cert-tab') || undefined;
+    if (certId) openCertificateSheet(certId, tab);
+  } else if (action === 'show-field') {
+    const fieldName = target.closest('[data-cert-signature-field]')?.getAttribute('data-cert-signature-field');
+    if (fieldName) showSignatureFieldOnDocument(fieldName);
+  } else if (action === 'copy-cert-summary' && certificatesData) {
+    copyCertificateText(buildCertificateSummaryMarkdown(certificatesData), 'Summary');
+  } else if (action === 'copy-cert-json' && certificatesData) {
+    copyCertificateText(JSON.stringify(certificateReportForDiff(certificatesData), null, 2), 'JSON');
+  } else if (action === 'toggle-cert-filter-status') {
+    const status = target.getAttribute('data-status');
+    if (status) {
+      if (certFilterStatuses.has(status)) certFilterStatuses.delete(status);
+      else certFilterStatuses.add(status);
+      certFilterSearchHadFocus = false;
+      if (certificatesData) renderCertificateSummary(certificatesData);
+    }
+  } else if (action === 'clear-cert-filter') {
+    certFilterStatuses = new Set(['fail', 'warn', 'pass', 'unknown']);
+    certFilterText = '';
+    certFilterSearchHadFocus = false;
+    if (certificatesData) renderCertificateSummary(certificatesData);
+  }
+});
+
+// Free-text filtering of the summary's check list -- re-renders on every
+// keystroke, so focus/caret are restored inside renderCertificateSummary.
+document.getElementById('certificatesSummary')?.addEventListener('input', (e) => {
+  const target = e.target.closest('#certFilterSearchInput');
+  if (!target) return;
+  certFilterText = target.value;
+  certFilterSearchHadFocus = true;
+  if (certificatesData) renderCertificateSummary(certificatesData);
+});
+
+// The summary's openable check rows are divs with role="button" (they sit
+// inside a `<details>`, where a real <button> would also toggle it) -- give
+// them the keyboard activation a native button gets for free.
+document.getElementById('sectionCertificates')?.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const target = e.target.closest('[data-cert-action][role="button"]');
+  if (!target) return;
+  e.preventDefault();
+  target.click();
+});
+
+certificateSheet?.addEventListener('click', (e) => {
+  const target = e.target.closest('[data-cert-action]');
+  if (!target || !activeCertificateId) return;
+  const action = target.getAttribute('data-cert-action');
+  const cert = certById(activeCertificateId);
+
+  if (action === 'export-pem') exportCertificate(activeCertificateId, 'pem');
+  else if (action === 'export-der') exportCertificate(activeCertificateId, 'der');
+  else if (action === 'export-chain') exportCertificateChain(activeCertificateId);
+  else if (action === 'copy-pem' && cert) copyCertificateText(cert.pem, 'PEM');
+  else if (action === 'copy-text') copyCertificateText(target.getAttribute('data-cert-text') || '', 'Value');
+  else if (action === 'show-field') {
+    const fieldName = target.getAttribute('data-cert-signature-field');
+    if (fieldName) showSignatureFieldOnDocument(fieldName);
+  }
+});
+
+document.getElementById('certificateSheetTabs')?.addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-cert-tab]');
+  if (tab) setCertificateSheetTab(tab.getAttribute('data-cert-tab'));
+});
+
+// Arrow keys move between tabs, as a tablist should.
+document.getElementById('certificateSheetTabs')?.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const tabs = [...document.querySelectorAll('#certificateSheetTabs .revisions-view-tab')].filter((t) => t.offsetParent !== null);
+  const current = tabs.findIndex((t) => t.classList.contains('active'));
+  if (current < 0) return;
+  const next = tabs[(current + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+  next.focus();
+  setCertificateSheetTab(next.getAttribute('data-cert-tab'));
+  e.preventDefault();
+});
+
+document.getElementById('btnCertificateSheetClose')?.addEventListener('click', closeCertificateSheet);
+certificateSheetScrim?.addEventListener('click', closeCertificateSheet);
+
+// Escape closes the sheet, but only once every modal has had its turn --
+// the same ordering rule #editSheet follows.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !isCertificateSheetOpen()) return;
+  if (document.querySelector('.modal-backdrop.is-open')) return;
+  closeCertificateSheet();
+});
+
+/* ---------- Modify ----------
+   Rewrites the certificates inside a signature, for building test documents.
+   Kept behind a three-step review because it changes the file: what will
+   change, what it will change to, and what that costs. */
+
+let pendingCertificateModification = null;
+
+const CERT_OPERATIONS = {
+  'remove-certificate': {
+    label: 'Remove certificate',
+    blurb: 'Drop one certificate from inside this signature.',
+    needsTarget: true,
+  },
+  'remove-intermediates': {
+    label: 'Remove intermediate',
+    blurb: 'Drop the CA certificates between the signer and the root, leaving an incomplete chain.',
+  },
+  'replace-signer': {
+    label: 'Replace certificate',
+    blurb: 'Swap the signer certificate for one from a file.',
+    needsFile: true,
+  },
+  'replace-chain': {
+    label: 'Replace chain',
+    blurb: 'Swap the CA certificates above the signer, keeping the signer itself.',
+    needsFile: true,
+    multiFile: true,
+  },
+};
+
+const certificateModifySheet = document.getElementById('certificateModifySheet');
+const certificateModifyScrim = document.getElementById('certificateModifySheetScrim');
+
+function isCertificateModifySheetOpen() {
+  return Boolean(certificateModifySheet?.classList.contains('is-open'));
+}
+
+/**
+ * Which operations this signature can actually support, and why not when it
+ * cannot. Mirrors describeAvailableOperations() in lib/PdfCertificateModifier.ts
+ * so a doomed attempt is visible before it is made rather than after.
+ */
+function availableCertificateOperations(sig) {
+  const own = (sig.certificateIds || []).map(certById).filter(Boolean);
+  const intermediates = own.filter(
+    (c) => c.id !== sig.signerCertificateId && !c.selfIssued && c.extensions.basicConstraints?.isCa === true,
+  );
+  const aboveSigner = own.filter((c) => c.id !== sig.signerCertificateId);
+  const hasSigner = Boolean(sig.signerCertificateId);
+
+  return [
+    { op: 'remove-certificate', available: own.length > 1, reason: 'This signature carries only one certificate.' },
+    { op: 'remove-intermediates', available: intermediates.length > 0, reason: 'This signature carries no intermediate CA certificates.' },
+    { op: 'replace-signer', available: hasSigner, reason: 'The signer certificate is not embedded in this document.' },
+    { op: 'replace-chain', available: hasSigner && aboveSigner.length > 0, reason: hasSigner ? 'There are no CA certificates above the signer to replace.' : 'The signer certificate is not embedded in this document.' },
+  ];
+}
+
+function renderCertificateModifyPanel(report) {
+  const panel = document.getElementById('certificatesModifyPanel');
+  const list = document.getElementById('certModifyList');
+  // Nothing to modify without a signature carrying a readable CMS.
+  const modifiable = report.signatures.filter((s) => s.cmsSlot && !s.cmsError);
+  if (!modifiable.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  list.innerHTML = modifiable.map((sig) => {
+    const ops = availableCertificateOperations(sig);
+    const slot = sig.cmsSlot;
+    return `
+      <div class="cert-modify-group">
+        <div class="cert-modify-head">
+          <span class="icon icon-lock" aria-hidden="true"></span>
+          <span class="cert-modify-title">Field ${escapeHtml(sig.fieldName)}</span>
+        </div>
+        <p class="cert-modify-room">Signature slot holds ${slot.capacityBytes} bytes; it currently uses ${slot.derLength} — <strong>${slot.headroomBytes} spare</strong>. A change that needs more than that cannot be applied to this document.</p>
+        <div class="cert-modify-actions">
+          ${ops.map((o) => `
+            <button type="button" class="btn btn-ghost cert-modify-btn"
+                    data-cert-action="modify" data-cert-op="${escapeHtml(o.op)}" data-cert-modify-field="${escapeHtml(sig.fieldName)}"
+                    ${o.available ? '' : `disabled title="${escapeHtml(o.reason)}"`}>
+              ${escapeHtml(CERT_OPERATIONS[o.op].label)}
+            </button>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openCertificateModifySheet(op, fieldName) {
+  const sig = certificatesData?.signatures.find((s) => s.fieldName === fieldName);
+  const spec = CERT_OPERATIONS[op];
+  if (!sig || !spec || !certificateModifySheet) return;
+
+  closeCertificateSheet();
+  if (typeof deselectActiveField === 'function') deselectActiveField();
+
+  pendingCertificateModification = {
+    op, fieldName, spec,
+    targetFingerprint: null,
+    file: null,
+    parsed: null,
+    error: null,
+  };
+
+  document.getElementById('certificateModifySheetSubject').textContent = spec.label;
+  renderCertificateModifyBody();
+
+  certificateModifySheet.classList.add('is-open');
+  certificateModifySheet.setAttribute('aria-hidden', 'false');
+  certificateModifyScrim?.classList.add('is-open');
+  document.body.classList.add('edit-sheet-open');
+  certificateModifySheet.focus({ preventScroll: true });
+}
+
+function closeCertificateModifySheet() {
+  if (!certificateModifySheet) return;
+  certificateModifySheet.classList.remove('is-open');
+  certificateModifySheet.setAttribute('aria-hidden', 'true');
+  certificateModifyScrim?.classList.remove('is-open');
+  if (!isEditSheetOpen() && !isCertificateSheetOpen()) document.body.classList.remove('edit-sheet-open');
+  pendingCertificateModification = null;
+}
+
+/** A compact card describing one certificate, used for the before/after pair. */
+function certificateSummaryCard(cert, label) {
+  if (!cert) return `<div class="cert-compare-card is-empty"><span class="cert-compare-label">${escapeHtml(label)}</span><span class="cert-absent">Nothing selected yet</span></div>`;
+  return `
+    <div class="cert-compare-card">
+      <span class="cert-compare-label">${escapeHtml(label)}</span>
+      <span class="cert-compare-name">${escapeHtml(certDisplayName(cert))}</span>
+      <span class="cert-compare-meta">Issued by ${escapeHtml(cert.issuer.commonName || cert.issuer.formatted || 'unknown')}</span>
+      <span class="cert-compare-meta">${escapeHtml(certFormatDate(cert.validFrom) || '?')} – ${escapeHtml(certFormatDate(cert.validTo) || '?')}</span>
+    </div>`;
+}
+
+function renderCertificateModifyBody() {
+  const body = document.getElementById('certificateModifyBody');
+  const state = pendingCertificateModification;
+  if (!body || !state) return;
+
+  const sig = certificatesData.signatures.find((s) => s.fieldName === state.fieldName);
+  const own = (sig.certificateIds || []).map(certById).filter(Boolean);
+  const signer = certById(sig.signerCertificateId);
+  const spec = state.spec;
+
+  let step2 = '';
+  let ready = false;
+
+  if (state.op === 'remove-certificate') {
+    step2 = `
+      <p class="cert-section-title">Which certificate</p>
+      <div class="cert-modify-choices">
+        ${own.map((c) => `
+          <label class="cert-modify-choice${state.targetFingerprint === c.id ? ' is-selected' : ''}">
+            <input type="radio" name="certRemoveTarget" value="${escapeHtml(c.id)}" ${state.targetFingerprint === c.id ? 'checked' : ''}>
+            <span>
+              <strong>${escapeHtml(certDisplayName(c))}</strong>
+              <span class="cert-compare-meta">${escapeHtml(CERT_ROLE_LABEL[c.role] ?? CERT_ROLE_LABEL.unknown)}${c.id === sig.signerCertificateId ? ' — this is the signer' : ''}</span>
+            </span>
+          </label>`).join('')}
+      </div>`;
+    ready = Boolean(state.targetFingerprint);
+  } else if (state.op === 'remove-intermediates') {
+    const intermediates = own.filter((c) => c.id !== sig.signerCertificateId && !c.selfIssued && c.extensions.basicConstraints?.isCa === true);
+    step2 = `
+      <p class="cert-section-title">What will be removed</p>
+      <div class="cert-modify-choices">
+        ${intermediates.map((c) => `<div class="cert-modify-choice is-static"><span><strong>${escapeHtml(certDisplayName(c))}</strong><span class="cert-compare-meta">Intermediate CA</span></span></div>`).join('')}
+      </div>`;
+    ready = intermediates.length > 0;
+  } else if (spec.needsFile) {
+    const current = state.op === 'replace-signer'
+      ? signer
+      : null;
+    step2 = `
+      <p class="cert-section-title">Replacement</p>
+      <button type="button" class="btn btn-primary btn-block" id="btnPickCertificateFile">
+        <span class="icon icon-upload-device" aria-hidden="true"></span>
+        ${state.file ? escapeHtml(state.file.name) : (spec.multiFile ? 'Choose certificate file (.pem with one or more)…' : 'Choose certificate file…')}
+      </button>
+      ${state.error ? `<div class="cert-modify-error">${escapeHtml(state.error)}</div>` : ''}
+      ${state.parsed ? `
+        <div class="cert-compare">
+          ${state.op === 'replace-signer'
+            ? certificateSummaryCard(current, 'Current')
+            : `<div class="cert-compare-card"><span class="cert-compare-label">Current</span>${own.filter((c) => c.id !== sig.signerCertificateId).map((c) => `<span class="cert-compare-name">${escapeHtml(certDisplayName(c))}</span>`).join('') || '<span class="cert-absent">None</span>'}</div>`}
+          <span class="cert-compare-arrow" aria-hidden="true">→</span>
+          ${state.op === 'replace-signer'
+            ? certificateSummaryCard(state.parsed[0], 'Replacement')
+            : `<div class="cert-compare-card"><span class="cert-compare-label">Replacement</span>${state.parsed.map((c) => `<span class="cert-compare-name">${escapeHtml(certDisplayName(c))}</span>`).join('')}</div>`}
+        </div>` : ''}`;
+    ready = Boolean(state.parsed?.length);
+  }
+
+  // What this actually does to the signature is not uniform, and saying
+  // "this breaks your signature" for all four would be false for three of them.
+  const breaksSignature =
+    state.op === 'replace-signer' ||
+    (state.op === 'remove-certificate' && state.targetFingerprint === sig.signerCertificateId);
+
+  body.innerHTML = `
+    <div class="cert-section">
+      <p class="cert-section-title">${escapeHtml(spec.label)}</p>
+      <p class="cert-check-why">${escapeHtml(spec.blurb)} This affects the signature in field <strong>${escapeHtml(state.fieldName)}</strong>.</p>
+    </div>
+
+    <div class="cert-section">${step2}</div>
+
+    <div class="cert-section">
+      <div class="cert-danger-block ${breaksSignature ? 'is-breaking' : 'is-preserving'}">
+        <span class="icon ${breaksSignature ? 'icon-alert-triangle' : 'icon-info-circle'}" aria-hidden="true"></span>
+        <div>
+          ${breaksSignature
+            ? '<strong>This will break the signature.</strong> The public key it is checked against will no longer be the key that made it, so the signature will stop verifying. The document’s own content is untouched, so it will still report as unchanged.'
+            : '<strong>This will not break the signature.</strong> The certificates inside a signature are not covered by the signature itself, so it will still verify — only the chain around it changes.'}
+          <div class="cert-modify-note">Your loaded document is replaced by the modified copy. The original file on disk is never touched.</div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('btnCertificateModifyApply').disabled = !ready;
+}
+
+async function handleCertificateFilePicked(file) {
+  const state = pendingCertificateModification;
+  if (!state || !file) return;
+  state.file = file;
+  state.parsed = null;
+  state.error = null;
+  renderCertificateModifyBody();
+
+  try {
+    const formData = new FormData();
+    formData.append('certificateFile', file);
+    const response = await fetch('/api/certificates/inspect', { method: 'POST', body: formData });
+    const payload = await response.json().catch(() => ({}));
+    if (pendingCertificateModification !== state) return; // sheet moved on
+    if (!response.ok) throw new Error(payload?.error || 'That file could not be read as a certificate.');
+    state.parsed = payload.certificates;
+  } catch (error) {
+    if (pendingCertificateModification !== state) return;
+    state.error = error.message;
+  }
+  renderCertificateModifyBody();
+}
+
+async function confirmCertificateModification() {
+  const state = pendingCertificateModification;
+  if (!state || !activeFile) return;
+
+  const applyBtn = document.getElementById('btnCertificateModifyApply');
+  applyBtn.disabled = true;
+  const toast = showNotification('Rewriting the signature…', 'loading', 0);
+
+  try {
+    const formData = new FormData();
+    formData.append('pdfDocument', activeFile);
+    formData.append('operation', state.op);
+    formData.append('signatureField', state.fieldName);
+    if (state.targetFingerprint) formData.append('targetFingerprint', state.targetFingerprint);
+    if (state.file) formData.append('certificateFile', state.file);
+
+    const response = await fetch('/api/certificates/modify', { method: 'POST', body: formData });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload?.error || 'The change could not be applied.');
+    }
+
+    let meta = null;
+    const header = response.headers.get('X-Certificate-Modification');
+    if (header) { try { meta = JSON.parse(decodeURIComponent(header)); } catch (_e) { /* informational only */ } }
+
+    const blob = await response.blob();
+    const updated = new File([blob], activeFile.name, { type: 'application/pdf' });
+
+    toast.dismissNotification();
+    closeCertificateModifySheet();
+
+    // One reload path for everything: certificates, chain, validation,
+    // signatures and revisions all refresh from processNewFile.
+    await processNewFile(updated, { preservePage: true, isEdit: true });
+
+    const removed = meta?.removedCertificates?.length ? ` Removed ${meta.removedCertificates.join(', ')}.` : '';
+    showNotification(
+      `Signature rewritten.${removed}${meta?.signatureNowInvalid ? ' The signature no longer verifies.' : ' The signature still verifies.'}`,
+      meta?.signatureNowInvalid ? 'info' : 'success',
+      8000,
+    );
+  } catch (error) {
+    toast.dismissNotification();
+    applyBtn.disabled = false;
+    showNotification(error.message, 'error', 10000);
+  }
+}
+
+document.getElementById('certificatesModifyPanel')?.addEventListener('click', (e) => {
+  const target = e.target.closest('[data-cert-action="modify"]');
+  if (!target || target.disabled) return;
+  openCertificateModifySheet(target.getAttribute('data-cert-op'), target.getAttribute('data-cert-modify-field'));
+});
+
+document.getElementById('certificateModifyBody')?.addEventListener('change', (e) => {
+  if (e.target.name !== 'certRemoveTarget' || !pendingCertificateModification) return;
+  pendingCertificateModification.targetFingerprint = e.target.value;
+  renderCertificateModifyBody();
+});
+
+document.getElementById('certificateModifyBody')?.addEventListener('click', (e) => {
+  if (e.target.closest('#btnPickCertificateFile')) document.getElementById('certificateFileInput').click();
+});
+
+document.getElementById('certificateFileInput')?.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  // Reset so picking the same file twice still fires a change.
+  e.target.value = '';
+  if (file) handleCertificateFilePicked(file);
+});
+
+document.getElementById('btnCertificateModifyApply')?.addEventListener('click', confirmCertificateModification);
+document.getElementById('btnCertificateModifyCancel')?.addEventListener('click', closeCertificateModifySheet);
+document.getElementById('btnCertificateModifySheetClose')?.addEventListener('click', closeCertificateModifySheet);
+certificateModifyScrim?.addEventListener('click', closeCertificateModifySheet);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !isCertificateModifySheetOpen()) return;
+  if (document.querySelector('.modal-backdrop.is-open')) return;
+  closeCertificateModifySheet();
+});
+
   </script>
 </body>
 </html>

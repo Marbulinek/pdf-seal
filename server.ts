@@ -9,6 +9,9 @@ import { rateLimit } from "express-rate-limit";
 import { WebSocket, WebSocketServer } from "ws";
 import PdfSignatureTool from "./lib/PdfSignatureTool";
 import PdfRevisionTool from "./lib/PdfRevisionTool";
+import { buildCertificateReport } from "./lib/PdfCertificateReport";
+import { parseCertificateFile } from "./lib/CertificateModel";
+import { applyCertificateOperation, CertificateModificationError } from "./lib/PdfCertificateModifier";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -65,6 +68,12 @@ const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES }
 // raw input size in peak RSS. Capped well below that ratio's blast radius on a
 // memory-constrained host, rather than per-file, since it's the sum that drives the peak.
 const MAX_REVISION_BUNDLE_BYTES = 40 * 1024 * 1024; // 40MB combined (pdfDocument + all priorRevisions)
+
+// Certificate uploads are DER/PEM measured in kilobytes. They get their own,
+// much tighter multer instance: accepting 25MB of attacker-controlled bytes
+// into an ASN.1 parser is needless attack surface for a 2KB payload.
+const MAX_CERT_UPLOAD_BYTES = 64 * 1024; // 64KB
+const certUpload = multer({ dest: "uploads/", limits: { fileSize: MAX_CERT_UPLOAD_BYTES } });
 
 // Serve the self-hosted pdf.js vendor bundle (~1.3MB) with a long,
 // immutable cache: on a slow/constrained host, letting every colleague's
@@ -587,6 +596,127 @@ app.post(
       logError("api-revisions-bundle", error, { filePath: file.path });
       cleanupFiles(file.path, ...priorFiles.map((f) => f.path), outputPath);
       res.status(500).json({ error: error?.message ?? "Unexpected error" });
+    }
+  },
+);
+
+// --- API Endpoint: Analyze the certificates in a PDF ---
+// Read-only. Reads the raw bytes rather than a pdf-lib round-trip, because the
+// signature content has to be sliced at the exact offsets /ByteRange gives.
+app.post(
+  "/api/certificates",
+  uploadLimiter,
+  upload.single("pdfDocument"),
+  async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    try {
+      const safePath = resolveUploadPath(file.path);
+      const fileBytes = fs.readFileSync(safePath);
+      res.json({ report: await buildCertificateReport(fileBytes) });
+    } catch (error: any) {
+      logError("api-certificates", error, { filePath: file.path });
+      res.status(500).json({ error: error?.message ?? "Unexpected error" });
+    } finally {
+      cleanupFiles(file.path);
+    }
+  },
+);
+
+// --- API Endpoint: Parse a certificate file the user picked ---
+// Used to preview a replacement before it is applied. Deliberately takes no
+// PDF: this is a couple of kilobytes of DER, not a document.
+app.post(
+  "/api/certificates/inspect",
+  uploadLimiter,
+  certUpload.single("certificateFile"),
+  async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No certificate file uploaded" });
+
+    try {
+      const safePath = resolveUploadPath(file.path);
+      const bytes = fs.readFileSync(safePath);
+      res.json({ certificates: parseCertificateFile(bytes) });
+    } catch (error: any) {
+      // Every failure here is a problem with the file the user chose, so the
+      // message is written to be shown to them as-is.
+      logError("api-certificates-inspect", error, { filePath: file.path });
+      res.status(400).json({ error: error?.message ?? "That file could not be read as a certificate." });
+    } finally {
+      cleanupFiles(file.path);
+    }
+  },
+);
+
+// --- API Endpoint: Change the certificates inside a signature ---
+app.post(
+  "/api/certificates/modify",
+  uploadLimiter,
+  upload.fields([{ name: "pdfDocument", maxCount: 1 }, { name: "certificateFile", maxCount: 1 }]),
+  async (req: Request, res: Response) => {
+    const filesByField = (req.files || {}) as Record<string, Express.Multer.File[]>;
+    const file = filesByField.pdfDocument?.[0];
+    const certFiles = filesByField.certificateFile || [];
+    const cleanupPaths = [file?.path, ...certFiles.map((f) => f.path)];
+    if (!file) {
+      cleanupFiles(...cleanupPaths);
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    let outputPath: string | null = null;
+
+    try {
+      const operation = String(req.body.operation ?? "");
+      const signatureField = String(req.body.signatureField ?? "");
+      if (!signatureField) throw new CertificateModificationError("No signature was selected.");
+
+      let replacementDer: Uint8Array[] | undefined;
+      if (certFiles.length > 0) {
+        const certBytes = fs.readFileSync(resolveUploadPath(certFiles[0].path));
+        // Parse before applying: a bad file should be rejected as a bad file,
+        // not as a failure deep inside the rewrite.
+        replacementDer = parseCertificateFile(certBytes).map(
+          (c) => new Uint8Array(Buffer.from(c.derBase64, "base64")),
+        );
+      }
+
+      const fileBytes = fs.readFileSync(resolveUploadPath(file.path));
+      const result = await applyCertificateOperation(fileBytes, {
+        op: operation as any,
+        signatureField,
+        targetFingerprint: req.body.targetFingerprint ? String(req.body.targetFingerprint) : undefined,
+        replacementDer,
+      });
+
+      // Written straight out rather than through PdfSignatureTool.save(): the
+      // whole point of the in-place patch is that every other byte, and so
+      // every offset and every other signature's /ByteRange, is preserved. A
+      // pdf-lib re-save here -- including the setMetadata/clearRevisionSnapshotChain
+      // that every other mutating route does -- would undo exactly that.
+      outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+      fs.writeFileSync(outputPath, result.bytes);
+
+      res.setHeader("X-Certificate-Modification", encodeURIComponent(JSON.stringify({
+        signatureNowInvalid: result.signatureNowInvalid,
+        removedCertificates: result.removedCertificates,
+        addedCertificates: result.addedCertificates,
+        remainingCertificates: result.remainingCertificates,
+        headroomBytes: result.headroomBytes,
+        notes: result.notes,
+      })));
+
+      res.download(outputPath, "certificate-modified.pdf", () => {
+        cleanupFiles(...cleanupPaths, outputPath);
+      });
+    } catch (error: any) {
+      logError("api-certificates-modify", error, { filePath: file.path });
+      cleanupFiles(...cleanupPaths, outputPath);
+      // A refusal the user can act on ("the slot is too small") is a 422, not a
+      // server error -- nothing went wrong here, the change just cannot apply.
+      const status = error instanceof CertificateModificationError ? 422 : 500;
+      res.status(status).json({ error: error?.message ?? "Unexpected error" });
     }
   },
 );
