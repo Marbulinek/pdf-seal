@@ -10,7 +10,9 @@
   },
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:types && npm run build:bundle",
+    "build:types": "tsc --noEmit",
+    "build:bundle": "node esbuild.config.mjs",
     "start": "node dist/server.js",
     "dev": "tsx server.ts",
     "test": "vitest run",
@@ -31,6 +33,7 @@
     "@types/node": "^26.1.0",
     "@types/ws": "^8.5.14",
     "@vitest/coverage-v8": "^3.2.7",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vitest": "^3.2.7"

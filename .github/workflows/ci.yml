@@ -28,8 +28,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Type-check
+        run: npm run build:types
+
+      - name: Bundle backend
+        run: npm run build:bundle
 
       - name: Test with coverage
         run: npm run test:coverage
