@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/Marbulinek/pdf-seal/compare/v1.3.3...v1.4.0) (2026-09-04)
+
+
+### Features
+
+* implemented certificates section ([#46](https://github.com/Marbulinek/pdf-seal/issues/46)) ([dae649a](https://github.com/Marbulinek/pdf-seal/commit/dae649ab2e4a649dee67aff4cb0619fa938aabe2))
+
 ## [1.3.3](https://github.com/Marbulinek/pdf-seal/compare/v1.3.2...v1.3.3) (2026-09-03)
 
 
