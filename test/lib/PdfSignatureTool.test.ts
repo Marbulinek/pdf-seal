@@ -4,6 +4,8 @@ import os from 'os';
 import path from 'path';
 import { PDFArray, PDFHexString, PDFName } from 'pdf-lib';
 import PdfSignatureTool from '../../lib/PdfSignatureTool';
+import { buildSignedPdfFixture } from './helpers/pdfSigner';
+import { mintStandardChain } from './helpers/certificateFactory';
 
 describe('PdfSignatureTool', () => {
   it('creates a blank document with no fields', async () => {
@@ -569,4 +571,129 @@ describe('PdfSignatureTool file I/O (open/save)', () => {
     const opened = await PdfSignatureTool.open('../../../doc.pdf', { baseDir: tmpDir });
     expect(opened.listFields()).toEqual([]);
   });
+});
+
+describe('PdfSignatureTool: signature dictionaries and certificates', () => {
+  it('marks an unsigned signature field as not signed', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'Signature1', {});
+
+    const [field] = tool.listFields();
+    expect(field.type).toBe('Signature');
+    expect(field.signed).toBe(false);
+    expect(tool.getSignatureDictionaries()).toEqual([]);
+  });
+
+  it('marks a text field as not signed', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'name1', {});
+    expect(tool.listFields()[0].signed).toBe(false);
+  });
+
+  it('marks a field carrying a populated /V as signed', async () => {
+    const fx = await buildSignedPdfFixture();
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+
+    const field = tool.listFields().find((f: any) => f.name === 'Signature1');
+    expect(field.signed).toBe(true);
+  }, 30000);
+
+  it('reads a signature dictionary without going through the lossy text conversion', async () => {
+    const fx = await buildSignedPdfFixture({
+      signerName: 'Jane Doe',
+      reason: 'Testing pdf-seal',
+      location: 'Prague',
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const [dict] = tool.getSignatureDictionaries();
+
+    expect(dict.fieldName).toBe('Signature1');
+    expect(dict.filter).toBe('Adobe.PPKLite');
+    expect(dict.subFilter).toBe('adbe.pkcs7.detached');
+    expect(dict.name).toBe('Jane Doe');
+    expect(dict.reason).toBe('Testing pdf-seal');
+    expect(dict.location).toBe('Prague');
+    expect(dict.contactInfo).toBeNull();
+    expect(dict.page).toBe(0);
+    expect(dict.byteRange).toEqual(fx.byteRange);
+    expect(dict.objectRef).toMatch(/^\d+ \d+ R$/);
+    expect(dict.docMdpLevel).toBeNull();
+    expect(dict.certDer).toEqual([]);
+  }, 30000);
+
+  it('parses /M into an ISO date', async () => {
+    const fx = await buildSignedPdfFixture();
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const [dict] = tool.getSignatureDictionaries();
+
+    expect(dict.signingTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(new Date(dict.signingTime).getTime()).not.toBeNaN();
+  }, 30000);
+
+  it('reads a single /Cert entry as raw bytes', async () => {
+    const chain = await mintStandardChain();
+    const fx = await buildSignedPdfFixture({
+      subFilter: 'adbe.x509.rsa_sha1',
+      legacyCertificates: [chain.leaf],
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const [dict] = tool.getSignatureDictionaries();
+
+    expect(dict.subFilter).toBe('adbe.x509.rsa_sha1');
+    expect(dict.certDer).toHaveLength(1);
+    // Byte-identical, which decodeText() would not have managed.
+    expect(Buffer.from(dict.certDer[0]).equals(Buffer.from(chain.leaf.der))).toBe(true);
+  }, 40000);
+
+  it('reads an array of /Cert entries', async () => {
+    const chain = await mintStandardChain();
+    const fx = await buildSignedPdfFixture({
+      legacyCertificates: [chain.leaf, chain.intermediate],
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+
+    expect(tool.getSignatureDictionaries()[0].certDer).toHaveLength(2);
+  }, 40000);
+
+  it('reads the DocMDP level from a certifying signature', async () => {
+    const fx = await buildSignedPdfFixture({ docMdpLevel: 2 });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    expect(tool.getSignatureDictionaries()[0].docMdpLevel).toBe(2);
+  }, 30000);
+
+  it('returns empty structures when there is no document security store', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(tool.getDocumentSecurityStore()).toEqual({ certs: [], vri: [] });
+  });
+
+  it('reads certificates out of /DSS /Certs', async () => {
+    const chain = await mintStandardChain();
+    const fx = await buildSignedPdfFixture({
+      dssCertificates: [chain.intermediate, chain.root],
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const dss = tool.getDocumentSecurityStore();
+
+    expect(dss.certs).toHaveLength(2);
+    expect(dss.vri).toEqual([]);
+    expect(Buffer.from(dss.certs[0].bytes).equals(Buffer.from(chain.intermediate.der))).toBe(true);
+    expect(dss.certs[0].objectRef).toMatch(/^\d+ \d+ R$/);
+  }, 40000);
+
+  it('reads /VRI entries and their certificate references', async () => {
+    const chain = await mintStandardChain();
+    const fx = await buildSignedPdfFixture({
+      dssCertificates: [chain.intermediate],
+      dssVri: true,
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const dss = tool.getDocumentSecurityStore();
+
+    expect(dss.vri).toHaveLength(1);
+    expect(dss.vri[0].key).toMatch(/^[0-9A-F]{40}$/);
+    expect(dss.vri[0].certRefs).toEqual([dss.certs[0].objectRef]);
+  }, 40000);
 });

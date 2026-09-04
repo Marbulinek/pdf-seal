@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { PDFName, PDFString, PDFHexString, PDFRef } from 'pdf-lib';
 import PdfSignatureTool from '../../lib/PdfSignatureTool';
 import PdfRevisionTool from '../../lib/PdfRevisionTool';
+import { applyCertificateOperation } from '../../lib/PdfCertificateModifier';
+import { buildSignedPdfFixture } from './helpers/pdfSigner';
 
 describe('PdfRevisionTool.findRevisionBoundaries', () => {
   it('finds every startxref/%%EOF boundary in raw bytes', () => {
@@ -535,4 +537,36 @@ describe('PdfRevisionTool.diffSnapshotBytes -- source dump capping', () => {
     expect(Array.isArray(pageDetail.sourceAfter.Annots)).toBe(true);
     expect(pageDetail.sourceAfter.Annots.length).toBeLessThanOrEqual(25);
   });
+});
+
+describe('PdfRevisionTool: a rewritten signature is visible as a change', () => {
+  it('detects a /Contents change even though the padded slot keeps the same length', async () => {
+    // A signer reserves a fixed-size /Contents slot and pads it, so a rewritten
+    // signature is byte-different but exactly as long. The change is detected
+    // either way (raw values are compared), but rendering it as just
+    // "<binary, N bytes>" showed the reader two identical strings and left them
+    // no way to see what actually changed.
+    const before = await buildSignedPdfFixture();
+    const after = await applyCertificateOperation(before.bytes, {
+      op: 'remove-intermediates',
+      signatureField: 'Signature1',
+    });
+
+    expect(after.bytes.length).toBe(before.bytes.length);
+
+    const diff: any = await PdfRevisionTool.diffSnapshotBytes(before.bytes, after.bytes);
+
+    // The signature dictionary itself is reported as modified...
+    expect(diff.objectChanges.modified.length).toBeGreaterThan(0);
+
+    // ...and specifically because its /Contents differs.
+    const contents = diff.objectChanges.modifiedDetails
+      .flatMap((d: any) => d.dictionaryChanges ?? [])
+      .find((c: any) => c.key === 'Contents');
+    expect(contents).toBeDefined();
+    expect(contents.status).toBe('changed');
+    expect(contents.before).toMatch(/<binary, \d+ bytes, #[0-9a-f]{8}>/);
+    expect(contents.after).toMatch(/<binary, \d+ bytes, #[0-9a-f]{8}>/);
+    expect(contents.before).not.toBe(contents.after);
+  }, 60000);
 });
