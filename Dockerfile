@@ -10,6 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY tsconfig.json ./
+COPY esbuild.config.mjs ./
 COPY server.ts ./
 COPY lib ./lib
 RUN npm run build
