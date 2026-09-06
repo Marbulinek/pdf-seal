@@ -288,6 +288,33 @@ describe('buildCertificateReport: timestamps and clean verdicts', () => {
     expect(check?.explanation).toMatch(/does not verify the timestamp/i);
   }, 30000);
 
+  it('decodes the timestamp token\'s own genTime, independent of the signer\'s claimed time', async () => {
+    const genTime = new Date('2023-06-15T12:00:00.000Z');
+    const fx = await buildSignedPdfFixture({
+      signer: chain.leaf,
+      chain: [chain.leaf, chain.intermediate, chain.root],
+      timestampGenTime: genTime,
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    expect(report.signatures[0].timestampTime).toBe(genTime.toISOString());
+  }, 30000);
+
+  it('leaves timestampTime null when there is no timestamp token, or it cannot be read', async () => {
+    const untimestamped = await buildSignedPdfFixture({
+      signer: chain.leaf,
+      chain: [chain.leaf, chain.intermediate, chain.root],
+    });
+    expect((await buildCertificateReport(untimestamped.bytes)).signatures[0].timestampTime).toBeNull();
+
+    const placeholder = await buildSignedPdfFixture({
+      signer: chain.leaf,
+      chain: [chain.leaf, chain.intermediate, chain.root],
+      timestampToken: true,
+    });
+    expect((await buildCertificateReport(placeholder.bytes)).signatures[0].timestampTime).toBeNull();
+  }, 30000);
+
   it('reaches a clean pass when nothing at all is wrong', async () => {
     // A timestamp removes the only warning a well-formed fixture otherwise
     // raises, so this is the one path that reports an unqualified pass.

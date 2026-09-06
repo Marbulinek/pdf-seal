@@ -216,19 +216,14 @@
         <button type="button" class="modal-close" id="closeSettingsModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <div class="modal-tabs" role="tablist">
-        <button type="button" class="modal-tab is-active" id="settingsTabBtnGeneral" role="tab" aria-selected="true" aria-controls="settingsTabPanelGeneral">Settings</button>
-        <button type="button" class="modal-tab" id="settingsTabBtnTemplates" role="tab" aria-selected="false" aria-controls="settingsTabPanelTemplates">Signature Templates</button>
+        <button type="button" class="modal-tab is-active" id="settingsTabBtnGeneral" role="tab" aria-selected="true" aria-controls="settingsTabPanelGeneral">General</button>
+        <button type="button" class="modal-tab" id="settingsTabBtnSignatures" role="tab" aria-selected="false" aria-controls="settingsTabPanelSignatures">Signatures</button>
+        <button type="button" class="modal-tab" id="settingsTabBtnCertificates" role="tab" aria-selected="false" aria-controls="settingsTabPanelCertificates">Certificates</button>
+        <button type="button" class="modal-tab" id="settingsTabBtnRevisions" role="tab" aria-selected="false" aria-controls="settingsTabPanelRevisions">Revisions</button>
       </div>
 
       <div class="modal-tab-panel" id="settingsTabPanelGeneral" role="tabpanel" aria-labelledby="settingsTabBtnGeneral">
-        <p class="modal-hint">Choose the default behavior for document changes.</p>
-        <label class="checkbox-group checkbox-group-block" for="settingsIncludeRevisionHistory">
-          <div class="checkbox-group-main">
-            <input type="checkbox" id="settingsIncludeRevisionHistory">
-            <span>Include revisions when exporting / sharing document</span>
-          </div>
-          <p class="modal-hint settings-hint">Bundles your document's revision history into exported and shared files. Takes a bit longer to prepare, since every past revision is included.</p>
-        </label>
+        <p class="modal-hint">General settings that apply across the app.</p>
         <label class="checkbox-group checkbox-group-block" for="settingsShowRawData">
           <div class="checkbox-group-main">
             <input type="checkbox" id="settingsShowRawData">
@@ -236,16 +231,9 @@
           </div>
           <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions — each marked with a "Raw" badge, and opened automatically.</p>
         </label>
-        <label class="checkbox-group checkbox-group-block" for="settingsCertModifyEnabled">
-          <div class="checkbox-group-main">
-            <input type="checkbox" id="settingsCertModifyEnabled">
-            <span>Enable certificate modification tools</span>
-          </div>
-          <p class="modal-hint settings-hint">Shows the "Modify" panel in Certificates, which lets you swap or corrupt the certificates behind a signature to see how a verifier reacts. For building test documents only — off by default.</p>
-        </label>
       </div>
 
-      <div class="modal-tab-panel" id="settingsTabPanelTemplates" role="tabpanel" aria-labelledby="settingsTabBtnTemplates" hidden>
+      <div class="modal-tab-panel" id="settingsTabPanelSignatures" role="tabpanel" aria-labelledby="settingsTabBtnSignatures" hidden>
         <label class="checkbox-group checkbox-group-block" for="settingsTemplatesEnabled">
           <div class="checkbox-group-main">
             <input type="checkbox" id="settingsTemplatesEnabled">
@@ -253,16 +241,60 @@
           </div>
           <p class="modal-hint settings-hint">Shows the Signature Templates panel in the sidebar so you can save and reuse field layouts. Off by default.</p>
         </label>
-        <p class="modal-hint settings-hint settings-hint-flush">Templates are stored only in this browser, so clearing your browsing data removes them. Download a copy to keep as a backup, or to move your templates to another computer. These two act straight away — they don't wait for <strong>Save</strong>.</p>
-        <div class="settings-template-actions">
-          <button type="button" class="btn btn-ghost" id="btnExportTemplates"><span class="icon icon-download" aria-hidden="true"></span> Download templates</button>
-          <button type="button" class="btn btn-ghost" id="btnImportTemplates"><span class="icon icon-upload-device" aria-hidden="true"></span> Load from file</button>
-          <input type="file" id="templateImportInput" accept="application/json,.json" hidden>
+
+        <div class="settings-template-backup">
+          <h4 class="settings-template-backup-title">Backup &amp; restore templates</h4>
+          <p class="modal-hint settings-hint settings-hint-flush">Templates live only in this browser's storage — clearing site data or switching computers removes them. Download a copy to keep as a backup or to carry your templates elsewhere; load one back in whenever you need it.</p>
+          <div class="settings-template-actions">
+            <div class="settings-template-action">
+              <button type="button" class="btn btn-ghost" id="btnExportTemplates"><span class="icon icon-download" aria-hidden="true"></span> Download templates</button>
+              <p class="modal-hint settings-hint settings-hint-flush" id="templatesBackupSummary"></p>
+            </div>
+            <div class="settings-template-action">
+              <button type="button" class="btn btn-ghost" id="btnImportTemplates"><span class="icon icon-upload-device" aria-hidden="true"></span> Load from file</button>
+              <input type="file" id="templateImportInput" accept="application/json,.json" hidden>
+              <p class="modal-hint settings-hint settings-hint-flush">Pick a <code>.json</code> file downloaded from pdf-seal. You'll choose whether to add it to your templates or replace them entirely before anything changes.</p>
+            </div>
+          </div>
+          <p class="modal-hint settings-hint settings-hint-flush settings-template-backup-note"><span class="icon icon-info-circle" aria-hidden="true"></span> Both actions happen immediately — they don't wait for <strong>Save</strong> below.</p>
         </div>
-        <p class="modal-hint settings-hint settings-hint-flush" id="templatesBackupSummary"></p>
       </div>
 
-      <div class="modal-actions">
+      <div class="modal-tab-panel" id="settingsTabPanelCertificates" role="tabpanel" aria-labelledby="settingsTabBtnCertificates" hidden>
+        <label class="checkbox-group checkbox-group-block" for="settingsCertModifyEnabled">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsCertModifyEnabled">
+            <span>Enable certificate modification tools</span>
+          </div>
+          <p class="modal-hint settings-hint">Shows the "Modify" panel in Certificates, which lets you swap or corrupt the certificates behind a signature to see how a verifier reacts. For building test documents only — off by default.</p>
+        </label>
+        <label class="checkbox-group checkbox-group-block" for="settingsCertScratchpadEnabled">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsCertScratchpadEnabled">
+            <span>Enable certificate scratchpad</span>
+          </div>
+          <p class="modal-hint settings-hint">Shows the "Certificate scratchpad" panel in Certificates for pasting or dropping a certificate to inspect on its own, with no document required. Off by default.</p>
+        </label>
+        <label class="checkbox-group checkbox-group-block" for="settingsTrustSimEnabled">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsTrustSimEnabled">
+            <span>Enable trust simulation</span>
+          </div>
+          <p class="modal-hint settings-hint">Shows the "Trust simulation" panel in Certificates: upload a root CA bundle and see whether the loaded document's chain would be trusted against it. Runs only for the current session, is clearly marked as simulated, and never changes the real report. Off by default.</p>
+        </label>
+      </div>
+
+      <div class="modal-tab-panel" id="settingsTabPanelRevisions" role="tabpanel" aria-labelledby="settingsTabBtnRevisions" hidden>
+        <label class="checkbox-group checkbox-group-block" for="settingsIncludeRevisionHistory">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsIncludeRevisionHistory">
+            <span>Include revisions when exporting / sharing document</span>
+          </div>
+          <p class="modal-hint settings-hint">Bundles your document's revision history into exported and shared files. Takes a bit longer to prepare, since every past revision is included.</p>
+        </label>
+      </div>
+
+      <div class="modal-actions settings-modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelSettingsBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="saveSettingsBtn">Save</button>
       </div>
@@ -736,6 +768,42 @@
         </section>
 
         <section class="section-panel" id="sectionCertificates" data-section-panel="certificates" hidden>
+
+          <!-- Works with no document loaded at all: a general-purpose certificate
+               inspector built on the same parser and checks as the report below,
+               for pasting a certificate found anywhere -- not just this file. -->
+          <section class="panel certificates-scratchpad-panel" id="certificatesScratchpadPanel">
+            <h3><span class="panel-dot dot-ocean"></span>Certificate scratchpad</h3>
+            <p class="cert-hint">Paste or drop a certificate (PEM, DER, or a .p7b bundle) to inspect it on its own — no document required. Paste two to also check whether one issues the other.</p>
+
+            <div class="cert-scratchpad-dropzone" id="certScratchpadDropzone">
+              <textarea id="certScratchpadInput" class="cert-scratchpad-textarea" placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----" spellcheck="false"></textarea>
+              <div class="cert-scratchpad-actions">
+                <button type="button" class="btn btn-ghost btn-sm" id="btnCertScratchpadPick"><span class="icon icon-upload-device" aria-hidden="true"></span> Choose file…</button>
+                <span class="cert-scratchpad-filename" id="certScratchpadFilename"></span>
+                <button type="button" class="btn btn-primary btn-sm" id="btnCertScratchpadInspect">Inspect</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnCertScratchpadClear" hidden>Clear</button>
+              </div>
+              <input type="file" id="certScratchpadFileInput" accept=".cer,.crt,.der,.pem,.p7b,application/x-x509-ca-cert,application/x-pem-file" hidden>
+            </div>
+
+            <div class="panel-loading" id="certScratchpadLoading" hidden><span class="spinner" aria-hidden="true"></span> Reading certificate…</div>
+            <div class="cert-empty cert-empty-error" id="certScratchpadError" hidden></div>
+            <div id="certScratchpadResult"></div>
+          </section>
+
+          <section class="panel certificates-trustsim-panel" id="certificatesTrustSimPanel" hidden>
+            <h3><span class="panel-dot dot-coral"></span>Trust simulation <span class="cert-simulated-badge">Simulated</span></h3>
+            <p class="cert-hint"><span id="certTrustSimNote"></span> This is opt-in and answers a different question: <em>given a root bundle you supply, would this chain be trusted?</em> The result below is a simulation against your bundle only, kept separate from the real report, and never changes it.</p>
+            <div class="cert-scratchpad-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="btnTrustSimPick"><span class="icon icon-upload-device" aria-hidden="true"></span> Upload root bundle (PEM)…</button>
+              <span class="cert-scratchpad-filename" id="certTrustSimFilename"></span>
+              <input type="file" id="certTrustSimFileInput" accept=".pem,.cer,.crt,.der,application/x-pem-file,application/x-x509-ca-cert" hidden>
+            </div>
+            <div class="panel-loading" id="certTrustSimLoading" hidden><span class="spinner" aria-hidden="true"></span> Simulating…</div>
+            <div class="cert-empty cert-empty-error" id="certTrustSimError" hidden></div>
+            <div id="certTrustSimResults"></div>
+          </section>
 
           <section class="panel certificates-summary-panel" id="certificatesSummaryPanel">
             <div class="panel-overlay" id="certificatesPanelOverlay">
@@ -1615,12 +1683,16 @@
     const settingsIncludeRevisionHistoryInput = document.getElementById('settingsIncludeRevisionHistory');
     const settingsTemplatesEnabledInput = document.getElementById('settingsTemplatesEnabled');
     const settingsCertModifyEnabledInput = document.getElementById('settingsCertModifyEnabled');
+    const settingsCertScratchpadEnabledInput = document.getElementById('settingsCertScratchpadEnabled');
+    const settingsTrustSimEnabledInput = document.getElementById('settingsTrustSimEnabled');
     const settingsSaveBtn = document.getElementById('saveSettingsBtn');
     const settingsCancelBtn = document.getElementById('cancelSettingsBtn');
     const settingsCloseBtn = document.getElementById('closeSettingsModalBtn');
     const settingsTabs = [
       { btn: document.getElementById('settingsTabBtnGeneral'), panel: document.getElementById('settingsTabPanelGeneral') },
-      { btn: document.getElementById('settingsTabBtnTemplates'), panel: document.getElementById('settingsTabPanelTemplates') },
+      { btn: document.getElementById('settingsTabBtnSignatures'), panel: document.getElementById('settingsTabPanelSignatures') },
+      { btn: document.getElementById('settingsTabBtnCertificates'), panel: document.getElementById('settingsTabPanelCertificates') },
+      { btn: document.getElementById('settingsTabBtnRevisions'), panel: document.getElementById('settingsTabPanelRevisions') },
     ];
     const SETTINGS_STORAGE_KEY = 'pdfseal-settings';
 
@@ -1643,6 +1715,8 @@
       includeRevisionHistoryByDefault: false,
       templatesEnabled: false,
       certificateModifyEnabled: false,
+      certificateScratchpadEnabled: false,
+      trustSimulationEnabled: false,
     };
 
     function loadSettings() {
@@ -1657,6 +1731,10 @@
           templatesEnabled: parsed && typeof parsed.templatesEnabled === 'boolean' ? parsed.templatesEnabled : false,
           certificateModifyEnabled:
             parsed && typeof parsed.certificateModifyEnabled === 'boolean' ? parsed.certificateModifyEnabled : false,
+          certificateScratchpadEnabled:
+            parsed && typeof parsed.certificateScratchpadEnabled === 'boolean' ? parsed.certificateScratchpadEnabled : false,
+          trustSimulationEnabled:
+            parsed && typeof parsed.trustSimulationEnabled === 'boolean' ? parsed.trustSimulationEnabled : false,
         };
       } catch (_err) {
         return { ...DEFAULT_SETTINGS };
@@ -1699,15 +1777,27 @@
       document.body.classList.toggle('hide-certificate-modify-panel', !settings.certificateModifyEnabled);
     }
 
+    function applyCertificateScratchpadVisibility(settings) {
+      document.body.classList.toggle('hide-certificate-scratchpad-panel', !settings.certificateScratchpadEnabled);
+    }
+
+    function applyTrustSimulationVisibility(settings) {
+      document.body.classList.toggle('hide-trust-simulation-panel', !settings.trustSimulationEnabled);
+    }
+
     function applySettingsToUi() {
       const settings = loadSettings();
       if (settingsShowRawDataInput) settingsShowRawDataInput.checked = settings.showRawPdfData;
       if (settingsIncludeRevisionHistoryInput) settingsIncludeRevisionHistoryInput.checked = settings.includeRevisionHistoryByDefault;
       if (settingsTemplatesEnabledInput) settingsTemplatesEnabledInput.checked = settings.templatesEnabled;
       if (settingsCertModifyEnabledInput) settingsCertModifyEnabledInput.checked = settings.certificateModifyEnabled;
+      if (settingsCertScratchpadEnabledInput) settingsCertScratchpadEnabledInput.checked = settings.certificateScratchpadEnabled;
+      if (settingsTrustSimEnabledInput) settingsTrustSimEnabledInput.checked = settings.trustSimulationEnabled;
       applyRawPdfDataVisibility(settings);
       applyTemplatesPanelVisibility(settings);
       applyCertificateModifyVisibility(settings);
+      applyCertificateScratchpadVisibility(settings);
+      applyTrustSimulationVisibility(settings);
       return settings;
     }
 
@@ -1715,7 +1805,14 @@
       if (!settingsModal) return;
       applySettingsToUi();
       updateTemplatesBackupUi();
-      setSettingsTab(tabName === 'templates' ? settingsTabs[1].btn : settingsTabs[0].btn);
+      const tabByName = {
+        general: settingsTabs[0].btn,
+        signatures: settingsTabs[1].btn,
+        templates: settingsTabs[1].btn,
+        certificates: settingsTabs[2].btn,
+        revisions: settingsTabs[3].btn,
+      };
+      setSettingsTab(tabByName[tabName] || settingsTabs[0].btn);
       settingsModal.classList.add('is-open');
       settingsModal.setAttribute('aria-hidden', 'false');
     }
@@ -1731,6 +1828,8 @@
       applyRawPdfDataVisibility(initialSettings);
       applyTemplatesPanelVisibility(initialSettings);
       applyCertificateModifyVisibility(initialSettings);
+      applyCertificateScratchpadVisibility(initialSettings);
+      applyTrustSimulationVisibility(initialSettings);
     })();
 
     if (settingsOpenBtn) {
@@ -1747,6 +1846,8 @@
           includeRevisionHistoryByDefault: Boolean(settingsIncludeRevisionHistoryInput?.checked),
           templatesEnabled: Boolean(settingsTemplatesEnabledInput?.checked),
           certificateModifyEnabled: Boolean(settingsCertModifyEnabledInput?.checked),
+          certificateScratchpadEnabled: Boolean(settingsCertScratchpadEnabledInput?.checked),
+          trustSimulationEnabled: Boolean(settingsTrustSimEnabledInput?.checked),
         };
         saveSettings(nextSettings);
         applySettingsToUi();
@@ -1790,6 +1891,25 @@
             'info',
             8000,
           ).classList.add('notification-subtle');
+        }
+
+        if (nextSettings.certificateScratchpadEnabled !== previousSettings.certificateScratchpadEnabled) {
+          showNotification(
+            nextSettings.certificateScratchpadEnabled
+              ? 'Certificate scratchpad panel enabled.'
+              : 'Certificate scratchpad panel disabled.',
+            'info',
+            8000,
+          ).classList.add('notification-subtle');
+        }
+
+        if (nextSettings.trustSimulationEnabled !== previousSettings.trustSimulationEnabled) {
+          showNotification(
+            nextSettings.trustSimulationEnabled ? 'Trust simulation panel enabled.' : 'Trust simulation panel disabled.',
+            'info',
+            8000,
+          ).classList.add('notification-subtle');
+          if (nextSettings.trustSimulationEnabled && certificatesData) renderTrustSimulationPanel();
         }
       });
     }
@@ -9463,12 +9583,35 @@ function resetCertificatesState() {
   certFilterStatuses = new Set(['fail', 'warn', 'pass', 'unknown']);
   certFilterText = '';
   certFilterSearchHadFocus = false;
+  scratchpadCertificateData = null;
+  trustSimulationResults = null;
+  renderCertificateScratchpad();
+  renderTrustSimulationPanel();
   closeCertificateSheet();
   closeCertificateModifySheet();
 }
 
+// The standalone scratchpad (paste/drop a certificate with no PDF involved)
+// is deliberately independent of the loaded document's report -- it is a
+// scratch tool, not part of what was uploaded. It still opens the same
+// #certificateSheet, so certById() and the chain-export lookups fall back to
+// it whenever a cert isn't found in the document's own report.
+let scratchpadCertificateData = null;
+
 function certById(id) {
-  return certificatesData?.certificates.find((c) => c.id === id) ?? null;
+  return (
+    certificatesData?.certificates.find((c) => c.id === id) ??
+    scratchpadCertificateData?.certificates.find((c) => c.id === id) ??
+    null
+  );
+}
+
+function chainContainingCert(certId) {
+  return (
+    certificatesData?.chains.find((c) => c.certificateIds.includes(certId)) ??
+    (scratchpadCertificateData?.chain?.certificateIds.includes(certId) ? scratchpadCertificateData.chain : null) ??
+    null
+  );
 }
 
 /**
@@ -9713,6 +9856,9 @@ function renderCertificatesPanel(report) {
     banner.hidden = true;
     const modifyPanel = document.getElementById('certificatesModifyPanel');
     if (modifyPanel) modifyPanel.hidden = true;
+    const trustSimPanel = document.getElementById('certificatesTrustSimPanel');
+    if (trustSimPanel) trustSimPanel.hidden = true;
+    trustSimulationResults = null;
     emptyEl.hidden = false;
 
     const unsigned = report.unsignedSignatureFieldNames || [];
@@ -9738,6 +9884,8 @@ function renderCertificatesPanel(report) {
   renderCertificateSignatureList(report);
   renderOtherCertificates(report);
   renderCertificateModifyPanel(report);
+  trustSimulationResults = null;
+  renderTrustSimulationPanel();
 }
 
 function renderCertificateSummary(report) {
@@ -9764,6 +9912,9 @@ function renderCertificateSummary(report) {
   const readingWarnings = report.warnings || [];
 
   const filterActive = certFilterText.trim().length > 0 || rows.some((r) => !certFilterStatuses.has(r.status));
+  const shownCheckCount = allChecks.filter(
+    (c) => certFilterStatuses.has(c.status) && certCheckMatchesFilterText(c, certFilterText),
+  ).length;
 
   el.innerHTML = `
     <div class="cert-stat-row">
@@ -9777,12 +9928,8 @@ function renderCertificateSummary(report) {
       </div>
     </div>
     <p class="cert-headline">${certBadge(report.summary.status)} ${escapeHtml(report.summary.headline)}</p>
-    <div class="cert-copy-actions">
-      <button type="button" class="btn btn-ghost btn-sm" data-cert-action="copy-cert-summary"><span class="icon icon-copy" aria-hidden="true"></span> Copy summary</button>
-      <button type="button" class="btn btn-ghost btn-sm" data-cert-action="copy-cert-json"><span class="icon icon-copy" aria-hidden="true"></span> Copy JSON</button>
-    </div>
     ${rows.length ? `
-    <div class="cert-filter-bar">
+    <div class="cert-toolbar">
       <div class="cert-filter-chips">
         ${rows.map((r) => `
           <button type="button" class="cert-filter-chip is-${escapeHtml(r.status)}${certFilterStatuses.has(r.status) ? ' is-active' : ''}"
@@ -9790,11 +9937,16 @@ function renderCertificateSummary(report) {
             ${certDot(r.status)} ${CERT_STATUS_WORD[r.status]} <span class="cert-filter-chip-count">${counts[r.status]}</span>
           </button>`).join('')}
       </div>
-      <div class="cert-filter-search-row">
-        <input type="search" class="cert-filter-search" id="certFilterSearchInput" placeholder="Filter by check id or text…" value="${escapeHtml(certFilterText)}" aria-label="Filter checks">
-        ${filterActive ? `<button type="button" class="btn btn-ghost btn-sm" data-cert-action="clear-cert-filter">Clear</button>` : ''}
+      <input type="search" class="cert-filter-search" id="certFilterSearchInput" placeholder="Filter by check id or text…" value="${escapeHtml(certFilterText)}" aria-label="Filter checks">
+      <div class="cert-toolbar-copy">
+        <button type="button" class="icon-btn" data-cert-action="copy-cert-summary" title="Copy summary" aria-label="Copy summary"><span class="icon icon-copy" aria-hidden="true"></span></button>
+        <button type="button" class="icon-btn" data-cert-action="copy-cert-json" title="Copy JSON" aria-label="Copy JSON"><span class="icon icon-code" aria-hidden="true"></span></button>
       </div>
-    </div>` : ''}
+    </div>
+    ${filterActive ? `
+    <p class="cert-toolbar-caption">Showing ${shownCheckCount} of ${allChecks.length} check${allChecks.length === 1 ? '' : 's'}
+      <button type="button" class="cert-toolbar-caption-clear" data-cert-action="clear-cert-filter">Clear filter</button>
+    </p>` : ''}` : ''}
     <div class="cert-status-list">
       ${rows.map((r, i) => {
         if (!certFilterStatuses.has(r.status)) return '';
@@ -9978,6 +10130,94 @@ function renderCertByteMap(sig) {
     </div>`;
 }
 
+/**
+ * One horizontal axis per signature: each chain certificate's validity
+ * window as a bar, the claimed signing time and the timestamp-token time (if
+ * any) as markers, and "now". Nothing here is a new verdict -- every status
+ * driving a bar's colour is `cert.validity.window`, already computed
+ * server-side; the timeline only makes the relationship between these times
+ * visible instead of requiring four separate check rows to be mentally
+ * aligned.
+ */
+function renderValidityTimeline(report, chain, signature) {
+  const certs = (chain?.certificateIds || []).map(certById).filter(Boolean);
+  if (!certs.length) return '';
+
+  const claimedTime = signature.signedAttributes?.signingTime || signature.signingTimeClaimed || null;
+  const timestampTime = signature.timestampTime || null;
+  const now = new Date();
+
+  const instants = [now];
+  for (const cert of certs) {
+    instants.push(new Date(cert.validFrom), new Date(cert.validTo));
+  }
+  if (claimedTime) instants.push(new Date(claimedTime));
+  if (timestampTime) instants.push(new Date(timestampTime));
+  const validInstants = instants.filter((d) => !Number.isNaN(d.getTime()));
+  if (!validInstants.length) return '';
+
+  // A little breathing room either side, so a bar or marker at the very edge
+  // of the range isn't drawn flush against the container border.
+  const minMs = Math.min(...validInstants.map((d) => d.getTime()));
+  const maxMs = Math.max(...validInstants.map((d) => d.getTime()));
+  const padMs = Math.max((maxMs - minMs) * 0.04, 1000 * 60 * 60 * 24);
+  const domainStart = minMs - padMs;
+  const domainEnd = maxMs + padMs;
+  const domainSpan = Math.max(domainEnd - domainStart, 1);
+  const pct = (ms) => Math.min(100, Math.max(0, ((ms - domainStart) / domainSpan) * 100));
+
+  const rows = certs.map((cert) => {
+    const from = new Date(cert.validFrom).getTime();
+    const to = new Date(cert.validTo).getTime();
+    if (Number.isNaN(from) || Number.isNaN(to)) return '';
+    const status = cert.checks?.find((c) => c.id === 'cert.validity.window')?.status ?? 'unknown';
+    const left = pct(from);
+    const width = Math.max(pct(to) - left, 0.5);
+    return `
+      <div class="cert-timeline-row">
+        <span class="cert-timeline-row-label">${escapeHtml(certDisplayName(cert))}</span>
+        <div class="cert-timeline-track">
+          <span class="cert-timeline-bar is-${escapeHtml(status)}" style="left:${left}%;width:${width}%"
+            title="${escapeHtml(certDisplayName(cert))}: ${escapeHtml(certFormatDate(cert.validFrom) ?? '?')} – ${escapeHtml(certFormatDate(cert.validTo) ?? '?')}"></span>
+        </div>
+      </div>`;
+  }).join('');
+
+  const marker = (ms, cls, label, note) => {
+    if (Number.isNaN(ms)) return '';
+    return `
+      <div class="cert-timeline-row cert-timeline-marker-row">
+        <span class="cert-timeline-row-label">${escapeHtml(label)}</span>
+        <div class="cert-timeline-track">
+          <span class="cert-timeline-marker ${cls}" style="left:${pct(ms)}%" title="${escapeHtml(note)}"></span>
+        </div>
+      </div>`;
+  };
+
+  const claimedMarker = claimedTime
+    ? marker(new Date(claimedTime).getTime(), 'is-claimed', 'Signed (claimed)',
+        `${certFormatDate(claimedTime)} — claimed by the signer, not proven`)
+    : '';
+  const timestampMarker = timestampTime
+    ? marker(new Date(timestampTime).getTime(), 'is-timestamp', 'Timestamped',
+        `${certFormatDate(timestampTime)} — from the timestamp token itself; not verified by pdf-seal, but independent of the signer's own claim`)
+    : '';
+
+  return `
+    <div class="cert-timeline">
+      <div class="cert-timeline-scroll">
+        ${rows}
+        ${claimedMarker}
+        ${timestampMarker}
+        <div class="cert-timeline-now-overlay">
+          <div class="cert-timeline-now" style="left:${pct(now.getTime())}%" title="Now: ${escapeHtml(certFormatDate(now.toISOString()))}">
+            <span class="cert-timeline-now-label">Now</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderCertificateSignatureList(report) {
   const panel = document.getElementById('certificatesSignaturesPanel');
   const list = document.getElementById('certSignatureList');
@@ -10013,6 +10253,7 @@ function renderCertificateSignatureList(report) {
         <p class="cert-signature-meta">${meta.join(' &middot; ')}</p>
         ${renderCertByteMap(sig)}
         ${renderCertificateChain(report, chain, sig)}
+        ${renderValidityTimeline(report, chain, sig)}
         <details class="cert-details-block">
           <summary class="cert-details-summary">
             <span class="cert-details-summary-main">
@@ -10086,6 +10327,239 @@ function renderValidationList(checks, opts = {}) {
     </div>`;
   }).join('');
 }
+
+/* ---------- Standalone certificate scratchpad ---------- */
+
+let certScratchpadFile = null; // a picked/dropped File, cleared once its bytes are sent
+
+function renderCertificateScratchpad() {
+  const resultEl = document.getElementById('certScratchpadResult');
+  const clearBtn = document.getElementById('btnCertScratchpadClear');
+  if (!resultEl) return;
+
+  if (!scratchpadCertificateData) {
+    resultEl.innerHTML = '';
+    if (clearBtn) clearBtn.hidden = true;
+    return;
+  }
+  if (clearBtn) clearBtn.hidden = false;
+
+  const { certificates, chain, links } = scratchpadCertificateData;
+
+  let html = `<ol class="cert-chain is-flat">${certificates.map((cert, i) => renderChainNode({
+    status: certStatusOf(cert),
+    depth: 0,
+    index: i,
+    name: certDisplayName(cert),
+    role: CERT_ROLE_LABEL[cert.role] ?? CERT_ROLE_LABEL.unknown,
+    detail: cert.selfIssued ? 'Self-issued' : `Issued by ${cert.issuer.commonName || cert.issuer.formatted || 'unknown'}`,
+    certId: cert.id,
+  })).join('')}</ol>`;
+
+  if (chain && chain.certificateIds.length > 1) {
+    html += `<p class="cert-section-title" style="margin-top:12px">Chain checks</p>${renderValidationList(chain.checks)}`;
+  }
+
+  if (links && links.length === 2 && certificates.length === 2) {
+    const nameOf = (i) => certDisplayName(certificates[i]);
+    html += '<p class="cert-section-title" style="margin-top:12px">Does one issue the other?</p>';
+    html += links.map((link) => {
+      const status = certWorstStatus(link.checks.map((c) => c.status));
+      return `
+        <details class="cert-details-block">
+          <summary class="cert-details-summary">
+            <span class="cert-details-summary-main">
+              <span class="icon icon-chevron-right cert-details-caret" aria-hidden="true"></span>
+              ${certDot(status)}
+              <span class="cert-status-label">Does “${escapeHtml(nameOf(link.subjectIndex))}” name “${escapeHtml(nameOf(link.issuerIndex))}” as its issuer, and does that hold up?</span>
+            </span>
+          </summary>
+          <div class="cert-details-body">${renderValidationList(link.checks)}</div>
+        </details>`;
+    }).join('');
+  }
+
+  resultEl.innerHTML = html;
+}
+
+function setCertScratchpadFile(file) {
+  certScratchpadFile = file;
+  const label = document.getElementById('certScratchpadFilename');
+  if (label) label.textContent = file ? file.name : '';
+  if (file) {
+    const textarea = document.getElementById('certScratchpadInput');
+    if (textarea) textarea.value = '';
+  }
+}
+
+async function inspectCertScratchpad() {
+  const errorEl = document.getElementById('certScratchpadError');
+  const loadingEl = document.getElementById('certScratchpadLoading');
+  const textarea = document.getElementById('certScratchpadInput');
+  if (!errorEl || !loadingEl) return;
+
+  errorEl.hidden = true;
+  const text = textarea?.value.trim() || '';
+  if (!certScratchpadFile && !text) {
+    errorEl.hidden = false;
+    errorEl.innerHTML = '<p>Paste a certificate or choose a file first.</p>';
+    return;
+  }
+
+  loadingEl.hidden = false;
+  try {
+    const formData = new FormData();
+    formData.append(
+      'certificateFile',
+      certScratchpadFile || new Blob([text], { type: 'application/x-pem-file' }),
+      certScratchpadFile?.name || 'pasted.pem',
+    );
+    const response = await fetch('/api/certificates/inspect', { method: 'POST', body: formData });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.error || 'That could not be read as a certificate.');
+
+    scratchpadCertificateData = payload;
+    renderCertificateScratchpad();
+  } catch (error) {
+    scratchpadCertificateData = null;
+    renderCertificateScratchpad();
+    errorEl.hidden = false;
+    errorEl.innerHTML = `<p>${escapeHtml(error.message || 'That could not be read as a certificate.')}</p>`;
+  } finally {
+    loadingEl.hidden = true;
+  }
+}
+
+(() => {
+  const dropzone = document.getElementById('certScratchpadDropzone');
+  const fileInput = document.getElementById('certScratchpadFileInput');
+  const pickBtn = document.getElementById('btnCertScratchpadPick');
+  const inspectBtn = document.getElementById('btnCertScratchpadInspect');
+  const clearBtn = document.getElementById('btnCertScratchpadClear');
+  const textarea = document.getElementById('certScratchpadInput');
+  if (!dropzone) return;
+
+  pickBtn?.addEventListener('click', () => fileInput?.click());
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0] || null;
+    fileInput.value = '';
+    if (file) setCertScratchpadFile(file);
+  });
+  textarea?.addEventListener('input', () => {
+    if (textarea.value.trim()) setCertScratchpadFile(null);
+  });
+  inspectBtn?.addEventListener('click', () => inspectCertScratchpad());
+  clearBtn?.addEventListener('click', () => {
+    scratchpadCertificateData = null;
+    setCertScratchpadFile(null);
+    if (textarea) textarea.value = '';
+    document.getElementById('certScratchpadError').hidden = true;
+    renderCertificateScratchpad();
+  });
+
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('is-dragover');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('is-dragover'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('is-dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) setCertScratchpadFile(file);
+  });
+})();
+
+/* ---------- Opt-in trust simulation ---------- */
+
+let trustSimulationResults = null; // { chainId: TrustSimulationResult }, per-session only
+
+function renderTrustSimulationPanel() {
+  const panel = document.getElementById('certificatesTrustSimPanel');
+  const resultsEl = document.getElementById('certTrustSimResults');
+  if (!panel || !resultsEl) return;
+
+  const shouldShow = Boolean(certificatesData?.documentHasSignatures);
+  panel.hidden = !shouldShow;
+  if (!shouldShow) return;
+
+  if (!trustSimulationResults) {
+    resultsEl.innerHTML = '';
+    return;
+  }
+
+  resultsEl.innerHTML = certificatesData.chains.map((chain) => {
+    const sim = trustSimulationResults[chain.id];
+    if (!sim) return '';
+    const leafCert = certById(chain.certificateIds[0]);
+    const label = chain.signatureFieldName
+      ? `Signature: ${chain.signatureFieldName}`
+      : (leafCert ? certDisplayName(leafCert) : chain.id);
+    return `
+      <div class="cert-trustsim-card is-${escapeHtml(sim.status)}">
+        <div class="cert-trustsim-head">
+          <span class="cert-simulated-badge">Simulated</span>
+          ${certBadge(sim.status)}
+          <strong>${escapeHtml(label)}</strong>
+        </div>
+        <p class="cert-trustsim-detail">${escapeHtml(sim.detail)}</p>
+        <p class="cert-check-why">Revocation: not checked — unaffected by this simulation. pdf-seal makes no network requests, with or without a bundle.</p>
+      </div>`;
+  }).join('');
+}
+
+async function runTrustSimulation(bundleFile) {
+  const errorEl = document.getElementById('certTrustSimError');
+  const loadingEl = document.getElementById('certTrustSimLoading');
+  if (!certificatesData?.chains?.length) {
+    errorEl.hidden = false;
+    errorEl.innerHTML = '<p>There is no chain in the current document to simulate against.</p>';
+    return;
+  }
+
+  errorEl.hidden = true;
+  loadingEl.hidden = false;
+  const results = {};
+  try {
+    for (const chain of certificatesData.chains) {
+      const chainCerts = chain.certificateIds.map(certById).filter(Boolean);
+      if (!chainCerts.length) continue;
+
+      const formData = new FormData();
+      formData.append('rootBundle', bundleFile);
+      formData.append('chainCertificates', JSON.stringify(chainCerts.map((c) => ({ derBase64: c.derBase64 }))));
+
+      const response = await fetch('/api/certificates/simulate-trust', { method: 'POST', body: formData });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'That root bundle could not be read.');
+      results[chain.id] = payload.simulated;
+    }
+    trustSimulationResults = results;
+    renderTrustSimulationPanel();
+  } catch (error) {
+    trustSimulationResults = null;
+    errorEl.hidden = false;
+    errorEl.innerHTML = `<p>${escapeHtml(error.message || 'That root bundle could not be read.')}</p>`;
+  } finally {
+    loadingEl.hidden = true;
+  }
+}
+
+(() => {
+  const pickBtn = document.getElementById('btnTrustSimPick');
+  const fileInput = document.getElementById('certTrustSimFileInput');
+  if (!pickBtn || !fileInput) return;
+
+  pickBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0] || null;
+    fileInput.value = '';
+    if (!file) return;
+    const label = document.getElementById('certTrustSimFilename');
+    if (label) label.textContent = file.name;
+    runTrustSimulation(file);
+  });
+})();
 
 /* ---------- The certificate sheet ---------- */
 
@@ -10175,7 +10649,7 @@ function renderCertificateSheet(cert) {
     </div>`;
 
   // Exporting a chain only means something for a certificate that is in one.
-  const chain = certificatesData?.chains.find((c) => c.certificateIds.includes(cert.id));
+  const chain = chainContainingCert(cert.id);
   const chainBtn = document.getElementById('btnExportChain');
   if (chainBtn) chainBtn.hidden = !chain;
 
@@ -10367,7 +10841,7 @@ function exportCertificate(certId, format) {
 }
 
 function exportCertificateChain(certId) {
-  const chain = certificatesData?.chains.find((c) => c.certificateIds.includes(certId));
+  const chain = chainContainingCert(certId);
   if (!chain) return;
   // Chain order: leaf first, then each issuer in turn -- the order a verifier
   // walks it, and the order the chain is displayed in.

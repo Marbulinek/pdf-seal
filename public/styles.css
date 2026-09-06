@@ -893,6 +893,11 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   justify-content: flex-end;
 }
 
+.settings-modal-actions {
+  margin-top: 18px;
+  gap: 14px;
+}
+
 .modal-status {
   min-height: 20px;
   margin-top: 10px;
@@ -4134,8 +4139,37 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 
 /* ---------- Settings: signature template backup ----------
    Download/load act immediately, outside the modal's Save/Cancel flow. ---- */
-.settings-template-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 8px; }
-.settings-template-actions .btn { flex: 1; min-width: 160px; justify-content: center; }
+.settings-template-backup {
+  margin-top: 12px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  background: var(--cream);
+}
+.settings-template-backup-title {
+  margin: 0 0 2px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ocean-dark);
+}
+.settings-template-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0 4px; }
+.settings-template-action {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-template-actions .btn { justify-content: center; width: 100%; }
+.settings-template-backup-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--ice);
+}
+.settings-template-backup-note .icon { flex: none; margin-top: 1px; }
 
 /* ---------- Template import confirmation ---------- */
 .template-import-preview {
@@ -4244,10 +4278,24 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
   color: var(--navy);
 }
 
-.cert-copy-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-
-.cert-filter-bar { margin-bottom: 10px; }
-.cert-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+/* One toolbar row: filter chips, the search input, and the copy actions all
+   sit side by side and wrap together on narrow widths -- replaces the old
+   stacked .cert-copy-actions + .cert-filter-bar blocks. */
+.cert-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 6px;
+}
+.cert-toolbar-copy { display: flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+.cert-toolbar-caption {
+  margin: 0 0 10px; font-size: 0.7rem; color: var(--ocean-dark);
+  display: flex; align-items: center; gap: 8px;
+}
+.cert-toolbar-caption-clear {
+  background: none; border: none; padding: 0;
+  font: inherit; font-weight: 700; color: var(--ocean);
+  cursor: pointer; text-decoration: underline;
+}
+.cert-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .cert-filter-chip {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 4px 9px;
@@ -4266,9 +4314,9 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 .cert-filter-chip.is-pass.is-active    { border-color: var(--success); }
 .cert-filter-chip.is-unknown.is-active { border-color: var(--ocean); }
 .cert-filter-chip-count { color: var(--navy); }
-.cert-filter-search-row { display: flex; gap: 8px; align-items: center; }
 .cert-filter-search {
-  flex: 1 1 auto;
+  flex: 1 1 160px;
+  min-width: 120px;
   padding: 6px 10px;
   font-size: 0.78rem;
   border: 1.5px solid var(--ice);
@@ -4319,6 +4367,91 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 .cert-status-block .cert-status-dot { width: 16px; height: 16px; font-size: 0.64rem; }
 .cert-status-block .cert-details-body { padding: 9px; }
 .cert-status-caption { margin: 0 0 8px; font-size: 0.72rem; line-height: 1.45; color: var(--ocean-dark); }
+
+/* ---------- Certificate scratchpad ---------- */
+.cert-scratchpad-dropzone {
+  padding: 12px;
+  border: 1.5px dashed var(--ice);
+  border-radius: var(--radius-m);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cert-scratchpad-dropzone.is-dragover { border-color: var(--ocean); background: rgba(69, 123, 157, 0.06); }
+.cert-scratchpad-textarea {
+  width: 100%; min-height: 90px; resize: vertical;
+  padding: 8px 10px;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem; line-height: 1.5;
+  color: var(--navy);
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  margin-bottom: 8px;
+}
+.cert-scratchpad-textarea:focus { outline: none; border-color: var(--ocean); }
+.cert-scratchpad-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cert-scratchpad-filename { font-size: 0.72rem; color: var(--ocean-dark); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Trust simulation ---------- */
+.cert-simulated-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--coral-dark);
+  background: rgba(230, 57, 70, 0.1);
+  border: 1px solid rgba(230, 57, 70, 0.35);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.cert-trustsim-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 10px, rgba(230, 57, 70, 0.035) 10px, rgba(230, 57, 70, 0.035) 20px);
+  border: 1.5px dashed var(--ice);
+  border-radius: var(--radius-m);
+}
+.cert-trustsim-card.is-pass { border-color: rgba(42, 157, 143, 0.45); }
+.cert-trustsim-card.is-fail { border-color: rgba(230, 57, 70, 0.45); }
+.cert-trustsim-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.cert-trustsim-detail { margin: 0 0 6px; font-size: 0.79rem; color: var(--navy); }
+
+/* ---------- Validity timeline ---------- */
+.cert-timeline { margin-top: 12px; overflow-x: auto; }
+.cert-timeline-scroll { min-width: 360px; display: flex; flex-direction: column; gap: 6px; position: relative; padding-top: 4px; }
+.cert-timeline-row { display: flex; align-items: center; gap: 8px; font-size: 0.68rem; }
+.cert-timeline-row-label { flex: 0 0 120px; color: var(--ocean-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cert-timeline-track { position: relative; flex: 1 1 auto; height: 14px; background: var(--cream); border-radius: 999px; }
+.cert-timeline-bar { position: absolute; top: 0; bottom: 0; border-radius: 999px; }
+.cert-timeline-bar.is-pass    { background: var(--success); }
+.cert-timeline-bar.is-warn    { background: var(--amber); }
+.cert-timeline-bar.is-fail    { background: var(--coral); }
+.cert-timeline-bar.is-unknown { background: var(--ocean); opacity: 0.5; }
+.cert-timeline-marker-row { opacity: 0.9; }
+.cert-timeline-marker {
+  position: absolute; top: -2px; width: 2px; height: 18px;
+  transform: translateX(-1px);
+}
+.cert-timeline-marker.is-claimed   { background: var(--ocean); }
+.cert-timeline-marker.is-timestamp { background: var(--navy); }
+.cert-timeline-marker::before {
+  content: ''; position: absolute; top: -3px; left: -3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: inherit;
+}
+/* Positioned to start exactly where .cert-timeline-track starts (past the
+   fixed-width row-label column + gap), so the "now" guide only ever crosses
+   the graph itself and never runs through the row labels. */
+.cert-timeline-now-overlay {
+  position: absolute; top: 0; bottom: 0;
+  left: calc(120px + 8px); right: 0;
+  pointer-events: none;
+}
+.cert-timeline-now {
+  position: absolute; top: 4px; bottom: 0; width: 1px;
+  background: repeating-linear-gradient(to bottom, var(--coral) 0 4px, transparent 4px 7px);
+}
+.cert-timeline-now-label {
+  position: absolute; top: -14px; left: 0; transform: translateX(-50%);
+  font-size: 0.6rem; font-weight: 700; color: var(--coral-dark); white-space: nowrap;
+}
 
 /* ---------- Signature cards ---------- */
 .cert-signature-list, .cert-card-list { display: flex; flex-direction: column; gap: 14px; }
@@ -4641,9 +4774,17 @@ body.hide-raw-pdf-data .cert-tab-raw { display: none; }
    tools" in Settings. */
 body.hide-certificate-modify-panel #certificatesModifyPanel { display: none; }
 
+/* Trust simulation is opt-in -- see "Enable trust simulation" in Settings. */
+body.hide-trust-simulation-panel #certificatesTrustSimPanel { display: none; }
+
+/* The scratchpad is opt-in -- see "Enable certificate scratchpad" in Settings. */
+body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: none; }
+
 @media (max-width: 640px) {
   .cert-stat-row { flex-direction: column; }
   .cert-field-table th { width: 42%; }
+  .cert-toolbar { flex-direction: column; }
+  .cert-toolbar-copy { align-self: flex-end; }
 }
 
 /* Four tabs plus icons overflow the sheet body once it drops below ~460px.
