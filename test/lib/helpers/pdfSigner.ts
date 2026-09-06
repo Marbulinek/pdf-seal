@@ -69,6 +69,12 @@ export interface SignPdfOptions {
    * not verify it, so a real TSA token would prove nothing extra here.
    */
   timestampToken?: boolean;
+  /**
+   * Attach a real (minimal) RFC 3161 timestamp token whose TSTInfo genTime is
+   * this date, so timestampTime extraction has something real to decode.
+   * Takes precedence over `timestampToken`'s placeholder.
+   */
+  timestampGenTime?: Date;
   /** Append bytes after the signed region, as an incremental update would. */
   appendTrailingBytes?: number;
   /** Flip a byte inside the signed region, breaking the message digest. */
@@ -144,6 +150,45 @@ function patchByteRange(bytes: Uint8Array, byteRange: number[]): void {
   Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).write(replacement, start, 'latin1');
 }
 
+/**
+ * A minimal, unsigned RFC 3161 timestamp token: a ContentInfo/SignedData
+ * shell around a TSTInfo whose only field the extractor reads (genTime) is
+ * real. No actual TSA signature -- pdf-seal never verifies the token, only
+ * reads its claimed time, so nothing else about it needs to be genuine.
+ */
+function buildMinimalTimestampToken(genTime: Date): asn1js.Sequence {
+  const tstInfo = new asn1js.Sequence({
+    value: [
+      new asn1js.Integer({ value: 1 }), // version
+      new asn1js.ObjectIdentifier({ value: '1.2.3.4' }), // policy (arbitrary)
+      new asn1js.Sequence({
+        value: [
+          new asn1js.Sequence({ value: [new asn1js.ObjectIdentifier({ value: '2.16.840.1.101.3.4.2.1' })] }),
+          new asn1js.OctetString({ valueHex: new Uint8Array(32).buffer }),
+        ],
+      }), // messageImprint
+      new asn1js.Integer({ value: 1 }), // serialNumber
+      new asn1js.GeneralizedTime({ valueDate: genTime }),
+    ],
+  });
+
+  const signedData = new pkijs.SignedData({
+    version: 1,
+    encapContentInfo: new pkijs.EncapsulatedContentInfo({
+      eContentType: '1.2.840.113549.1.9.16.1.4', // id-ct-TSTInfo
+      eContent: new asn1js.OctetString({ valueHex: tstInfo.toBER(false) }),
+    }),
+    signerInfos: [],
+  });
+
+  const contentInfo = new pkijs.ContentInfo({
+    contentType: '1.2.840.113549.1.7.2',
+    content: signedData.toSchema(true),
+  });
+
+  return asn1js.fromBER(contentInfo.toSchema().toBER(false)).result as asn1js.Sequence;
+}
+
 /** Length of the TLV starting at `at`, header included. */
 function tlvLength(buf: Buffer, at: number): number {
   const first = buf[at + 1];
@@ -196,6 +241,7 @@ export async function buildSignedPdfFixture(
     omitSigningTime = false,
     omitMessageDigest = false,
     timestampToken = false,
+    timestampGenTime,
     appendTrailingBytes = 0,
     tamperWithContent = false,
     corruptByteRange = false,
@@ -357,6 +403,12 @@ export async function buildSignedPdfFixture(
     });
   }
 
+  const timestampAttributeValue = timestampGenTime
+    ? buildMinimalTimestampToken(timestampGenTime)
+    : timestampToken
+      ? new asn1js.OctetString({ valueHex: new Uint8Array([1, 2, 3]).buffer })
+      : null;
+
   const signedData = new pkijs.SignedData({
     version: 1,
     encapContentInfo: new pkijs.EncapsulatedContentInfo({
@@ -367,14 +419,14 @@ export async function buildSignedPdfFixture(
         version: useSubjectKeyIdentifier ? 3 : 1,
         sid,
         signedAttrs: new pkijs.SignedAndUnsignedAttributes({ type: 0, attributes }),
-        ...(timestampToken
+        ...(timestampAttributeValue
           ? {
               unsignedAttrs: new pkijs.SignedAndUnsignedAttributes({
                 type: 1,
                 attributes: [
                   new pkijs.Attribute({
                     type: '1.2.840.113549.1.9.16.2.14',
-                    values: [new asn1js.OctetString({ valueHex: new Uint8Array([1, 2, 3]).buffer })],
+                    values: [timestampAttributeValue],
                   }),
                 ],
               }),

@@ -10,8 +10,10 @@ import { WebSocket, WebSocketServer } from "ws";
 import PdfSignatureTool from "./lib/PdfSignatureTool";
 import PdfRevisionTool from "./lib/PdfRevisionTool";
 import { buildCertificateReport } from "./lib/PdfCertificateReport";
-import { parseCertificateFile } from "./lib/CertificateModel";
+import { parseCertificateFile, parseCertificate } from "./lib/CertificateModel";
 import { applyCertificateOperation, CertificateModificationError } from "./lib/PdfCertificateModifier";
+import { checkCertificate, checkLink, buildChain } from "./lib/CertificateChain";
+import { simulateTrust } from "./lib/TrustSimulation";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -638,12 +640,86 @@ app.post(
     try {
       const safePath = resolveUploadPath(file.path);
       const bytes = fs.readFileSync(safePath);
-      res.json({ certificates: parseCertificateFile(bytes) });
+      const certificates = parseCertificateFile(bytes);
+
+      // Standalone use (no PDF, no signature) has no chain context to lean
+      // on, so this is a best-effort reading: treat the first certificate as
+      // the leaf and everything else as candidate issuers, same as the
+      // leftover-handling in CertificateChain.buildChains for certs a real
+      // report can't reach from a signer.
+      let chain = null;
+      if (certificates.length === 1) {
+        certificates[0].checks = checkCertificate(certificates[0], {});
+      } else if (certificates.length > 1) {
+        chain = buildChain(certificates[0], certificates, {
+          id: "scratchpad",
+          signatureFieldName: null,
+          context: {},
+        });
+        const chained = new Set(chain.certificateIds);
+        for (const cert of certificates) {
+          if (!chained.has(cert.id)) cert.checks = checkCertificate(cert, {});
+        }
+      }
+
+      let links: Array<{ subjectIndex: number; issuerIndex: number; checks: ReturnType<typeof checkLink> }> | null =
+        null;
+      if (certificates.length === 2) {
+        links = [
+          { subjectIndex: 0, issuerIndex: 1, checks: checkLink(certificates[0], certificates[1], 0) },
+          { subjectIndex: 1, issuerIndex: 0, checks: checkLink(certificates[1], certificates[0], 0) },
+        ];
+      }
+
+      res.json({ certificates, chain, links });
     } catch (error: any) {
       // Every failure here is a problem with the file the user chose, so the
       // message is written to be shown to them as-is.
       logError("api-certificates-inspect", error, { filePath: file.path });
       res.status(400).json({ error: error?.message ?? "That file could not be read as a certificate." });
+    } finally {
+      cleanupFiles(file.path);
+    }
+  },
+);
+
+// --- API Endpoint: Opt-in trust simulation ---
+// Answers "would this chain be trusted against a root bundle I supply", kept
+// entirely separate from the real report: it never touches chain.trust or
+// chain.revocation, never affects summary.status, and the bundle is used only
+// for this one request -- nothing is persisted or reused across requests.
+app.post(
+  "/api/certificates/simulate-trust",
+  uploadLimiter,
+  certUpload.single("rootBundle"),
+  async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No root bundle uploaded" });
+
+    try {
+      const safePath = resolveUploadPath(file.path);
+      const bundleBytes = fs.readFileSync(safePath);
+      const trustBundle = parseCertificateFile(bundleBytes);
+
+      let chainEntries: Array<{ derBase64: string }>;
+      try {
+        chainEntries = JSON.parse(String(req.body.chainCertificates ?? "[]"));
+      } catch {
+        throw new Error("The chain to simulate was not sent correctly.");
+      }
+      if (!Array.isArray(chainEntries) || chainEntries.length === 0) {
+        throw new Error("No chain certificates were provided to simulate against.");
+      }
+
+      const chainCertificates = chainEntries.map((entry) =>
+        parseCertificate(Buffer.from(String(entry.derBase64 ?? ""), "base64")),
+      );
+
+      const simulated = simulateTrust(chainCertificates, trustBundle);
+      res.json({ simulated, rootsParsed: trustBundle.length });
+    } catch (error: any) {
+      logError("api-certificates-simulate-trust", error, { filePath: file.path });
+      res.status(400).json({ error: error?.message ?? "That root bundle could not be read." });
     } finally {
       cleanupFiles(file.path);
     }

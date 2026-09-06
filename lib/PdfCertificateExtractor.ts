@@ -80,6 +80,13 @@ export interface ExtractedSignature {
   signatureAlgorithm: string | null;
   signedAttributes: SignedAttributeSummary;
   hasTimestampToken: boolean;
+  /**
+   * The TSA's own claimed time from inside the timestamp token (its genTime),
+   * best-effort decoded -- null if there is no token or it could not be read.
+   * Still unverified by pdf-seal (the token's signature is not checked), but
+   * it is independent of the signer: a forged /M can't move this value.
+   */
+  timestampTime: string | null;
   docMdpLevel: number | null;
   objectRef: string | null;
   /** Uppercase hex SHA-1 of the /Contents bytes -- the key /VRI uses. */
@@ -328,6 +335,7 @@ interface CmsFacts {
   signatureAlgorithm: string | null;
   signedAttributes: SignedAttributeSummary;
   hasTimestampToken: boolean;
+  timestampTime: string | null;
 }
 
 function emptyCmsFacts(): CmsFacts {
@@ -338,7 +346,51 @@ function emptyCmsFacts(): CmsFacts {
     signatureAlgorithm: null,
     signedAttributes: { contentType: null, messageDigest: null, signingTime: null, others: [] },
     hasTimestampToken: false,
+    timestampTime: null,
   };
+}
+
+/**
+ * Best-effort read of a timestamp token's own claimed time (RFC 3161 TSTInfo
+ * genTime). `tokenValue` is the raw ASN.1 node held as the timestamp-token
+ * unsigned attribute's value -- a DER-encoded ContentInfo wrapping a nested
+ * CMS SignedData whose eContent is the TSTInfo. Never throws: any failure
+ * (unexpected shape, unsupported encoding) just means the time is unknown,
+ * not that the file is malformed -- the token's own signature is never
+ * checked here either way, so a decode failure changes nothing about what
+ * pdf-seal actually verifies.
+ */
+/**
+ * An OCTET STRING's content as one buffer. A CMS eContent can legally be
+ * BER-constructed (chunked into child OCTET STRINGs, e.g. by a streaming
+ * signer) rather than a single primitive value -- this reads either form.
+ */
+function octetStringBytes(node: any): Uint8Array | null {
+  const primitive = node?.valueBlock?.valueHexView;
+  if (primitive && primitive.length > 0) return primitive;
+  const chunks = node?.valueBlock?.value;
+  if (Array.isArray(chunks) && chunks.length > 0) {
+    return new Uint8Array(Buffer.concat(chunks.map((c: any) => Buffer.from(c.valueBlock.valueHexView))));
+  }
+  return null;
+}
+
+function extractTimestampGenTime(tokenValue: any): string | null {
+  try {
+    const der = tokenValue.toBER(false);
+    const contentInfo = pkijs.ContentInfo.fromBER(der);
+    const signedData = new pkijs.SignedData({ schema: contentInfo.content });
+    const eContent = signedData.encapContentInfo?.eContent;
+    const tstInfoBytes = eContent ? octetStringBytes(eContent) : null;
+    if (!tstInfoBytes) return null;
+    const tstInfo = asn1js.fromBER(tstInfoBytes).result;
+    // TSTInfo ::= SEQUENCE { version, policy, messageImprint, serialNumber, genTime, ... }
+    const genTime = (tstInfo as any).valueBlock?.value?.[4];
+    const date = genTime?.toDate?.();
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -422,7 +474,10 @@ export function readCmsFacts(cms: Uint8Array): CmsFacts {
   }
 
   for (const attribute of signer.unsignedAttrs?.attributes ?? []) {
-    if (String(attribute.type ?? '') === OID_TIMESTAMP_TOKEN) facts.hasTimestampToken = true;
+    if (String(attribute.type ?? '') === OID_TIMESTAMP_TOKEN) {
+      facts.hasTimestampToken = true;
+      facts.timestampTime = extractTimestampGenTime(attribute.values?.[0]);
+    }
   }
 
   return facts;
@@ -492,6 +547,7 @@ export async function extractCertificateSources(bytes: Uint8Array): Promise<Extr
       signatureAlgorithm: null,
       signedAttributes: { contentType: null, messageDigest: null, signingTime: null, others: [] },
       hasTimestampToken: false,
+      timestampTime: null,
       docMdpLevel: dict.docMdpLevel,
       objectRef: dict.objectRef,
       contentsSha1: null,
@@ -534,6 +590,7 @@ export async function extractCertificateSources(bytes: Uint8Array): Promise<Extr
           signature.signatureAlgorithm = facts.signatureAlgorithm;
           signature.signedAttributes = facts.signedAttributes;
           signature.hasTimestampToken = facts.hasTimestampToken;
+          signature.timestampTime = facts.timestampTime;
           for (const der of facts.certificates) {
             sources.push({
               der,
