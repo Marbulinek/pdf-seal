@@ -6654,19 +6654,23 @@ function showIdleShareProgress(label = 'Waiting for recipient…') {
   shareProgressBar.parentElement.setAttribute('aria-valuenow', '0');
 }
 
-function hideShareProgress() {
-  shareProgressWrap.hidden = true;
-  shareProgressText.textContent = 'Preparing…';
-  shareProgressPercent.textContent = '0%';
-  shareProgressBar.style.width = '0%';
-  shareProgressBar.classList.remove('is-complete');
-  shareProgressBar.parentElement.setAttribute('aria-valuenow', '0');
+function createCompactCode(length) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytesNeeded = Math.ceil((length * Math.log2(alphabet.length)) / 8) + 1;
+  const bytes = new Uint8Array(bytesNeeded);
+  crypto.getRandomValues(bytes);
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) | BigInt(byte);
+  let code = '';
+  for (let i = 0; i < length; i += 1) {
+    code = alphabet[Number(value % BigInt(alphabet.length))] + code;
+    value = value / BigInt(alphabet.length);
+  }
+  return code;
 }
 
 function createSessionId() {
-  const bytes = new Uint8Array(12);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  return createCompactCode(8);
 }
 
 function bytesToBase64Url(bytes) {
@@ -6683,17 +6687,7 @@ function base64UrlToBytes(value) {
 }
 
 function createCompactShareToken() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = new Uint8Array(3);
-  crypto.getRandomValues(bytes);
-  let value = 0n;
-  for (const byte of bytes) value = (value << 8n) | BigInt(byte);
-  let token = '';
-  for (let i = 0; i < 6; i += 1) {
-    token = alphabet[Number(value % BigInt(alphabet.length))] + token;
-    value = value / BigInt(alphabet.length);
-  }
-  return token;
+  return createCompactCode(6);
 }
 
 async function deriveShareKeyBytes(token) {
@@ -6909,9 +6903,11 @@ function connectToShareSession() {
     }
 
     if (message.type === 'file-stored' && shareRole === 'sender') {
-      // The encrypted snapshot is only prepared on the server at this point;
-      // no recipient is receiving it yet, so do not show a completed progress bar.
-      hideShareProgress();
+      // This just confirms the relay buffering finished -- it fires after a
+      // receiver has already joined and the real transfer (WebRTC or relay
+      // download) may already be in progress or done. Don't touch the
+      // progress bar here; it would otherwise race with and clobber that
+      // transfer's own progress, including a completed 100% state.
       setConnectedUserCount(message.receiverCount || 0);
       const count = message.receiverCount || 0;
       setShareStatus(count > 0 ? `${count} connected — sending…` : 'Waiting for someone to open your link…', 'success');
