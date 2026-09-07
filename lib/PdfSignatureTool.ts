@@ -20,7 +20,37 @@ import {
   PDFPageTree,
   AcroFieldFlags,
   AcroTextFlags,
+  PDFSignature,
+  PDFTextField,
+  PDFCheckBox,
+  PDFRadioGroup,
+  PDFDropdown,
+  PDFOptionList,
+  PDFButton,
 } from 'pdf-lib';
+
+/**
+ * Map a pdf-lib form field to its human-readable type name.
+ *
+ * Deliberately uses `instanceof` against pdf-lib's own exported field
+ * classes rather than `field.constructor.name` -- the production server is
+ * bundled with esbuild's minifier (see esbuild.config.mjs), which renames
+ * classes (including pdf-lib's own) to short mangled identifiers. Reading
+ * `.constructor.name` at runtime would silently pick up those mangled
+ * names instead of "PDFSignature"/"PDFTextField"/etc. `instanceof` walks
+ * the prototype chain instead of a renamable string, so it survives
+ * minification.
+ */
+function fieldTypeName(field: any): string {
+  if (field instanceof PDFSignature) return 'Signature';
+  if (field instanceof PDFTextField) return 'TextField';
+  if (field instanceof PDFCheckBox) return 'CheckBox';
+  if (field instanceof PDFRadioGroup) return 'RadioGroup';
+  if (field instanceof PDFDropdown) return 'Dropdown';
+  if (field instanceof PDFOptionList) return 'OptionList';
+  if (field instanceof PDFButton) return 'Button';
+  return field.constructor.name.replace('PDF', '');
+}
 
 /**
  * Recursively convert any pdf-lib object into plain, JSON-serializable
@@ -600,7 +630,7 @@ class PdfSignatureTool {
 
       return {
         name,
-        type: field.constructor.name.replace('PDF', ''), // Signature, TextField, CheckBox, ...
+        type: fieldTypeName(field), // Signature, TextField, CheckBox, ...
         required: typeof field.isRequired === 'function' ? field.isRequired() : false,
         readOnly: typeof field.isReadOnly === 'function' ? field.isReadOnly() : false,
         multiline: typeof field.isMultiline === 'function' ? field.isMultiline() : false,
