@@ -1,3 +1,10 @@
+## [1.5.1](https://github.com/Marbulinek/pdf-seal/compare/v1.5.0...v1.5.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* fixed codeQL packages and signature field icons ([#49](https://github.com/Marbulinek/pdf-seal/issues/49)) ([c428bc0](https://github.com/Marbulinek/pdf-seal/commit/c428bc0ff309511aa739dd1fabe012649bede3be))
+
 # [1.5.0](https://github.com/Marbulinek/pdf-seal/compare/v1.4.0...v1.5.0) (2026-09-06)
 
 
