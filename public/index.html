@@ -863,7 +863,6 @@
           <span class="edit-sheet-grabber" aria-hidden="true"></span>
           <span class="panel-dot dot-ocean"></span>
           <h3 id="editSheetTitle">Edit field</h3>
-          <span class="edit-sheet-subject" id="editSheetSubject"></span>
           <button type="button" class="modal-close" id="btnEditSheetClose" aria-label="Close editor"><span class="icon icon-close" aria-hidden="true"></span></button>
         </div>
         <div class="edit-sheet-body">
@@ -2445,7 +2444,6 @@
       activeField = null;
       activeFieldDiv = null;
       closeEditSheet();
-      setEditSheetSubject(null);
       if (!keepFieldHistory) resetFieldHistory();
 
       editControls.forEach((el) => {
@@ -3102,7 +3100,6 @@
       // Only one sheet slides over the column at a time -- they occupy the
       // same space, so whichever opens last has to take the others down.
       closeCertificateSheet();
-      setEditSheetSubject(field);
       editSheet.classList.add('is-open');
       editSheet.setAttribute('aria-hidden', 'false');
       editSheetScrim?.classList.add('is-open');
@@ -3122,11 +3119,6 @@
 
     function isEditSheetOpen() {
       return Boolean(editSheet && editSheet.classList.contains('is-open'));
-    }
-
-    function setEditSheetSubject(field) {
-      const subject = document.getElementById('editSheetSubject');
-      if (subject) subject.textContent = field ? field.name : '';
     }
 
     document.getElementById('btnEditSheetClose')?.addEventListener('click', deselectActiveField);
@@ -3179,7 +3171,6 @@
       const detailsBlock = document.getElementById('fieldDetailsBlock');
       if (detailsBody) detailsBody.innerHTML = '<p class="field-details-empty">No details available.</p>';
       if (detailsBlock) detailsBlock.open = false;
-      setEditSheetSubject(null);
 
       updateViewerControlsState();
     }
@@ -3199,7 +3190,6 @@
     }
 
     function populateEditPanel(field) {
-      setEditSheetSubject(field);
       document.getElementById('editOriginalName').value = field.name;
       document.getElementById('editName').value = field.name;
       document.getElementById('editX').value = field.rect.x.toFixed(1);
@@ -3279,7 +3269,6 @@
       pushFieldHistory();
       activeField.name = newName;
       document.getElementById('editOriginalName').value = newName;
-      setEditSheetSubject(activeField);
       if (currentViewport) drawFieldOverlays(currentViewport);
       updatePendingChangesUi();
     });
@@ -4077,6 +4066,11 @@
           : `Saved "${item.name}" to "${template.name}".`,
         'success',
       );
+      // The Edit sheet was only suppressed (not closed) for the drag, so a
+      // field that was selected when it got dragged into the template would
+      // otherwise pop the sheet back open right after the capture -- the
+      // capture is done, so the panel should land back on its default view.
+      if (activeField === field) deselectActiveField();
     }
 
     const templateDropzone = document.getElementById('templateDropzone');
