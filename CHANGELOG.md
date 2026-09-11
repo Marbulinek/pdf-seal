@@ -1,3 +1,10 @@
+## [1.5.2](https://github.com/Marbulinek/pdf-seal/compare/v1.5.1...v1.5.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* signature edit panel ([#53](https://github.com/Marbulinek/pdf-seal/issues/53)) ([b3ae269](https://github.com/Marbulinek/pdf-seal/commit/b3ae269cadd39a27d014a49a6ee740ea9eacd0d2))
+
 ## [1.5.1](https://github.com/Marbulinek/pdf-seal/compare/v1.5.0...v1.5.1) (2026-09-07)
 
 
