@@ -41,6 +41,18 @@ Open the revision panel to compare two versions of a PDF at the raw-object level
 
 Revision history is kept locally in your browser (IndexedDB), not on the server or embedded in the PDF, so every edit stays fast and the server only ever handles the current, lean document. Enable "Include revisions when exporting / sharing document" in Settings if you want the history bundled into a downloaded or shared file.
 
+## Help & interactive demo
+
+Click the **?** icon next to Settings for in-app docs — one section per feature, each with a "Show me" button that jumps straight into a guided tour of that feature. "Start interactive tour" loads a bundled sample "Service Agreement" (a real, three-revision, signed PDF) and walks through signatures, templates, metadata, revisions, and certificates step by step; "Just load the sample" loads the same document without starting the tour. The tour only demonstrates — it stages a throwaway field and undoes it, and never clicks Apply, since re-saving would invalidate the sample's real signature. Settings and template changes made during the tour are sandboxed and never persisted.
+
+The sample document is generated, not hand-authored. To regenerate it after a change to field/metadata/revision-chain handling:
+
+```bash
+npm run build:demo-sample
+```
+
+This writes `public/assets/demo/pdf-seal-sample.pdf` and `public/assets/demo/pdf-seal-demo-root-ca.pem` (the demo root CA, downloadable from the Certificates docs section to try trust simulation against the sample). `test/demoSample.test.ts` guards the sample's shape so it can't rot silently.
+
 ## Run the app
 
 Install dependencies:

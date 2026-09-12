@@ -103,6 +103,12 @@ export interface SignPdfOptions {
   dssCertificates?: MintedCertificate[];
   /** Also add a /VRI entry attributing the DSS certificates to this signature. */
   dssVri?: boolean;
+  /**
+   * Sign an existing document instead of a freshly created one-page fixture.
+   * `fieldName` must already exist on this document as an empty signature
+   * field -- the function looks it up rather than creating a new page/field.
+   */
+  basePdf?: Uint8Array;
 }
 
 export interface SignedPdfFixture {
@@ -250,6 +256,7 @@ export async function buildSignedPdfFixture(
     docMdpLevel,
     dssCertificates,
     dssVri = false,
+    basePdf,
   } = options;
 
   let { signer, chain } = options;
@@ -260,11 +267,17 @@ export async function buildSignedPdfFixture(
   }
 
   // ---- 1: lay the document out with placeholders ------------------------
-  const tool = await PdfSignatureTool.create();
-  tool.addPage();
-  tool.addSignatureField(0, fieldName, {});
+  let baseBytes: Uint8Array;
+  if (basePdf) {
+    baseBytes = basePdf;
+  } else {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, fieldName, {});
+    baseBytes = await tool.toBytes();
+  }
 
-  const doc = await PDFDocument.load(await tool.toBytes(), { updateMetadata: false });
+  const doc = await PDFDocument.load(baseBytes, { updateMetadata: false });
   const field = doc.getForm().getFields().find((f: any) => f.getName() === fieldName);
   if (!field) throw new Error('fixture: signature field vanished after reload');
 

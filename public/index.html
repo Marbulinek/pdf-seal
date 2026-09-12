@@ -94,6 +94,26 @@
 
   <div id="notificationStack" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
 
+  <!-- Guided demo tour overlay: a dimming spotlight over the current target plus a
+       popover card with progress and Back/Next/Exit. Both stay hidden and pointer-events:
+       none until a tour is active. -->
+  <div class="tour-spotlight" id="tourSpotlight" hidden aria-hidden="true"></div>
+  <div class="tour-popover" id="tourPopover" role="dialog" aria-modal="false" aria-labelledby="tourPopoverTitle" tabindex="-1" hidden>
+    <div class="tour-popover-body">
+      <div class="tour-popover-spinner" id="tourPopoverSpinner" hidden aria-hidden="true"></div>
+      <h4 class="tour-popover-title" id="tourPopoverTitle"></h4>
+      <p class="tour-popover-text" id="tourPopoverText"></p>
+    </div>
+    <div class="tour-popover-footer">
+      <span class="tour-popover-progress" id="tourPopoverProgress"></span>
+      <div class="tour-popover-actions">
+        <button type="button" class="btn btn-ghost btn-small" id="btnTourExit">Exit</button>
+        <button type="button" class="btn btn-ghost btn-small" id="btnTourBack">Back</button>
+        <button type="button" class="btn btn-primary btn-small" id="btnTourNext">Next</button>
+      </div>
+    </div>
+  </div>
+
   <div class="pending-changes-bar" id="pendingChangesBar" hidden>
     <div class="pending-changes-row">
       <img class="pending-changes-icon" src="/assets/images/seal-apply-changes.jpg" alt="" aria-hidden="true">
@@ -144,6 +164,7 @@
 
       <div class="topbar-actions">
         <div class="topbar-row topbar-row-secondary">
+          <button type="button" class="icon-btn topbar-settings-btn" id="btnOpenHelp" aria-label="Open help" title="Help"><span class="icon icon-help-circle" aria-hidden="true"></span></button>
           <button type="button" class="icon-btn topbar-settings-btn" id="btnOpenSettings" aria-label="Open settings" title="Settings"><span class="icon icon-settings-gear" aria-hidden="true"></span></button>
           <div class="upload-zone">
             <div class="dropdown" id="uploadDropdown">
@@ -297,6 +318,107 @@
       <div class="modal-actions settings-modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelSettingsBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="saveSettingsBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help modal -->
+  <div class="modal-backdrop" id="helpModal" aria-hidden="true">
+    <div class="modal-box help-modal-box" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
+      <div class="modal-header">
+        <h3 id="helpModalTitle">Help &amp; interactive demo</h3>
+        <button type="button" class="modal-close" id="closeHelpModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+
+      <div class="help-hero-panel">
+        <img class="help-hero-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <div class="help-hero-copy">
+          <p class="modal-hint">New here? Load the bundled sample agreement and see every feature in action, guided step by step — or just poke around on your own.</p>
+          <div class="help-hero-actions">
+            <button type="button" class="btn btn-primary" id="btnStartTour">Start interactive tour</button>
+            <button type="button" class="btn btn-ghost" id="btnLoadSampleOnly">Just load the sample</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="help-topics">
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Getting started</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="intro">Show me</button></summary>
+          <div class="help-topic-body">
+            <p>Upload a PDF (drag &amp; drop, the Upload button, or Base64), then use the page/zoom/pan controls and the section tabs — MetaData, Signatures, Revisions, Certificates — to move between features.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Signatures</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="signatures">Show me</button></summary>
+          <div class="help-topic-body">
+            <p>Add signature and text fields by placing them on the page, then drag to move or use the grip to resize. Selecting a field opens its edit panel; new and edited fields stage as pending changes until you Apply or Discard them, and every staged change can be undone/redone with the history buttons.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Signature templates</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="templates">Show me</button></summary>
+          <div class="help-topic-body">
+            <p>Turn on templates in Settings to save a placed field's layout for reuse. Capture a field into a template, then place its items back manually or automatically onto any document. Back up or restore your templates as a JSON file in Settings.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Metadata &amp; raw PDF data</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="metadata">Show me</button></summary>
+          <div class="help-topic-body">
+            <p>The MetaData section shows and edits the document's title, author, and other Info-dictionary fields. Turn on "Show advanced PDF raw data" in Settings to see the underlying raw PDF objects behind fields, revisions, and metadata.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Revisions &amp; compare</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="revisions">Show me</button></summary>
+          <div class="help-topic-body">
+            <p>Every save is tracked as a revision, stored locally in your browser. Pick two revisions to compare: an overview of what changed, a detailed field-by-field breakdown, and a visual diff highlighting the changed regions on the page.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Certificates</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="certificates">Show me</button></summary>
+          <div class="help-topic-body">
+            <p>The Certificates section reports on any signatures found in the document: integrity, the certificate chain behind each one, and whether required fields are still waiting to be signed. Optional tools (enabled in Settings) add a standalone certificate scratchpad, a trust simulation against a root CA bundle you supply, and certificate modification for building test documents.</p>
+            <p><a href="/assets/demo/pdf-seal-demo-root-ca.pem" download>Download the demo root CA</a> to try trust simulation against the sample document.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Share &amp; export</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="finish">Show me</button></summary>
+          <div class="help-topic-body">
+            <p>Download the document, copy it as Base64, or share it peer-to-peer: a private link that transfers the encrypted PDF directly between browsers, verified by the recipient. Share sessions expire automatically after 15 minutes.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Settings</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="settings">Show me</button></summary>
+          <div class="help-topic-body">
+            <p>Settings turns optional panels on and off — signature templates, raw PDF data, revision bundling on export, and the certificate scratchpad/trust simulation/modification tools — and holds the template backup/restore buttons.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Privacy</span></summary>
+          <div class="help-topic-body">
+            <p>Field edits, metadata changes, and revision history live in this browser (IndexedDB/localStorage) until you export or apply changes, which sends the current document to the server to be modified and immediately deleted afterward. Peer-to-peer shares never touch the server except to exchange connection info — the PDF itself travels encrypted, browser to browser.</p>
+          </div>
+        </details>
+        <details class="help-topic">
+          <summary><span class="help-topic-title">Keyboard shortcuts</span></summary>
+          <div class="help-topic-body">
+            <p><kbd>Esc</kbd> closes the open modal, sheet, or tour. Inside the tour, <kbd>←</kbd>/<kbd>→</kbd> step back and forward.</p>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- Demo sample: confirmation before replacing a different open document -->
+  <div class="modal-backdrop" id="demoReplaceModal" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="demoReplaceModalTitle">
+      <div class="modal-header">
+        <h3 id="demoReplaceModalTitle">Replace the open document?</h3>
+        <button type="button" class="modal-close" id="closeDemoReplaceModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <p class="modal-hint">Loading the sample document replaces the PDF you have open now, and clears its revision history from this browser (revision history lives only locally, never on the server).</p>
+      <p class="modal-hint" id="demoReplaceUnappliedNote" hidden>You also have unapplied field changes on the current document — those will be lost too.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelDemoReplaceBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmDemoReplaceBtn">Replace document</button>
       </div>
     </div>
   </div>
@@ -540,9 +662,14 @@
           </div>
           <h3>No Document Loaded</h3>
           <p>Drag &amp; drop a PDF into this area, use <strong>Upload</strong> in the header, or load one straight from Base64.</p>
-          <button type="button" class="btn btn-ghost empty-state-base64-btn" id="emptyStateBase64Btn">
-            <span class="icon icon-code" aria-hidden="true"></span> Paste Base64
-          </button>
+          <div class="empty-state-actions">
+            <button type="button" class="btn btn-ghost empty-state-base64-btn" id="emptyStateBase64Btn">
+              <span class="icon icon-code" aria-hidden="true"></span> Paste Base64
+            </button>
+            <button type="button" class="btn btn-ghost empty-state-base64-btn" id="emptyStateSampleBtn">
+              <span class="icon icon-file-text" aria-hidden="true"></span> Try the sample document
+            </button>
+          </div>
           <div class="empty-state-dropline" aria-hidden="true"></div>
         </div>
 
@@ -1706,6 +1833,17 @@
       trustSimulationEnabled: false,
     };
 
+    // Set while the demo tour is active so it can temporarily flip on optional
+    // panels (templates, raw data, ...) without ever touching what's actually
+    // saved -- see mergeSettingsOverride() below, a hand-kept mirror of
+    // lib/DemoTour.ts's function of the same name (see the tour engine near the
+    // end of this script). Cleared on tour exit.
+    let demoSettingsOverride = null;
+    function mergeSettingsOverride(stored, override) {
+      if (!override) return stored;
+      return { ...stored, ...override };
+    }
+
     function loadSettings() {
       try {
         const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -1780,11 +1918,12 @@
       if (settingsCertModifyEnabledInput) settingsCertModifyEnabledInput.checked = settings.certificateModifyEnabled;
       if (settingsCertScratchpadEnabledInput) settingsCertScratchpadEnabledInput.checked = settings.certificateScratchpadEnabled;
       if (settingsTrustSimEnabledInput) settingsTrustSimEnabledInput.checked = settings.trustSimulationEnabled;
-      applyRawPdfDataVisibility(settings);
-      applyTemplatesPanelVisibility(settings);
-      applyCertificateModifyVisibility(settings);
-      applyCertificateScratchpadVisibility(settings);
-      applyTrustSimulationVisibility(settings);
+      const effectiveSettings = mergeSettingsOverride(settings, demoSettingsOverride);
+      applyRawPdfDataVisibility(effectiveSettings);
+      applyTemplatesPanelVisibility(effectiveSettings);
+      applyCertificateModifyVisibility(effectiveSettings);
+      applyCertificateScratchpadVisibility(effectiveSettings);
+      applyTrustSimulationVisibility(effectiveSettings);
       return settings;
     }
 
@@ -1912,7 +2051,64 @@
       // The template-import confirmation opens on top of Settings; let its own
       // handler take that Escape rather than closing both at once.
       if (document.getElementById('templateImportModal')?.classList.contains('is-open')) return;
+      // A running tour owns Escape while it's active (see the tour engine near
+      // the end of this script).
+      if (typeof tourActive !== 'undefined' && tourActive) return;
       if (e.key === 'Escape' && settingsModal?.classList.contains('is-open')) closeSettingsModal();
+    });
+
+    // --- Help modal ---
+    const helpModal = document.getElementById('helpModal');
+    const helpOpenBtn = document.getElementById('btnOpenHelp');
+    const helpCloseBtn = document.getElementById('closeHelpModalBtn');
+
+    function openHelpModal() {
+      if (!helpModal) return;
+      helpModal.classList.add('is-open');
+      helpModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeHelpModal() {
+      if (!helpModal) return;
+      helpModal.classList.remove('is-open');
+      helpModal.setAttribute('aria-hidden', 'true');
+    }
+
+    if (helpOpenBtn) {
+      helpOpenBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openHelpModal();
+      });
+    }
+    if (helpCloseBtn) helpCloseBtn.addEventListener('click', closeHelpModal);
+    if (helpModal) {
+      helpModal.addEventListener('click', (e) => {
+        if (e.target === helpModal) closeHelpModal();
+      });
+    }
+    document.addEventListener('keydown', (e) => {
+      if (typeof tourActive !== 'undefined' && tourActive) return;
+      if (e.key === 'Escape' && helpModal?.classList.contains('is-open')) closeHelpModal();
+    });
+    document.querySelectorAll('.help-show-me').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const chapter = btn.getAttribute('data-tour-chapter');
+        closeHelpModal();
+        startDemoTour(chapter);
+      });
+    });
+    document.getElementById('btnStartTour')?.addEventListener('click', () => {
+      closeHelpModal();
+      startDemoTour('intro');
+    });
+    document.getElementById('btnLoadSampleOnly')?.addEventListener('click', () => {
+      closeHelpModal();
+      requestDemoSampleLoad({ startTourChapter: null });
+    });
+    document.getElementById('emptyStateSampleBtn')?.addEventListener('click', () => {
+      requestDemoSampleLoad({ startTourChapter: null });
     });
 
     // Utility to show status (Add Signature panel)
@@ -3118,6 +3314,7 @@
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || !isEditSheetOpen()) return;
       if (document.querySelector('.modal-backdrop.is-open')) return;
+      if (typeof tourActive !== 'undefined' && tourActive) return;
       deselectActiveField();
     });
 
@@ -3723,14 +3920,28 @@
       }
     }
 
+    // Set while the tour's Templates chapter sandboxes templateStore below --
+    // saves stay in memory only, and the Settings backup/export buttons read
+    // straight from persisted storage instead of the sandbox. See the tour
+    // engine near the end of this script.
+    let templateSandboxActive = false;
+    let templateSandboxStash = null;
+
+    function getBackupTemplateStore() {
+      if (!templateSandboxActive) return templateStore;
+      return templateSandboxStash ? templateSandboxStash.templateStore : loadTemplateStore();
+    }
+
     function saveTemplateStore(nextStore) {
       templateStore = normalizeTemplateStore(nextStore);
-      try {
-        localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templateStore));
-      } catch (_err) {
-        // Quota or a privacy mode that blocks writes -- the in-memory store
-        // still works for this session, so say so rather than failing silently.
-        showNotification('Could not save templates to this browser. Changes will be lost on reload.', 'error');
+      if (!templateSandboxActive) {
+        try {
+          localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templateStore));
+        } catch (_err) {
+          // Quota or a privacy mode that blocks writes -- the in-memory store
+          // still works for this session, so say so rather than failing silently.
+          showNotification('Could not save templates to this browser. Changes will be lost on reload.', 'error');
+        }
       }
       renderTemplatesPanel();
       updateTemplatesBackupUi();
@@ -4726,8 +4937,9 @@
       const exportBtn = document.getElementById('btnExportTemplates');
       if (!summary || !exportBtn) return;
 
-      const templateCount = templateStore.templates.length;
-      const fieldCount = countTemplateFields(templateStore);
+      const backupStore = getBackupTemplateStore();
+      const templateCount = backupStore.templates.length;
+      const fieldCount = countTemplateFields(backupStore);
       exportBtn.disabled = templateCount === 0;
       summary.textContent = templateCount
         ? `${templateCount} template${templateCount === 1 ? '' : 's'} saved in this browser, ${fieldCount} field${fieldCount === 1 ? '' : 's'} in total.`
@@ -4735,9 +4947,10 @@
     }
 
     function exportTemplatesToFile() {
-      if (!templateStore.templates.length) return;
+      const backupStore = getBackupTemplateStore();
+      if (!backupStore.templates.length) return;
 
-      const payload = JSON.stringify(buildTemplateExport(templateStore), null, 2);
+      const payload = JSON.stringify(buildTemplateExport(backupStore), null, 2);
       const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
@@ -8105,6 +8318,7 @@ document.getElementById('revisionsCompareSheetScrim')?.addEventListener('click',
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !isRevisionsCompareSheetOpen()) return;
   if (document.querySelector('.modal-backdrop.is-open')) return;
+  if (typeof tourActive !== 'undefined' && tourActive) return;
   closeRevisionsCompareSheet();
 });
 
@@ -11116,6 +11330,7 @@ certificateSheetScrim?.addEventListener('click', closeCertificateSheet);
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !isCertificateSheetOpen()) return;
   if (document.querySelector('.modal-backdrop.is-open')) return;
+  if (typeof tourActive !== 'undefined' && tourActive) return;
   closeCertificateSheet();
 });
 
@@ -11450,6 +11665,686 @@ document.addEventListener('keydown', (e) => {
   if (document.querySelector('.modal-backdrop.is-open')) return;
   closeCertificateModifySheet();
 });
+
+/* =====================================================================
+   Guided demo tour
+   ---------------------------------------------------------------------
+   The positioning helpers below (computePopoverPosition/spotlightRect/
+   findStepIndex/chapterStartIndex/mergeSettingsOverride -- the last one
+   already used by applySettingsToUi() above) are a hand-kept mirror of
+   lib/DemoTour.ts, which exists purely so they have unit coverage --
+   there's no frontend build step to import from. Keep the two in sync
+   if either changes.
+   ===================================================================== */
+
+const TOUR_OPPOSITE = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
+const TOUR_CROSS_AXIS = { top: ['right', 'left'], bottom: ['right', 'left'], left: ['top', 'bottom'], right: ['top', 'bottom'] };
+
+function tourClamp(value, min, max) { return Math.min(Math.max(value, min), max); }
+
+function tourPlaceAt(target, popover, placement, gap) {
+  switch (placement) {
+    case 'top': return { top: target.top - gap - popover.height, left: target.left + target.width / 2 - popover.width / 2 };
+    case 'bottom': return { top: target.top + target.height + gap, left: target.left + target.width / 2 - popover.width / 2 };
+    case 'left': return { top: target.top + target.height / 2 - popover.height / 2, left: target.left - gap - popover.width };
+    case 'right': return { top: target.top + target.height / 2 - popover.height / 2, left: target.left + target.width + gap };
+  }
+}
+
+function tourFits(pos, popover, viewport, margin) {
+  return pos.left >= margin && pos.left + popover.width <= viewport.width - margin &&
+    pos.top >= margin && pos.top + popover.height <= viewport.height - margin;
+}
+
+function computePopoverPosition({ target, popover, viewport, preferred, gap, margin }) {
+  if (!target) {
+    return {
+      top: Math.max(margin, (viewport.height - popover.height) / 2),
+      left: Math.max(margin, (viewport.width - popover.width) / 2),
+      placement: 'center',
+    };
+  }
+  const candidates = [preferred, TOUR_OPPOSITE[preferred], ...TOUR_CROSS_AXIS[preferred]];
+  for (const placement of candidates) {
+    const pos = tourPlaceAt(target, popover, placement, gap);
+    if (tourFits(pos, popover, viewport, margin)) return { ...pos, placement };
+  }
+  const fallback = tourPlaceAt(target, popover, preferred, gap);
+  return {
+    top: tourClamp(fallback.top, margin, Math.max(margin, viewport.height - popover.height - margin)),
+    left: tourClamp(fallback.left, margin, Math.max(margin, viewport.width - popover.width - margin)),
+    placement: preferred,
+  };
+}
+
+function spotlightRect(target, padding, viewport) {
+  if (!target) return null;
+  const left = tourClamp(target.left - padding, 0, viewport.width);
+  const top = tourClamp(target.top - padding, 0, viewport.height);
+  const right = tourClamp(target.left + target.width + padding, 0, viewport.width);
+  const bottom = tourClamp(target.top + target.height + padding, 0, viewport.height);
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+function findStepIndex(steps, from, direction) {
+  const delta = direction === 'next' ? 1 : -1;
+  return tourClamp(from + delta, 0, Math.max(0, steps.length - 1));
+}
+
+function chapterStartIndex(steps, chapterId) {
+  return steps.findIndex((step) => step.chapter === chapterId);
+}
+
+function waitFor(predicate, timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    (function poll() {
+      let ok = false;
+      try { ok = !!predicate(); } catch (_err) { ok = false; }
+      if (ok) return resolve(true);
+      if (Date.now() - start >= timeoutMs) return resolve(false);
+      setTimeout(poll, 80);
+    })();
+  });
+}
+
+// --- Tour state ---
+let tourActive = false;
+let tourSteps = [];
+let tourIndex = 0;
+let tourRafId = null;
+let tourStepToken = 0; // invalidates an in-flight enter() if Back/Next/Exit happens before it resolves
+let demoSampleFile = null; // the File last loaded via loadDemoSampleDocument(), so a re-run can skip re-fetching
+let pendingDemoReplaceChapter = undefined; // chapter id to start after the replace-confirmation is accepted, or null for "just load"
+
+const tourSpotlightEl = document.getElementById('tourSpotlight');
+const tourPopoverEl = document.getElementById('tourPopover');
+const tourPopoverTitleEl = document.getElementById('tourPopoverTitle');
+const tourPopoverTextEl = document.getElementById('tourPopoverText');
+const tourPopoverProgressEl = document.getElementById('tourPopoverProgress');
+const tourPopoverSpinnerEl = document.getElementById('tourPopoverSpinner');
+
+async function loadDemoSampleDocument() {
+  if (demoSampleFile && activeFile === demoSampleFile && computeFieldOps().length === 0) {
+    return demoSampleFile;
+  }
+  const res = await fetch('/assets/demo/pdf-seal-sample.pdf');
+  const blob = await res.blob();
+  const file = new File([blob], 'pdf-seal-sample.pdf', { type: 'application/pdf' });
+  await processNewFile(file);
+  demoSampleFile = file;
+  return file;
+}
+
+function tourNeedsReplaceConfirmation() {
+  return !!activeFile && activeFile !== demoSampleFile;
+}
+
+function openDemoReplaceModal() {
+  const modal = document.getElementById('demoReplaceModal');
+  if (!modal) return;
+  const note = document.getElementById('demoReplaceUnappliedNote');
+  if (note) note.hidden = computeFieldOps().length === 0;
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeDemoReplaceModal() {
+  const modal = document.getElementById('demoReplaceModal');
+  if (!modal) return;
+  modal.classList.remove('is-open');
+  modal.setAttribute('aria-hidden', 'true');
+  pendingDemoReplaceChapter = undefined;
+}
+
+async function performDemoSampleLoad(chapterIdOrNull) {
+  await loadDemoSampleDocument();
+  if (chapterIdOrNull) beginTour(chapterIdOrNull);
+}
+
+function requestDemoSampleLoad({ startTourChapter }) {
+  if (tourNeedsReplaceConfirmation()) {
+    pendingDemoReplaceChapter = startTourChapter ?? null;
+    openDemoReplaceModal();
+    return;
+  }
+  performDemoSampleLoad(startTourChapter ?? null);
+}
+
+function startDemoTour(chapterId) {
+  requestDemoSampleLoad({ startTourChapter: chapterId || 'intro' });
+}
+
+document.getElementById('confirmDemoReplaceBtn')?.addEventListener('click', () => {
+  const chapter = pendingDemoReplaceChapter;
+  closeDemoReplaceModal();
+  performDemoSampleLoad(chapter ?? null);
+});
+[document.getElementById('cancelDemoReplaceBtn'), document.getElementById('closeDemoReplaceModalBtn')].forEach((btn) => {
+  btn?.addEventListener('click', closeDemoReplaceModal);
+});
+document.getElementById('demoReplaceModal')?.addEventListener('click', (e) => {
+  if (e.target === document.getElementById('demoReplaceModal')) closeDemoReplaceModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('demoReplaceModal')?.classList.contains('is-open')) closeDemoReplaceModal();
+});
+
+// --- Small helpers the tour steps below lean on ---
+
+// Switches section during the tour, but not silently: briefly spotlights and
+// pulses the destination nav tab first so the jump reads as a deliberate step
+// ("we're moving to Metadata now") rather than the panel just changing under
+// the popover with no warning.
+const TOUR_SECTION_FLASH_MS = 700;
+
+async function tourGoToSection(navId) {
+  const btn = document.getElementById(navId);
+  if (!btn || btn.disabled || btn.classList.contains('active')) return;
+
+  const label = btn.querySelector('.section-nav-label')?.textContent?.trim() || 'this section';
+
+  const rect = btn.getBoundingClientRect();
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  const spot = spotlightRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height }, 6, viewport);
+  if (spot && tourSpotlightEl) {
+    tourSpotlightEl.hidden = false;
+    tourSpotlightEl.style.top = `${spot.top}px`;
+    tourSpotlightEl.style.left = `${spot.left}px`;
+    tourSpotlightEl.style.width = `${spot.width}px`;
+    tourSpotlightEl.style.height = `${spot.height}px`;
+  }
+  btn.classList.add('tour-nav-flash');
+
+  // Swap the popover's own text to an explicit "switching" message -- the
+  // popover is what the user is already looking at, so this reads far more
+  // clearly as "the section is changing now" than the nav pulse alone.
+  const previousTitle = tourPopoverTitleEl.textContent;
+  const previousText = tourPopoverTextEl.textContent;
+  tourPopoverTitleEl.textContent = `Switching to ${label}…`;
+  tourPopoverTextEl.textContent = `Jumping to the ${label} section of the app.`;
+  tourPopoverEl.classList.add('tour-popover-switching');
+
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!reducedMotion) await new Promise((resolve) => setTimeout(resolve, TOUR_SECTION_FLASH_MS));
+
+  btn.classList.remove('tour-nav-flash');
+  tourPopoverEl.classList.remove('tour-popover-switching');
+  tourPopoverTitleEl.textContent = previousTitle;
+  tourPopoverTextEl.textContent = previousText;
+  btn.click();
+}
+
+async function tourSelectField(name) {
+  const field = documentFields.find((f) => f.name === name);
+  if (!field) return;
+  const select = () => {
+    const overlay = document.querySelector(`.field-overlay[data-field-name="${CSS.escape(name)}"]`);
+    if (overlay) selectFieldOverlay(overlay, field);
+  };
+  if (typeof field.page === 'number' && field.page + 1 !== pageNum) {
+    pageNum = field.page + 1;
+    await Promise.resolve(renderPage(pageNum));
+  }
+  select();
+}
+
+async function tourGoToPage(num) {
+  if (pageNum === num) return;
+  pageNum = num;
+  await Promise.resolve(renderPage(pageNum));
+}
+
+function tourSetSettingsOverride(patch) {
+  demoSettingsOverride = mergeSettingsOverride(demoSettingsOverride || {}, patch);
+  applySettingsToUi();
+}
+
+function tourActivateTemplateSandbox() {
+  if (templateSandboxActive) return;
+  templateSandboxStash = { templateStore, selectedTemplateId };
+  templateSandboxActive = true;
+  templateStore = { version: TEMPLATE_STORE_VERSION, templates: [] };
+  selectedTemplateId = null;
+  renderTemplatesPanel();
+}
+
+function tourRestoreTemplateSandbox() {
+  if (!templateSandboxActive) return;
+  templateStore = templateSandboxStash.templateStore;
+  selectedTemplateId = templateSandboxStash.selectedTemplateId;
+  templateSandboxActive = false;
+  templateSandboxStash = null;
+  renderTemplatesPanel();
+}
+
+let tourDemoTemplateId = null;
+
+function tourEnsureDemoTemplate() {
+  tourActivateTemplateSandbox();
+  if (tourDemoTemplateId && templateStore.templates.some((t) => t.id === tourDemoTemplateId)) return tourDemoTemplateId;
+  const demoTemplate = { id: makeTemplateId('tpl'), name: 'Demo template', createdAt: Date.now(), updatedAt: Date.now(), items: [] };
+  templateStore = { ...templateStore, templates: [...templateStore.templates, demoTemplate] };
+  selectedTemplateId = demoTemplate.id;
+  tourDemoTemplateId = demoTemplate.id;
+  renderTemplatesPanel();
+  return demoTemplate.id;
+}
+
+function tourCertLeafIdForField(fieldName) {
+  const chain = certificatesData?.chains.find((c) => c.signatureFieldName === fieldName);
+  return chain?.certificateIds?.[0] ?? null;
+}
+
+// Visually flips a Settings checkbox for the demo, without saving anything --
+// openSettingsModal()/applySettingsToUi() always re-sync checkboxes from
+// persisted storage on the next real open, so nothing here can stick.
+function tourToggleCheckbox(id, checked) {
+  const el = document.getElementById(id);
+  if (el) el.checked = checked;
+}
+
+// --- Step list: 31 steps across 8 chapters ---
+
+function buildTourSteps() {
+  return [
+    // Chapter: intro
+    {
+      id: 'intro-welcome', chapter: 'intro', target: null, placement: 'bottom',
+      title: 'Welcome to pdf-seal',
+      body: "This is the bundled sample \"Service Agreement\" — a real, three-revision, signed PDF. Click Next and we'll walk through what pdf-seal can do with it. You can still click around at any step.",
+      enter: async () => { await tourGoToSection('navBtnSignatures'); deselectActiveField(); closeEditSheet(); },
+    },
+    {
+      id: 'intro-toolbar', chapter: 'intro', target: '.viewer-toolbar', placement: 'bottom',
+      title: 'The viewer toolbar',
+      body: 'Move between pages, zoom, and pan the document here.',
+      enter: async () => { await tourGoToSection('navBtnSignatures'); },
+    },
+    {
+      id: 'intro-nav', chapter: 'intro', target: '#sectionNav', placement: 'bottom',
+      title: 'Section tabs',
+      body: 'MetaData, Signatures, Revisions, and Certificates — everything below is organized under one of these four sections.',
+      enter: async () => {},
+    },
+    // Chapter: signatures
+    {
+      id: 'sig-overlays', chapter: 'signatures', target: '#pdfContainer', placement: 'left',
+      title: 'Signature fields on the page',
+      body: 'Fields are drawn right on the page. Drag one to move it, or use its corner grip to resize — this document has two signature fields and two text fields on page 2.',
+      enter: async () => { await tourGoToSection('navBtnSignatures'); deselectActiveField(); await tourGoToPage(2); },
+    },
+    {
+      id: 'sig-editsheet', chapter: 'signatures', target: '#editSheet', placement: 'left',
+      title: 'Editing a field',
+      body: 'Selecting a field opens this panel: rename it, adjust its exact position and size, or mark it required. "Field Details" below shows the raw PDF properties behind it.',
+      enter: async () => {
+        await tourGoToSection('navBtnSignatures');
+        tourSetSettingsOverride({ showRawPdfData: true });
+        await tourSelectField('Client_Signature');
+        const details = document.getElementById('fieldDetailsBlock');
+        if (details) details.open = true;
+      },
+    },
+    {
+      id: 'sig-signednotice', chapter: 'signatures', target: '#editSignedNotice', placement: 'left',
+      title: 'A field that is already signed',
+      body: "Provider_Signature carries a real signature, so pdf-seal locks its position and size — moving or resizing it would invalidate the bytes the signature covers.",
+      enter: async () => { await tourSelectField('Provider_Signature'); },
+    },
+    {
+      id: 'sig-add', chapter: 'signatures', target: '#sigTabPanelAdd', placement: 'right',
+      title: 'Adding a new field',
+      body: "Name a field, pick a size, then click to drop it on the page. Watch: we'll stage a demo \"Witness_Signature\" field the same way.",
+      enter: async () => {
+        deselectActiveField();
+        closeEditSheet();
+        setSignatureTab('add');
+        setAddFieldType('signature');
+        const nameInput = document.getElementById('sigName');
+        if (nameInput) nameInput.value = 'Witness_Signature';
+        await tourGoToPage(2);
+        if (canvas && canvas.width && canvas.height && !documentFields.some((f) => f.name === 'Witness_Signature')) {
+          placeFieldAt(canvas.width * 0.72, canvas.height * 0.14);
+        }
+      },
+    },
+    {
+      id: 'sig-pending', chapter: 'signatures', target: '#pendingChangesBar', placement: 'top',
+      title: 'Pending changes',
+      body: 'New and edited fields stage here first. Discard throws them away; Apply changes re-saves the document with them baked in. (The tour never clicks Apply here — doing so would re-save this already-signed file and invalidate its signature. Try it yourself outside the tour.)',
+      enter: async () => {},
+    },
+    {
+      id: 'sig-history', chapter: 'signatures', target: '#historyStrip', placement: 'bottom',
+      title: 'Undo / redo',
+      body: 'Every staged change can be undone or redone — including adding a field. Watch the demo Witness_Signature field disappear.',
+      enter: async () => { if (documentFields.some((f) => f.name === 'Witness_Signature')) undoFieldChange(); },
+    },
+    // Chapter: templates
+    {
+      id: 'tpl-tabs', chapter: 'templates', target: '#sigTabs', placement: 'right',
+      title: 'Signature templates',
+      body: "Turned on here just for the tour — Templates saves a field's layout for reuse across documents. Turn it on for real in Settings.",
+      enter: async () => {
+        tourSetSettingsOverride({ templatesEnabled: true });
+        tourEnsureDemoTemplate();
+        setSignatureTab('templates');
+      },
+    },
+    {
+      id: 'tpl-grip', chapter: 'templates', target: '.field-overlay[data-field-name="Client_Signature"] .template-save-handle', placement: 'top',
+      title: 'Storing a field in a template',
+      body: 'Select a field on the page (or just hover it) and this small handle appears in its corner. Grab it and drag it onto the Signature Templates panel to save that field\'s layout for reuse.',
+      enter: async () => {
+        await tourGoToPage(2);
+        await tourSelectField('Client_Signature');
+      },
+    },
+    {
+      id: 'tpl-dropzone', chapter: 'templates', target: '#templateDropzone', placement: 'right',
+      title: 'Captured',
+      body: 'Drop the handle here to save it — that\'s exactly what just happened for Client_Signature, and we did the same for Client_Name, both captured into a "Demo template" for you.',
+      enter: async () => {
+        const templateId = tourEnsureDemoTemplate();
+        const clientSig = documentFields.find((f) => f.name === 'Client_Signature');
+        const clientName = documentFields.find((f) => f.name === 'Client_Name');
+        if (clientSig) saveFieldToTemplate(clientSig, templateId);
+        if (clientName) saveFieldToTemplate(clientName, templateId);
+      },
+    },
+    {
+      id: 'tpl-mode', chapter: 'templates', target: '#templateModeTabs', placement: 'right',
+      title: 'Placing a template',
+      body: 'Place items back one at a time by hand, or automatically drop every item from a template onto the document in one go.',
+      enter: async () => {},
+    },
+    {
+      id: 'tpl-settings', chapter: 'templates', target: '#btnOpenTemplateSettings', placement: 'bottom',
+      title: 'Backup & restore',
+      body: 'Templates live only in this browser. Download them as a JSON file to keep a copy, and load one back in on another computer.',
+      enter: async () => {},
+    },
+    // Chapter: metadata
+    {
+      id: 'meta-overview', chapter: 'metadata', target: '#metaOverview', placement: 'right',
+      title: 'Document metadata',
+      body: "Title, author, and the rest of this PDF's Info dictionary — editable right here.",
+      enter: async () => { await tourGoToSection('navBtnMetaData'); await loadMetadataIfNeeded(); },
+    },
+    {
+      id: 'meta-advanced', chapter: 'metadata', target: '#metaAdvancedDetails', placement: 'right',
+      title: 'Raw PDF structure',
+      body: 'With "Show advanced PDF raw data" on (Settings), the underlying raw PDF objects are one click away wherever they\'re relevant.',
+      enter: async () => {
+        tourSetSettingsOverride({ showRawPdfData: true });
+        const details = document.getElementById('metaAdvancedDetails');
+        if (details) details.open = true;
+      },
+    },
+    // Chapter: revisions
+    {
+      id: 'rev-timeline', chapter: 'revisions', target: '#revisionsTimeline', placement: 'right',
+      title: 'Revision history',
+      body: "Every incremental save baked into this file, oldest first. This sample has three: the original terms, a clause change plus new fields, and the signed final version.",
+      enter: async () => {
+        await tourGoToSection('navBtnRevisions');
+        await loadRevisionsIfNeeded();
+        await waitFor(() => !document.getElementById('revisionsTimeline')?.hidden);
+        document.querySelector('[data-rev-toggle="3"]')?.click();
+      },
+    },
+    {
+      id: 'rev-compare', chapter: 'revisions', target: '#revisionsCompareSheet', placement: 'left',
+      title: 'Comparing revisions',
+      body: "Pick any two revisions and compare them. Here's revision 1 against revision 2 — the payment-terms clause changed, and four fields were added.",
+      enter: async () => {
+        currentDiffResultData = null;
+        runQuickDiff(1, 2, 'overview');
+        await waitFor(() => currentDiffResultData !== null);
+      },
+    },
+    {
+      id: 'rev-details', chapter: 'revisions', target: '#revisionsDiffResults', placement: 'left',
+      title: 'Field-by-field details',
+      body: 'Exactly which fields and metadata changed, in detail.',
+      enter: async () => { switchDiffTab('details'); },
+    },
+    {
+      id: 'rev-visual', chapter: 'revisions', target: '#visualDiffPanel', placement: 'left',
+      title: 'Visual diff',
+      body: 'And the changed passage highlighted right on the page — the "30 days" clause became "14 days".',
+      enter: async () => { switchDiffTab('visual'); },
+    },
+    // Chapter: certificates
+    {
+      id: 'cert-summary', chapter: 'certificates', target: '#certificatesSummaryPanel', placement: 'right',
+      title: 'Certificate report',
+      body: "Every signature in the file, its integrity, and the certificate chain behind it. The banner explains exactly what this app did and didn't verify.",
+      enter: async () => {
+        exitDiffViewMode();
+        closeRevisionsCompareSheet();
+        await tourGoToSection('navBtnCertificates');
+        await loadCertificatesIfNeeded();
+        await waitFor(() => certificatesData !== null);
+      },
+    },
+    {
+      id: 'cert-signatures', chapter: 'certificates', target: '#certificatesSignaturesPanel', placement: 'right',
+      title: 'Signatures in this document',
+      body: 'Provider_Signature is signed and verifies cleanly. Client_Signature is still an empty, required field — waiting to be signed.',
+      enter: async () => {},
+    },
+    {
+      id: 'cert-sheet', chapter: 'certificates', target: '#certificateSheet', placement: 'left',
+      title: 'Certificate chain detail',
+      body: "Alex Morgan's signing certificate, up through the PDF Seal Demo Signing CA to the PDF Seal Demo Root CA.",
+      enter: async () => {
+        const leafId = tourCertLeafIdForField('Provider_Signature');
+        if (leafId) {
+          openCertificateSheet(leafId, 'validation');
+          await waitFor(() => document.getElementById('certificateSheet')?.classList.contains('is-open'));
+        }
+      },
+    },
+    {
+      id: 'cert-tools', chapter: 'certificates', target: null, placement: 'bottom',
+      title: 'Optional certificate tools',
+      body: 'Turned on in Settings when you need them: a standalone scratchpad for inspecting any certificate, trust simulation against a root CA bundle you supply (try the demo root CA from the Help docs), and modification tools for building test documents.',
+      enter: async () => { tourSetSettingsOverride({ certificateScratchpadEnabled: true, trustSimulationEnabled: true, certificateModifyEnabled: true }); },
+    },
+    // Chapter: settings
+    {
+      id: 'settings-gear', chapter: 'settings', target: '#btnOpenSettings', placement: 'bottom',
+      title: 'Settings',
+      body: 'Click the gear icon any time to open Settings and turn optional panels on or off.',
+      enter: async () => { closeCertificateSheet(); await tourGoToSection('navBtnSignatures'); },
+    },
+    {
+      id: 'settings-general', chapter: 'settings', target: '#settingsTabPanelGeneral', placement: 'left',
+      title: 'Settings: General',
+      body: 'These toggles turn optional panels on and off for real (unlike this tour\'s temporary previews) — nothing here takes effect until you hit Save. "Show advanced PDF raw data" exposes raw PDF objects wherever they\'re relevant: Metadata, Signatures, and Revisions.',
+      enter: async () => {
+        closeCertificateSheet();
+        openSettingsModal('general');
+        tourToggleCheckbox('settingsShowRawData', true);
+      },
+    },
+    {
+      id: 'settings-signatures', chapter: 'settings', target: '#settingsTabPanelSignatures', placement: 'left',
+      title: 'Settings: Signatures',
+      body: '"Enable signature templates" turns on the Templates tab and panel for good, the same one this tour switched on temporarily earlier. Backup and restore your templates as a JSON file right below it.',
+      enter: async () => {
+        document.getElementById('settingsTabBtnSignatures')?.click();
+        tourToggleCheckbox('settingsTemplatesEnabled', true);
+      },
+    },
+    {
+      id: 'settings-revisions', chapter: 'settings', target: '#settingsTabPanelRevisions', placement: 'left',
+      title: 'Settings: Revisions',
+      body: '"Include revisions when exporting / sharing document" bundles your locally-stored revision history into the file whenever you download or share it.',
+      enter: async () => {
+        document.getElementById('settingsTabBtnRevisions')?.click();
+        tourToggleCheckbox('settingsIncludeRevisionHistory', true);
+      },
+    },
+    {
+      id: 'settings-certificates', chapter: 'settings', target: '#settingsTabPanelCertificates', placement: 'left',
+      title: 'Settings: Certificates',
+      body: 'Three opt-in tools: certificate modification for building test documents, a standalone scratchpad for inspecting any certificate on its own, and trust simulation against a root CA bundle you supply.',
+      enter: async () => {
+        document.getElementById('settingsTabBtnCertificates')?.click();
+        tourToggleCheckbox('settingsCertModifyEnabled', true);
+        tourToggleCheckbox('settingsCertScratchpadEnabled', true);
+        tourToggleCheckbox('settingsTrustSimEnabled', true);
+      },
+    },
+    // Chapter: finish
+    {
+      id: 'finish-share', chapter: 'finish', target: '.topbar-row-tertiary', placement: 'bottom',
+      title: 'Share & export',
+      body: 'Download the PDF, copy it as Base64, or share it peer-to-peer with an encrypted, expiring link.',
+      enter: async () => { closeSettingsModal(); closeCertificateSheet(); await tourGoToSection('navBtnSignatures'); },
+    },
+    {
+      id: 'finish-end', chapter: 'finish', target: '#btnOpenHelp', placement: 'bottom',
+      title: "That's the tour",
+      body: 'Revisit any of this from the Help modal any time, or open Settings to turn the optional panels on for good. The sample document stays loaded so you can keep exploring.',
+      enter: async () => {},
+    },
+  ];
+}
+
+// --- Tour engine ---
+
+function tourPositionUI() {
+  if (!tourActive) return;
+  const step = tourSteps[tourIndex];
+  if (!step) return;
+
+  let targetEl = null;
+  if (step.target) {
+    targetEl = document.querySelector(step.target);
+    if (targetEl) targetEl.scrollIntoView({ block: 'nearest' });
+  }
+
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  let targetRect = null;
+  if (targetEl) {
+    const rect = targetEl.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      targetRect = { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+    }
+  }
+
+  const spot = spotlightRect(targetRect, 8, viewport);
+  if (spot) {
+    tourSpotlightEl.hidden = false;
+    tourSpotlightEl.style.top = `${spot.top}px`;
+    tourSpotlightEl.style.left = `${spot.left}px`;
+    tourSpotlightEl.style.width = `${spot.width}px`;
+    tourSpotlightEl.style.height = `${spot.height}px`;
+  } else {
+    tourSpotlightEl.hidden = true;
+  }
+
+  const popoverSize = { width: tourPopoverEl.offsetWidth || 340, height: tourPopoverEl.offsetHeight || 140 };
+  const pos = computePopoverPosition({
+    target: targetRect,
+    popover: popoverSize,
+    viewport,
+    preferred: step.placement || 'bottom',
+    gap: 14,
+    margin: 16,
+  });
+  tourPopoverEl.style.top = `${pos.top}px`;
+  tourPopoverEl.style.left = `${pos.left}px`;
+}
+
+function tourPositionLoop() {
+  if (!tourActive) { tourRafId = null; return; }
+  tourPositionUI();
+  tourRafId = requestAnimationFrame(tourPositionLoop);
+}
+
+async function goToTourStep(index) {
+  const step = tourSteps[index];
+  if (!step) return;
+  tourIndex = index;
+  const token = ++tourStepToken;
+
+  tourPopoverEl.hidden = false;
+  tourPopoverTitleEl.textContent = step.title;
+  tourPopoverTextEl.textContent = step.body;
+  tourPopoverProgressEl.textContent = `${index + 1} / ${tourSteps.length}`;
+  document.getElementById('btnTourBack').disabled = index === 0;
+  document.getElementById('btnTourNext').textContent = index === tourSteps.length - 1 ? 'Finish' : 'Next';
+  tourPopoverSpinnerEl.hidden = false;
+  tourPositionUI();
+  tourPopoverEl.focus({ preventScroll: true });
+
+  try {
+    await step.enter();
+  } catch (_err) {
+    // A step's demo action failing (e.g. a fetch hiccup) shouldn't strand the
+    // tour -- it still shows the step, just without whatever the hook set up.
+  }
+
+  if (token !== tourStepToken || !tourActive) return; // superseded by Back/Next/Exit
+  tourPopoverSpinnerEl.hidden = true;
+  // Give the DOM one frame to settle (sheets animating open, etc.) before measuring.
+  requestAnimationFrame(() => { if (tourActive) tourPositionUI(); });
+}
+
+function beginTour(chapterId) {
+  tourSteps = buildTourSteps();
+  tourActive = true;
+  document.addEventListener('keydown', tourKeydownHandler);
+  const startIndex = chapterStartIndex(tourSteps, chapterId);
+  goToTourStep(startIndex >= 0 ? startIndex : 0);
+  if (tourRafId === null) tourRafId = requestAnimationFrame(tourPositionLoop);
+}
+
+function exitTour() {
+  if (!tourActive) return;
+  tourActive = false;
+  tourStepToken++;
+  document.removeEventListener('keydown', tourKeydownHandler);
+  if (tourRafId !== null) { cancelAnimationFrame(tourRafId); tourRafId = null; }
+  tourSpotlightEl.hidden = true;
+  tourPopoverEl.hidden = true;
+
+  exitDiffViewMode();
+  closeRevisionsCompareSheet();
+  closeCertificateSheet();
+  closeEditSheet();
+  closeSettingsModal();
+  deselectActiveField();
+
+  demoSettingsOverride = null;
+  applySettingsToUi();
+  tourRestoreTemplateSandbox();
+  tourDemoTemplateId = null;
+
+  tourGoToSection('navBtnSignatures');
+}
+
+function tourKeydownHandler(e) {
+  if (!tourActive) return;
+  if (e.key === 'Escape') { e.preventDefault(); exitTour(); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); tourAdvance(); return; }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); goToTourStep(findStepIndex(tourSteps, tourIndex, 'back')); }
+}
+
+function tourAdvance() {
+  if (tourIndex >= tourSteps.length - 1) { exitTour(); return; }
+  goToTourStep(findStepIndex(tourSteps, tourIndex, 'next'));
+}
+
+document.getElementById('btnTourNext')?.addEventListener('click', tourAdvance);
+document.getElementById('btnTourBack')?.addEventListener('click', () => goToTourStep(findStepIndex(tourSteps, tourIndex, 'back')));
+document.getElementById('btnTourExit')?.addEventListener('click', exitTour);
+window.addEventListener('resize', () => { if (tourActive) tourPositionUI(); });
 
   </script>
 </body>

@@ -15,6 +15,7 @@
     "build:bundle": "node esbuild.config.mjs",
     "start": "node dist/server.js",
     "dev": "tsx server.ts",
+    "build:demo-sample": "tsx scripts/build-demo-sample.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },

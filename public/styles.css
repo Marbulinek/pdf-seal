@@ -59,6 +59,7 @@
 .icon-shield { -webkit-mask-image: url(/assets/images/icons/shield.svg); mask-image: url(/assets/images/icons/shield.svg); }
 .icon-shield-thin { -webkit-mask-image: url(/assets/images/icons/shield-thin.svg); mask-image: url(/assets/images/icons/shield-thin.svg); }
 .icon-settings-gear { -webkit-mask-image: url(/assets/images/icons/settings-gear.svg); mask-image: url(/assets/images/icons/settings-gear.svg); }
+.icon-help-circle { -webkit-mask-image: url(/assets/images/icons/help-circle.svg); mask-image: url(/assets/images/icons/help-circle.svg); }
 .icon-chevron-down { -webkit-mask-image: url(/assets/images/icons/chevron-down.svg); mask-image: url(/assets/images/icons/chevron-down.svg); }
 .icon-chevron-up { -webkit-mask-image: url(/assets/images/icons/chevron-up.svg); mask-image: url(/assets/images/icons/chevron-up.svg); }
 .icon-chevron-left { -webkit-mask-image: url(/assets/images/icons/chevron-left.svg); mask-image: url(/assets/images/icons/chevron-left.svg); }
@@ -4924,4 +4925,171 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
 @media (max-width: 640px) {
   .cert-compare { flex-direction: column; }
   .cert-compare-arrow { transform: rotate(90deg); }
+}
+
+/* ---------- Small button variant (tour controls, docs "Show me") ---------- */
+.btn-small { padding: 4px 10px; font-size: 0.72rem; }
+
+/* ---------- Empty viewer state: sample-document shortcut ---------- */
+.empty-state-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+/* ---------- Help modal ---------- */
+.help-modal-box { width: min(720px, 100%); display: flex; flex-direction: column; gap: 16px; }
+.help-hero-panel {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px;
+  border-radius: var(--radius-m);
+  background: #fff;
+}
+.help-hero-seal {
+  display: block;
+  flex: 0 0 auto;
+  width: 150px;
+  height: 110px;
+  border-radius: 12px;
+  background: #fff;
+  object-fit: cover;
+  object-position: center;
+}
+.help-hero-copy { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.help-hero-panel .modal-hint { margin: 0; text-align: left; }
+.help-hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.help-topics { display: flex; flex-direction: column; gap: 8px; }
+.help-topic {
+  border: 1px solid var(--ice);
+  border-radius: 14px;
+  background: #ffffff;
+  overflow: hidden;
+}
+.help-topic > summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--ocean-dark);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  user-select: none;
+}
+.help-topic > summary::-webkit-details-marker { display: none; }
+.help-topic-title { display: flex; align-items: center; gap: 8px; }
+.help-topic-title::before {
+  content: '▸';
+  transition: transform 0.15s ease;
+  font-size: 0.68rem;
+  display: inline-block;
+}
+.help-topic[open] .help-topic-title::before { transform: rotate(90deg); }
+.help-topic-body { padding: 0 14px 14px; font-size: 0.8rem; line-height: 1.55; color: var(--navy); }
+.help-topic-body p { margin: 0 0 8px; }
+.help-topic-body p:last-child { margin-bottom: 0; }
+@media (max-width: 560px) {
+  .help-hero-panel { flex-direction: column; text-align: center; }
+  .help-hero-seal { width: 100%; max-width: 200px; height: auto; }
+  .help-hero-copy { align-items: center; text-align: center; }
+  .help-hero-panel .modal-hint { text-align: center; }
+  .help-hero-actions { justify-content: center; }
+}
+
+/* ---------- Guided demo tour ---------- */
+.tour-spotlight {
+  position: fixed;
+  z-index: 200;
+  border-radius: 10px;
+  pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(23, 27, 43, 0.55);
+  transition: top 0.18s ease, left 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+.tour-spotlight[hidden] { display: none; }
+
+.tour-popover {
+  position: fixed;
+  z-index: 201;
+  width: min(340px, calc(100vw - 32px));
+  background: #ffffff;
+  border: 1px solid var(--ice);
+  border-radius: var(--radius-m);
+  box-shadow: 0 12px 32px rgba(30, 33, 51, 0.22);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: top 0.18s ease, left 0.18s ease;
+}
+.tour-popover[hidden] { display: none; }
+.tour-popover-body { position: relative; min-height: 24px; }
+.tour-popover-title { margin: 0 0 6px; font-size: 0.92rem; color: var(--navy); }
+.tour-popover-text { margin: 0; font-size: 0.8rem; line-height: 1.55; color: var(--ocean-dark); }
+.tour-popover-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+}
+.tour-popover-spinner[hidden] { display: none; }
+.tour-popover-spinner::after {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ice);
+  border-top-color: var(--ocean);
+  animation: tour-spin 0.7s linear infinite;
+}
+@keyframes tour-spin { to { transform: rotate(360deg); } }
+.tour-popover-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tour-popover-progress { font-size: 0.7rem; font-weight: 700; color: var(--ocean-dark); white-space: nowrap; }
+.tour-popover-actions { display: flex; gap: 6px; }
+/* Pulses the destination section tab while the tour is switching to it, so
+   the section change reads as a deliberate step instead of the panel just
+   changing under the popover with no warning. Two beats (not one) over a
+   longer span so it reads as "look here" rather than a flicker. */
+.section-nav-btn.tour-nav-flash {
+  animation: tour-nav-flash 0.7s ease;
+  background: rgba(69, 123, 157, 0.16);
+  color: var(--navy);
+}
+@keyframes tour-nav-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(69, 123, 157, 0.55); }
+  25% { box-shadow: 0 0 0 9px rgba(69, 123, 157, 0); }
+  50% { box-shadow: 0 0 0 0 rgba(69, 123, 157, 0.55); }
+  75% { box-shadow: 0 0 0 9px rgba(69, 123, 157, 0); }
+}
+
+/* The popover itself flashes an explicit "Switching to X..." message while a
+   section change is in flight -- the popover is what the user is already
+   reading, so this is the clearest possible signal that something is
+   happening, on top of the nav-tab pulse above. */
+.tour-popover.tour-popover-switching {
+  background: rgba(69, 123, 157, 0.08);
+  border-color: var(--ocean);
+}
+.tour-popover-switching .tour-popover-title {
+  color: var(--ocean-dark);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tour-popover-switching .tour-popover-title::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--ice);
+  border-top-color: var(--ocean);
+  animation: tour-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight, .tour-popover { transition: none; }
+  .tour-popover-spinner::after, .tour-popover-switching .tour-popover-title::before { animation: none; }
+  .section-nav-btn.tour-nav-flash { animation: none; box-shadow: 0 0 0 3px rgba(69, 123, 157, 0.4); }
 }
