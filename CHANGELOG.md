@@ -1,3 +1,10 @@
+## [1.5.3](https://github.com/Marbulinek/pdf-seal/compare/v1.5.2...v1.5.3) (2026-09-12)
+
+
+### Bug Fixes
+
+* settings tabs order and signature templates ([#54](https://github.com/Marbulinek/pdf-seal/issues/54)) ([baafdd4](https://github.com/Marbulinek/pdf-seal/commit/baafdd4c1e463fd3789a277aa0c5d0396554f6fe))
+
 ## [1.5.2](https://github.com/Marbulinek/pdf-seal/compare/v1.5.1...v1.5.2) (2026-09-11)
 
 
