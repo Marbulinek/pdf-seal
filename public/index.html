@@ -218,8 +218,8 @@
       <div class="modal-tabs" role="tablist">
         <button type="button" class="modal-tab is-active" id="settingsTabBtnGeneral" role="tab" aria-selected="true" aria-controls="settingsTabPanelGeneral">General</button>
         <button type="button" class="modal-tab" id="settingsTabBtnSignatures" role="tab" aria-selected="false" aria-controls="settingsTabPanelSignatures">Signatures</button>
-        <button type="button" class="modal-tab" id="settingsTabBtnCertificates" role="tab" aria-selected="false" aria-controls="settingsTabPanelCertificates">Certificates</button>
         <button type="button" class="modal-tab" id="settingsTabBtnRevisions" role="tab" aria-selected="false" aria-controls="settingsTabPanelRevisions">Revisions</button>
+        <button type="button" class="modal-tab" id="settingsTabBtnCertificates" role="tab" aria-selected="false" aria-controls="settingsTabPanelCertificates">Certificates</button>
       </div>
 
       <div class="modal-tab-panel" id="settingsTabPanelGeneral" role="tabpanel" aria-labelledby="settingsTabBtnGeneral">
@@ -260,6 +260,16 @@
         </div>
       </div>
 
+      <div class="modal-tab-panel" id="settingsTabPanelRevisions" role="tabpanel" aria-labelledby="settingsTabBtnRevisions" hidden>
+        <label class="checkbox-group checkbox-group-block" for="settingsIncludeRevisionHistory">
+          <div class="checkbox-group-main">
+            <input type="checkbox" id="settingsIncludeRevisionHistory">
+            <span>Include revisions when exporting / sharing document</span>
+          </div>
+          <p class="modal-hint settings-hint">Bundles your document's revision history into exported and shared files. Takes a bit longer to prepare, since every past revision is included.</p>
+        </label>
+      </div>
+
       <div class="modal-tab-panel" id="settingsTabPanelCertificates" role="tabpanel" aria-labelledby="settingsTabBtnCertificates" hidden>
         <label class="checkbox-group checkbox-group-block" for="settingsCertModifyEnabled">
           <div class="checkbox-group-main">
@@ -281,16 +291,6 @@
             <span>Enable trust simulation</span>
           </div>
           <p class="modal-hint settings-hint">Shows the "Trust simulation" panel in Certificates: upload a root CA bundle and see whether the loaded document's chain would be trusted against it. Runs only for the current session, is clearly marked as simulated, and never changes the real report. Off by default.</p>
-        </label>
-      </div>
-
-      <div class="modal-tab-panel" id="settingsTabPanelRevisions" role="tabpanel" aria-labelledby="settingsTabBtnRevisions" hidden>
-        <label class="checkbox-group checkbox-group-block" for="settingsIncludeRevisionHistory">
-          <div class="checkbox-group-main">
-            <input type="checkbox" id="settingsIncludeRevisionHistory">
-            <span>Include revisions when exporting / sharing document</span>
-          </div>
-          <p class="modal-hint settings-hint">Bundles your document's revision history into exported and shared files. Takes a bit longer to prepare, since every past revision is included.</p>
         </label>
       </div>
 
@@ -441,19 +441,8 @@
         <h3 id="placeTemplateCleanupTitle">Existing fields on this document</h3>
         <button type="button" class="modal-close" id="closePlaceTemplateCleanupBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
-      <p class="modal-hint" id="placeTemplateCleanupHint">This document already has signature fields or text boxes on it (placed or applied). Remove any of them before placing the template?</p>
-      <div class="form-group">
-        <label for="placeTemplateCleanupSelect">Which field type?</label>
-        <div class="select-field">
-          <select id="placeTemplateCleanupSelect">
-            <option value="none">Don't remove anything — place every field in the template</option>
-            <option value="signature">Signature fields only — remove existing signature fields, place only the template's signature fields</option>
-            <option value="text">Text boxes only — remove existing text boxes, place only the template's text boxes</option>
-            <option value="both">Both — remove every existing field, place every field in the template</option>
-          </select>
-          <span class="icon icon-chevron-down select-field-arrow" aria-hidden="true"></span>
-        </div>
-      </div>
+      <p class="modal-hint" id="placeTemplateCleanupHint">This document already has fields on it. Choose what happens to them before placing the template.</p>
+      <div class="place-template-choices" id="placeTemplateCleanupChoices"></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelPlaceTemplateCleanupBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="confirmPlaceTemplateCleanupBtn">Continue</button>
@@ -692,13 +681,12 @@
                 <div class="template-item-list" id="templateItemList"></div>
               </details>
 
-              <label class="checkbox-group checkbox-group-block" for="templateAutoPlace">
-                <div class="checkbox-group-main">
-                  <input type="checkbox" id="templateAutoPlace">
-                  <span>Automatic placing</span>
-                </div>
-                <p class="modal-hint settings-hint">Places every field in the list back at the exact page and position it was saved from, in one go. Leave it off to drag items onto the document one at a time.</p>
-              </label>
+              <input type="checkbox" id="templateAutoPlace" class="sr-only">
+              <div class="template-mode-tabs" id="templateModeTabs" role="tablist" aria-label="Placement mode">
+                <button type="button" class="template-mode-tab" id="templateModeManual" data-template-mode="manual" role="tab" aria-selected="false"><span class="icon icon-move" aria-hidden="true"></span> Manual place</button>
+                <button type="button" class="template-mode-tab" id="templateModeAuto" data-template-mode="auto" role="tab" aria-selected="false"><span class="icon icon-layers" aria-hidden="true"></span> Automatic place</button>
+              </div>
+              <p class="modal-hint settings-hint" id="templateModeHint"></p>
 
               <p class="template-place-hint" id="templatePlaceHint"></p>
               <button type="button" id="btnPlaceTemplate" class="btn btn-primary btn-block btn-place-template" disabled><span class="icon icon-layers" aria-hidden="true"></span> <span id="btnPlaceTemplateLabel">Place all fields</span></button>
@@ -1690,8 +1678,8 @@
     const settingsTabs = [
       { btn: document.getElementById('settingsTabBtnGeneral'), panel: document.getElementById('settingsTabPanelGeneral') },
       { btn: document.getElementById('settingsTabBtnSignatures'), panel: document.getElementById('settingsTabPanelSignatures') },
-      { btn: document.getElementById('settingsTabBtnCertificates'), panel: document.getElementById('settingsTabPanelCertificates') },
       { btn: document.getElementById('settingsTabBtnRevisions'), panel: document.getElementById('settingsTabPanelRevisions') },
+      { btn: document.getElementById('settingsTabBtnCertificates'), panel: document.getElementById('settingsTabPanelCertificates') },
     ];
     const SETTINGS_STORAGE_KEY = 'pdfseal-settings';
 
@@ -1808,8 +1796,8 @@
         general: settingsTabs[0].btn,
         signatures: settingsTabs[1].btn,
         templates: settingsTabs[1].btn,
-        certificates: settingsTabs[2].btn,
-        revisions: settingsTabs[3].btn,
+        revisions: settingsTabs[2].btn,
+        certificates: settingsTabs[3].btn,
       };
       setSettingsTab(tabByName[tabName] || settingsTabs[0].btn);
       settingsModal.classList.add('is-open');
@@ -3786,6 +3774,39 @@
       return parts.join(' · ');
     }
 
+    // The default HTML5 drag image is a screenshot of the whole row -- name,
+    // icon and action buttons -- which is far bigger than the field it
+    // represents and gives no sense of where it'll land or how big it'll be.
+    // This swaps in a ghost sized like the actual field-overlay rectangle, at
+    // the document's current zoom, so the cursor shows exactly what will be
+    // dropped.
+    function setTemplateDragImage(e, item) {
+      const scaleX = currentViewport?.scaleX ?? currentViewport?.scale ?? 1;
+      const scaleY = currentViewport?.scaleY ?? scaleX;
+      const MIN_PX = 32;
+      const width = Math.max(MIN_PX, Math.round(item.width * scaleX));
+      const height = Math.max(MIN_PX, Math.round(item.height * scaleY));
+
+      const ghost = document.createElement('div');
+      ghost.className = `field-overlay${item.required ? ' required' : ''}`;
+      Object.assign(ghost.style, {
+        position: 'fixed', left: '-9999px', top: '-9999px', width: `${width}px`, height: `${height}px`,
+      });
+      ghost.innerHTML = item.type === 'text' ? ICONS.fileText : ICONS.pen;
+
+      const label = document.createElement('div');
+      label.className = 'field-label';
+      label.style.display = 'block';
+      label.textContent = item.name;
+      ghost.appendChild(label);
+
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, width / 2, height / 2);
+      // The browser snapshots the drag image synchronously when this is
+      // called, so the element only needs to survive this tick.
+      setTimeout(() => ghost.remove(), 0);
+    }
+
     function buildTemplateItemRow(item, template) {
       const row = document.createElement('div');
       row.className = 'template-item-row';
@@ -3850,6 +3871,7 @@
           e.dataTransfer.setData(TEMPLATE_DRAG_MIME, item.id);
           // Some browsers need a plain-text payload to start a drag at all.
           e.dataTransfer.setData('text/plain', item.name);
+          setTemplateDragImage(e, item);
         });
         row.addEventListener('dragend', () => {
           draggingTemplateItem = null;
@@ -3874,6 +3896,10 @@
       const renameBtn = document.getElementById('btnRenameTemplate');
       const deleteBtn = document.getElementById('btnDeleteTemplate');
       const autoPlaceInput = document.getElementById('templateAutoPlace');
+      const modeTabs = document.getElementById('templateModeTabs');
+      const modeManualBtn = document.getElementById('templateModeManual');
+      const modeAutoBtn = document.getElementById('templateModeAuto');
+      const modeHint = document.getElementById('templateModeHint');
       if (!select || !list) return;
 
       const hasTemplates = templateStore.templates.length > 0;
@@ -3883,6 +3909,9 @@
       if (renameBtn) renameBtn.disabled = !hasTemplates;
       if (deleteBtn) deleteBtn.disabled = !hasTemplates;
       if (autoPlaceInput) autoPlaceInput.disabled = !hasTemplates;
+      if (modeManualBtn) modeManualBtn.disabled = !hasTemplates;
+      if (modeAutoBtn) modeAutoBtn.disabled = !hasTemplates;
+      if (modeTabs) modeTabs.classList.toggle('is-disabled', !hasTemplates);
 
       select.replaceChildren(...templateStore.templates.map((template) => {
         const option = document.createElement('option');
@@ -3918,6 +3947,19 @@
         listSummaryText.textContent = `Saved fields${hasTemplates ? ` (${itemCount})` : ''}`;
       }
       const autoPlace = isAutoPlaceOn();
+      if (modeManualBtn) {
+        modeManualBtn.classList.toggle('active', !autoPlace);
+        modeManualBtn.setAttribute('aria-selected', String(!autoPlace));
+      }
+      if (modeAutoBtn) {
+        modeAutoBtn.classList.toggle('active', autoPlace);
+        modeAutoBtn.setAttribute('aria-selected', String(autoPlace));
+      }
+      if (modeHint) {
+        modeHint.textContent = autoPlace
+          ? 'Places every field in the list back at the exact page and position it was saved from, in one go.'
+          : 'Drag items from the saved list onto the document to place them one at a time.';
+      }
       const count = template ? template.items.length : 0;
       if (placeLabel) placeLabel.textContent = count === 1 ? 'Place 1 field' : `Place all ${count} fields`;
       if (placeBtn) {
@@ -4256,17 +4298,97 @@
     }
 
     const placeTemplateCleanupModal = document.getElementById('placeTemplateCleanupModal');
-    const placeTemplateCleanupSelect = document.getElementById('placeTemplateCleanupSelect');
     const placeTemplateCleanupHint = document.getElementById('placeTemplateCleanupHint');
+    const placeTemplateCleanupChoicesEl = document.getElementById('placeTemplateCleanupChoices');
+
+    // Held between open and confirm: the counts already on the document
+    // (fixed for the life of the modal) and the currently-picked radio value.
+    let placeTemplateCleanupCounts = { docSig: 0, docText: 0 };
+    let placeTemplateCleanupValue = 'none';
+
+    function pluralize(count, singular, plural = `${singular}s`) {
+      return `${count} ${count === 1 ? singular : plural}`;
+    }
+
+    // Each option's copy is generated from real counts rather than fixed
+    // strings, so the modal always describes exactly what will happen --
+    // including the fact that a scoped option leaves the other field type
+    // (on both the document and the template) untouched.
+    function buildPlaceTemplateCleanupOptions(template) {
+      const { docSig, docText } = placeTemplateCleanupCounts;
+      const tplSig = template.items.filter((i) => i.type !== 'text').length;
+      const tplText = template.items.filter((i) => i.type === 'text').length;
+
+      return [
+        {
+          value: 'none',
+          title: 'Keep existing fields',
+          desc: `Adds the template's ${pluralize(tplSig, 'signature field')} and ${pluralize(tplText, 'text box', 'text boxes')} alongside what's already on the document.`,
+        },
+        {
+          value: 'signature',
+          title: 'Replace signature fields only',
+          desc: `Removes the document's ${pluralize(docSig, 'existing signature field')}, then places the template's ${pluralize(tplSig, 'signature field')}. Text boxes on either side are left alone.`,
+          disabled: !docSig && !tplSig,
+        },
+        {
+          value: 'text',
+          title: 'Replace text boxes only',
+          desc: `Removes the document's ${pluralize(docText, 'existing text box', 'existing text boxes')}, then places the template's ${pluralize(tplText, 'text box', 'text boxes')}. Signature fields on either side are left alone.`,
+          disabled: !docText && !tplText,
+        },
+        {
+          value: 'both',
+          title: 'Replace everything',
+          desc: `Removes every existing field (${docSig + docText}), then places every field in the template (${tplSig + tplText}).`,
+        },
+      ];
+    }
+
+    function renderPlaceTemplateCleanupChoices() {
+      const template = pendingPlaceTemplate;
+      if (!template || !placeTemplateCleanupChoicesEl) return;
+
+      const options = buildPlaceTemplateCleanupOptions(template);
+      if (!options.some((o) => o.value === placeTemplateCleanupValue && !o.disabled)) {
+        placeTemplateCleanupValue = 'none';
+      }
+
+      placeTemplateCleanupChoicesEl.replaceChildren(...options.map((opt) => {
+        const selected = opt.value === placeTemplateCleanupValue;
+        const label = document.createElement('label');
+        label.className = `place-template-choice${selected ? ' is-selected' : ''}${opt.disabled ? ' is-disabled' : ''}`;
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'placeTemplateCleanup';
+        input.value = opt.value;
+        input.checked = selected;
+        input.disabled = !!opt.disabled;
+        input.addEventListener('change', () => {
+          placeTemplateCleanupValue = opt.value;
+          renderPlaceTemplateCleanupChoices();
+        });
+
+        const text = document.createElement('span');
+        const title = document.createElement('strong');
+        title.textContent = opt.title;
+        const meta = document.createElement('span');
+        meta.className = 'place-template-choice-meta';
+        meta.textContent = opt.desc;
+        text.append(title, meta);
+
+        label.append(input, text);
+        return label;
+      }));
+    }
 
     function openPlaceTemplateCleanupModal(signatureCount, textCount) {
-      const parts = [];
-      if (signatureCount) parts.push(`${signatureCount} signature field${signatureCount === 1 ? '' : 's'}`);
-      if (textCount) parts.push(`${textCount} text box${textCount === 1 ? '' : 'es'}`);
+      placeTemplateCleanupCounts = { docSig: signatureCount, docText: textCount };
+      placeTemplateCleanupValue = 'none';
       placeTemplateCleanupHint.textContent =
-        `This document already has ${parts.join(' and ')} on it (placed or applied). Remove any of them before placing the template?`;
-
-      placeTemplateCleanupSelect.value = 'none';
+        `“${pendingPlaceTemplate?.name}” is about to add to a document that already has ${pluralize(signatureCount, 'signature field')} and ${pluralize(textCount, 'text box', 'text boxes')}. Choose what happens to them.`;
+      renderPlaceTemplateCleanupChoices();
       placeTemplateCleanupModal.classList.add('is-open');
       placeTemplateCleanupModal.setAttribute('aria-hidden', 'false');
     }
@@ -4287,7 +4409,7 @@
     });
     document.getElementById('confirmPlaceTemplateCleanupBtn').addEventListener('click', () => {
       const template = pendingPlaceTemplate;
-      const removeKind = placeTemplateCleanupSelect.value;
+      const removeKind = placeTemplateCleanupValue;
       closePlaceTemplateCleanupModal();
       if (!template) return;
       runPlaceTemplateBatch(template, removeKind);
@@ -4460,6 +4582,14 @@
       renderTemplatesPanel();
     });
     document.getElementById('templateAutoPlace').addEventListener('change', renderTemplatesPanel);
+    function setTemplateAutoPlace(auto) {
+      const input = document.getElementById('templateAutoPlace');
+      if (!input || input.disabled || input.checked === auto) return;
+      input.checked = auto;
+      input.dispatchEvent(new Event('change'));
+    }
+    document.getElementById('templateModeManual').addEventListener('click', () => setTemplateAutoPlace(false));
+    document.getElementById('templateModeAuto').addEventListener('click', () => setTemplateAutoPlace(true));
     document.getElementById('btnPlaceTemplate').addEventListener('click', placeTemplateBatch);
 
     document.getElementById('saveTemplateNameBtn').addEventListener('click', submitTemplateName);

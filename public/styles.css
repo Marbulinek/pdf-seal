@@ -3584,7 +3584,8 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
    The Signatures panel's field-type switch and the compare sheet's view
    switch are the same control; only the active colour differs. */
 .revisions-view-tabs,
-.field-type-tabs {
+.field-type-tabs,
+.template-mode-tabs {
   display: flex;
   gap: 3px;
   margin-bottom: 16px;
@@ -3595,7 +3596,8 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 }
 .revisions-view-tabs[hidden] { display: none; }
 .revisions-view-tab,
-.field-type-tab {
+.field-type-tab,
+.template-mode-tab {
   flex: 1 1 0;
   min-width: 0;
   display: inline-flex;
@@ -3613,8 +3615,9 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   cursor: pointer;
   transition: all var(--transition-fast);
 }
-.revisions-view-tab:hover:not(.active),
-.field-type-tab:hover:not(.active) {
+.revisions-view-tab:hover:not(.active):not(:disabled),
+.field-type-tab:hover:not(.active):not(:disabled),
+.template-mode-tab:hover:not(.active):not(:disabled) {
   background: rgba(69, 123, 157, 0.12);
   color: var(--navy);
 }
@@ -3623,11 +3626,14 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   color: #fff;
   box-shadow: 0 2px 6px rgba(69, 123, 157, 0.35);
 }
-.field-type-tab.active {
+.field-type-tab.active,
+.template-mode-tab.active {
   background: var(--coral);
   color: #fff;
   box-shadow: 0 2px 6px rgba(230, 111, 81, 0.35);
 }
+.template-mode-tab:disabled { cursor: not-allowed; opacity: 0.55; }
+.template-mode-tabs.is-disabled { opacity: 0.7; }
 
 /* ---------- Overview tab ---------- */
 .revisions-diff-overview { display: flex; flex-direction: column; gap: 16px; }
@@ -4842,8 +4848,10 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
 .cert-modify-btn { flex: 1 1 auto; font-size: 0.75rem; }
 .cert-modify-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.cert-modify-choices { display: flex; flex-direction: column; gap: 7px; }
-.cert-modify-choice {
+.cert-modify-choices,
+.place-template-choices { display: flex; flex-direction: column; gap: 7px; }
+.cert-modify-choice,
+.place-template-choice {
   display: flex; gap: 10px; align-items: flex-start;
   padding: 10px 12px;
   background: var(--surface);
@@ -4853,11 +4861,24 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
   cursor: pointer;
   transition: border-color var(--transition-fast);
 }
-.cert-modify-choice:hover { border-color: var(--ocean); }
-.cert-modify-choice.is-selected { border-color: var(--ocean); background: rgba(69, 123, 157, 0.06); }
+/* The generic `label { text-transform: uppercase }` rule at the top of this
+   file is meant for compact form labels; this card uses <label> only for
+   its click-to-select behaviour, so it opts back out to read as a normal
+   sentence rather than a shouted one. */
+.place-template-choice { text-transform: none; letter-spacing: normal; }
+.place-template-choice strong { font-size: 0.85rem; font-weight: 700; }
+.cert-modify-choice:hover,
+.place-template-choice:hover:not(.is-disabled) { border-color: var(--ocean); }
+.cert-modify-choice.is-selected,
+.place-template-choice.is-selected { border-color: var(--ocean); background: rgba(69, 123, 157, 0.06); }
 .cert-modify-choice.is-static { cursor: default; }
 .cert-modify-choice.is-static:hover { border-color: var(--ice); }
-.cert-modify-choice span { display: flex; flex-direction: column; gap: 2px; }
+.cert-modify-choice span,
+.place-template-choice span { display: flex; flex-direction: column; gap: 2px; }
+.place-template-choice input[type="radio"] { margin-top: 2px; accent-color: var(--ocean); flex-shrink: 0; }
+.place-template-choice-meta { font-weight: 400; color: var(--ocean-dark); line-height: 1.4; }
+.place-template-choice.is-disabled { cursor: not-allowed; opacity: 0.5; }
+.place-template-choice.is-disabled:hover { border-color: var(--ice); }
 
 .cert-compare { display: flex; align-items: stretch; gap: 10px; margin-top: 12px; }
 .cert-compare-card {
