@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/Marbulinek/pdf-seal/compare/v1.5.3...v1.6.0) (2026-09-12)
+
+
+### Features
+
+* implemented interactive demo ([#55](https://github.com/Marbulinek/pdf-seal/issues/55)) ([c991674](https://github.com/Marbulinek/pdf-seal/commit/c9916740fcdbab168f91a4799c4a5ec1b1fbbe35))
+
 ## [1.5.3](https://github.com/Marbulinek/pdf-seal/compare/v1.5.2...v1.5.3) (2026-09-12)
 
 
