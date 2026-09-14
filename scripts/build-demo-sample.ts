@@ -19,13 +19,13 @@ import { buildSignedPdfFixture } from '../test/lib/helpers/pdfSigner';
 const OUT_DIR = path.join(__dirname, '..', 'public', 'assets', 'demo');
 const TEN_YEARS_MS = 86400000 * 3650;
 
-const AGREEMENT_TITLE = 'Service Agreement';
+const AGREEMENT_TITLE = 'PDF Seal Sample Document';
 const AGREEMENT_AUTHOR = 'PDF Seal Demo';
-const AGREEMENT_SUBJECT = 'Sample service agreement used by the pdf-seal interactive tour';
-const AGREEMENT_KEYWORDS = ['demo', 'sample', 'service agreement', 'pdf-seal'];
+const AGREEMENT_SUBJECT = 'Sample document used by the pdf-seal interactive tour';
+const AGREEMENT_KEYWORDS = ['demo', 'sample', 'pdf-seal'];
 
-/** Draws the two-page "Service Agreement" body, wrapping the payment-terms clause. */
-async function buildAgreementDocument(paymentTermDays: number): Promise<PdfSignatureTool> {
+/** Draws the two-page sample document body, wrapping the turnaround clause. */
+async function buildAgreementDocument(turnaroundDays: number): Promise<PdfSignatureTool> {
   const tool = await PdfSignatureTool.create();
   tool.addPage();
   tool.addPage();
@@ -52,32 +52,29 @@ async function buildAgreementDocument(paymentTermDays: number): Promise<PdfSigna
     y -= gap;
   };
 
-  drawLine(page1, 'SERVICE AGREEMENT', { size: 20, bold: true, gap: 40 });
-  drawLine(page1, 'This Service Agreement ("Agreement") is entered into by and between');
-  drawLine(page1, 'Northwind Consulting LLC ("Provider") and Riverside Retail Co. ("Client"),');
-  drawLine(page1, 'collectively the "Parties," for the provision of consulting services', { gap: 32 });
+  drawLine(page1, 'PDF SEAL', { size: 20, bold: true, gap: 40 });
+  drawLine(page1, 'This sample document ships with pdf-seal to power the in-app Help');
+  drawLine(page1, 'tour. pdf-seal is a browser-based tool for preparing PDF documents');
+  drawLine(page1, 'with signature form fields — upload a document, place and customize', { gap: 20 });
+  drawLine(page1, 'fields, edit metadata, and share the result for signing, all without', { gap: 20 });
+  drawLine(page1, 'leaving the browser.', { gap: 32 });
 
-  drawLine(page1, '1. Scope of Services', { bold: true, gap: 24 });
-  drawLine(page1, 'Provider agrees to deliver process-improvement consulting services as');
-  drawLine(page1, 'described in Exhibit A, on the schedule agreed by both Parties.', { gap: 32 });
+  drawLine(page1, '1. About This Sample', { bold: true, gap: 24 });
+  drawLine(page1, 'This document has three real revisions: an initial draft, one with');
+  drawLine(page1, 'signature fields added, and one with a completed signature — so the', { gap: 20 });
+  drawLine(page1, 'Revisions panel has genuine history to walk through.', { gap: 32 });
 
-  drawLine(page1, '2. Payment Terms', { bold: true, gap: 24 });
-  drawLine(page1, `Payment terms: ${paymentTermDays} days`, { size: 12, bold: true, gap: 20 });
-  drawLine(page1, 'Invoices are payable by the Client within the period stated above,', { gap: 20 });
-  drawLine(page1, 'measured from the invoice date. Late payments accrue interest at 1.5%', { gap: 20 });
-  drawLine(page1, 'per month on the outstanding balance.', { gap: 32 });
+  drawLine(page1, '2. Turnaround', { bold: true, gap: 24 });
+  drawLine(page1, `Turnaround: ${turnaroundDays} days`, { size: 12, bold: true, gap: 20 });
+  drawLine(page1, 'Reviewers are asked to return a signed copy within the period stated', { gap: 20 });
+  drawLine(page1, 'above, measured from when the document is shared.', { gap: 32 });
 
-  drawLine(page1, '3. Term and Termination', { bold: true, gap: 24 });
-  drawLine(page1, 'This Agreement remains in effect for twelve (12) months from the');
-  drawLine(page1, 'effective date unless terminated earlier by either Party with 30 days');
-  drawLine(page1, 'written notice.');
+  drawLine(page1, '3. Field Placement', { bold: true, gap: 24 });
+  drawLine(page1, 'pdf-seal places signature, text, and date fields directly onto the');
+  drawLine(page1, 'page at the coordinates chosen in the editor, shown below.');
 
   y = height - margin;
-  drawLine(page2, '4. Confidentiality', { bold: true, gap: 24 });
-  drawLine(page2, 'Each Party agrees to keep confidential any non-public information');
-  drawLine(page2, 'disclosed by the other Party in connection with this Agreement.', { gap: 32 });
-
-  drawLine(page2, '5. Signatures', { bold: true, gap: 32 });
+  drawLine(page2, '4. Sign-off', { bold: true, gap: 32 });
   drawLine(page2, 'Provider:', { size: 11, gap: 70 });
   drawLine(page2, 'Client:', { size: 11, gap: 70 });
   drawLine(page2, 'Client name:', { size: 11, gap: 40 });
@@ -107,17 +104,18 @@ async function buildRevisionTwo(): Promise<Uint8Array> {
   });
 
   // Aligned to sit on the same line as each label drawn above (see drawLine()
-  // calls for "Provider:"/"Client:"/"Client name:"/"Date signed:" -- their
-  // baselines are 624/554/484/444 respectively), starting well past the
-  // longest label ("Client name:"/"Date signed:") so nothing overlaps.
+  // calls for "Provider:"/"Client:"/"Client name:"/"Date signed:" -- pages
+  // default to A4 (height 841.89), so their baselines are 749.89/679.89/
+  // 609.89/569.89 respectively), starting well past the longest label
+  // ("Client name:"/"Date signed:") so nothing overlaps.
   tool.addSignatureField(1, 'Provider_Signature', {
-    x: 180, y: 607, width: 220, height: 40, required: true,
+    x: 180, y: 733, width: 220, height: 40, required: true,
   });
   tool.addSignatureField(1, 'Client_Signature', {
-    x: 180, y: 537, width: 220, height: 40, required: true,
+    x: 180, y: 663, width: 220, height: 40, required: true,
   });
-  tool.addTextField(1, 'Client_Name', { x: 180, y: 476, width: 220, height: 22 });
-  tool.addTextField(1, 'Signing_Date', { x: 180, y: 436, width: 220, height: 22 });
+  tool.addTextField(1, 'Client_Name', { x: 180, y: 602, width: 220, height: 22 });
+  tool.addTextField(1, 'Signing_Date', { x: 180, y: 562, width: 220, height: 22 });
 
   return tool.toBytes();
 }
@@ -143,7 +141,7 @@ async function mintDemoChain(): Promise<{ root: MintedCertificate; intermediate:
   });
   const leaf = await mint({
     commonName: 'Alex Morgan',
-    organization: 'Northwind Consulting LLC',
+    organization: 'PDF Seal Labs',
     issuer: intermediate,
     eku: ['1.3.6.1.5.5.7.3.36'],
     subjectAltNames: [{ type: 1, value: 'alex.morgan@example.invalid' }],

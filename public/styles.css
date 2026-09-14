@@ -1769,6 +1769,11 @@ body:not([data-active-section="signatures"]) .field-overlay .field-delete-handle
 /* With the Signature Templates panel disabled in Settings, there's nowhere
    to drag a captured field to, so the grip shouldn't invite the gesture. */
 body.hide-signature-templates-panel .field-overlay .template-save-handle { display: none; }
+/* A signed field's grip is hidden via the `hidden` attribute (it can't be
+   captured into a template -- its /Rect is inside the signed bytes), but
+   that attribute alone loses to the two-class hover/active selectors above.
+   Signed fields need the override to actually win. */
+.field-overlay.is-signed .template-save-handle { display: none !important; }
 
 /* Delete handle -- top-left corner, opposite the save-to-template grip.
    A plain button (not a drag source) that opens the same confirmation
