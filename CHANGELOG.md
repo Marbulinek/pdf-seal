@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/Marbulinek/pdf-seal/compare/v1.6.0...v1.6.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* fixed sample pdf and d&d is not possible for certificated signature field ([#56](https://github.com/Marbulinek/pdf-seal/issues/56)) ([c151128](https://github.com/Marbulinek/pdf-seal/commit/c151128d3e3275be3c469a9603add3f47dd5b332))
+
 # [1.6.0](https://github.com/Marbulinek/pdf-seal/compare/v1.5.3...v1.6.0) (2026-09-12)
 
 
