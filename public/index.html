@@ -11952,7 +11952,7 @@ function buildTourSteps() {
     {
       id: 'intro-welcome', chapter: 'intro', target: null, placement: 'bottom',
       title: 'Welcome to pdf-seal',
-      body: "This is the bundled sample \"Service Agreement\" — a real, three-revision, signed PDF. Click Next and we'll walk through what pdf-seal can do with it. You can still click around at any step.",
+      body: "This is the bundled sample document — a real, three-revision, signed PDF. Click Next and we'll walk through what pdf-seal can do with it. You can still click around at any step.",
       enter: async () => { await tourGoToSection('navBtnSignatures'); deselectActiveField(); closeEditSheet(); },
     },
     {
@@ -12097,7 +12097,7 @@ function buildTourSteps() {
     {
       id: 'rev-compare', chapter: 'revisions', target: '#revisionsCompareSheet', placement: 'left',
       title: 'Comparing revisions',
-      body: "Pick any two revisions and compare them. Here's revision 1 against revision 2 — the payment-terms clause changed, and four fields were added.",
+      body: "Pick any two revisions and compare them. Here's revision 1 against revision 2 — the turnaround clause changed, and four fields were added.",
       enter: async () => {
         currentDiffResultData = null;
         runQuickDiff(1, 2, 'overview');
