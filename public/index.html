@@ -9444,7 +9444,7 @@ function attachRawObjectFilterHandlers(container) {
 // field/signature on the page it lives on. Rows without integer page + rect
 // geometry stay inert (no class, no attributes).
 function diffRowLocateAttrs(page, rect, side, key) {
-  if (!Number.isInteger(page) || !rect) return { cls: '', attrs: '' };
+  if (!Number.isInteger(page) || !rect || rect.width <= 0 || rect.height <= 0) return { cls: '', attrs: '' };
   const rectStr = `${rect.x},${rect.y},${rect.width},${rect.height}`;
   return {
     cls: ' is-locatable',
