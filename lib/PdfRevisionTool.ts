@@ -189,16 +189,28 @@ function diffMetadata(a: any, b: any) {
   return changes;
 }
 
+/** Strip the heavy raw/objectRefs payload, keeping only what the diff and UI need. */
+function toFieldSummary(field: any) {
+  return {
+    name: field.name,
+    type: field.type,
+    required: field.required,
+    readOnly: field.readOnly,
+    page: field.page,
+    rect: field.rect,
+  };
+}
+
 function diffFields(a: any[] | null, b: any[] | null) {
   const before = new Map((a || []).map((f) => [f.name, f]));
   const after = new Map((b || []).map((f) => [f.name, f]));
 
   const added: any[] = [];
-  const modified: Array<{ name: string; changes: Array<{ key: string; before: any; after: any }> }> = [];
+  const modified: Array<{ name: string; page: number | null; rect: any; changes: Array<{ key: string; before: any; after: any }> }> = [];
   for (const [name, field] of after) {
     const prev = before.get(name);
     if (!prev) {
-      added.push(field);
+      added.push(toFieldSummary(field));
       continue;
     }
     const fieldChanges: Array<{ key: string; before: any; after: any }> = [];
@@ -207,24 +219,33 @@ function diffFields(a: any[] | null, b: any[] | null) {
         fieldChanges.push({ key, before: prev[key], after: (field as any)[key] });
       }
     }
-    if (fieldChanges.length) modified.push({ name, changes: fieldChanges });
+    if (fieldChanges.length) modified.push({ name, page: field.page, rect: field.rect, changes: fieldChanges });
   }
 
   const removed: any[] = [];
   for (const [name, field] of before) {
-    if (!after.has(name)) removed.push(field);
+    if (!after.has(name)) removed.push(toFieldSummary(field));
   }
 
   return { added, removed, modified };
 }
 
-function diffSignatures(a: any[], b: any[]) {
+function diffSignatures(a: any[], b: any[], fieldsA: any[] | null, fieldsB: any[] | null) {
   const before = new Map((a || []).map((s) => [s.fieldName, s]));
   const after = new Map((b || []).map((s) => [s.fieldName, s]));
+  const fieldsByNameA = new Map((fieldsA || []).map((f) => [f.name, f]));
+  const fieldsByNameB = new Map((fieldsB || []).map((f) => [f.name, f]));
+
+  const withGeometry = (sig: any, field: any) => ({
+    ...sig,
+    page: field ? field.page : null,
+    rect: field ? field.rect : null,
+  });
+
   const added: any[] = [];
-  for (const [name, sig] of after) if (!before.has(name)) added.push(sig);
+  for (const [name, sig] of after) if (!before.has(name)) added.push(withGeometry(sig, fieldsByNameB.get(name)));
   const removed: any[] = [];
-  for (const [name, sig] of before) if (!after.has(name)) removed.push(sig);
+  for (const [name, sig] of before) if (!after.has(name)) removed.push(withGeometry(sig, fieldsByNameA.get(name)));
   return { added, removed };
 }
 
@@ -1327,7 +1348,9 @@ async function diffSnapshotBytes(bytesA: Uint8Array, bytesB: Uint8Array) {
   const metaA = toolA.getMetadata();
   const metaB = toolB.getMetadata();
   const metadataChanges = diffMetadata(metaA, metaB);
-  const signatureChanges = diffSignatures(toolA.getSignatureInfo(), toolB.getSignatureInfo());
+  const fieldsA = toolA.listFields();
+  const fieldsB = toolB.listFields();
+  const signatureChanges = diffSignatures(toolA.getSignatureInfo(), toolB.getSignatureInfo(), fieldsA, fieldsB);
   const objectChanges = diffRawObjects(toolA.getFullRawDump(), toolB.getFullRawDump(), toolA, toolB);
   const pageCountDelta = (metaB.pageCount || 0) - (metaA.pageCount || 0);
 
@@ -1340,7 +1363,7 @@ async function diffSnapshotBytes(bytesA: Uint8Array, bytesB: Uint8Array) {
     byteLengthDelta: bytesB.length - bytesA.length,
     pageCountDelta,
     metadataChanges,
-    fieldChanges: diffFields(toolA.listFields(), toolB.listFields()),
+    fieldChanges: diffFields(fieldsA, fieldsB),
     signatureChanges,
     objectChanges,
     checklist: buildRevisionChecklist({ pageCountDelta, objectChanges, metadataChanges, signatureChanges }),
