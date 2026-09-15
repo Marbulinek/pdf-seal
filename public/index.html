@@ -3873,13 +3873,22 @@
     // space as `field.rect`), and `page` is 0-indexed like `field.page`.
 
     const TEMPLATES_STORAGE_KEY = 'pdfseal-signature-templates';
-    const TEMPLATE_STORE_VERSION = 1;
+    // v2 added the 'stamp' item type (stampKind/text/color/imageDataUrl) --
+    // purely additive, so a v1 store still normalizes identically.
+    const TEMPLATE_STORE_VERSION = 2;
 
     const TEMPLATE_DEFAULT_SIZE = {
       signature: { width: 200, height: 60 },
       text: { width: 200, height: 30 },
+      stamp: { width: 160, height: 50 },
     };
     const TEMPLATE_MIN_DIMENSION = 1;
+
+    // Keeps a stamp template item's embedded image small enough that a
+    // handful of them don't threaten localStorage's ~5MB-per-origin budget.
+    const TEMPLATE_MAX_STAMP_IMAGE_DECODED_BYTES = 500 * 1024;
+    const TEMPLATE_STAMP_IMAGE_DATA_URL_PATTERN = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/;
+    const TEMPLATE_STAMP_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
     function templateToFiniteNumber(value, fallback) {
       const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
@@ -3890,19 +3899,39 @@
       return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
     }
 
+    // Validates both the data URL's shape (PNG/JPEG only, matching what
+    // PdfSignatureTool.addImageStamp() accepts) and its decoded size, without
+    // actually decoding it -- base64 encodes 3 bytes per 4 characters, so the
+    // decoded length is derivable from the string length and padding alone.
+    function isValidStampImageDataUrl(value) {
+      if (typeof value !== 'string') return false;
+      const match = TEMPLATE_STAMP_IMAGE_DATA_URL_PATTERN.exec(value.trim());
+      if (!match) return false;
+      const base64 = match[2];
+      const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+      const decodedBytes = (base64.length / 4) * 3 - padding;
+      return decodedBytes > 0 && decodedBytes <= TEMPLATE_MAX_STAMP_IMAGE_DECODED_BYTES;
+    }
+
+    function normalizeTemplateItemType(value) {
+      if (value === 'text') return 'text';
+      if (value === 'stamp') return 'stamp';
+      return 'signature';
+    }
+
     function normalizeTemplateItem(raw, seenIds) {
       if (!raw || typeof raw !== 'object') return null;
       const name = typeof raw.name === 'string' ? raw.name.trim() : '';
       if (!name) return null; // an unnamed field can't be added to a PDF at all
 
-      const type = raw.type === 'text' ? 'text' : 'signature';
+      const type = normalizeTemplateItemType(raw.type);
       const defaults = TEMPLATE_DEFAULT_SIZE[type];
 
       let id = typeof raw.id === 'string' && raw.id ? raw.id : makeTemplateId('itm');
       if (seenIds.has(id)) id = makeTemplateId('itm');
       seenIds.add(id);
 
-      return {
+      const base = {
         id,
         name,
         type,
@@ -3914,6 +3943,25 @@
         required: raw.required === true,
         multiline: type === 'text' && raw.multiline === true,
       };
+
+      if (type !== 'stamp') return base;
+
+      // A stamp item with neither usable image data nor text is inert -- it
+      // would place nothing -- so it's dropped rather than kept broken.
+      const stampKind = raw.stampKind === 'image' ? 'image' : 'text';
+      base.stampKind = stampKind;
+      if (stampKind === 'image') {
+        if (!isValidStampImageDataUrl(raw.imageDataUrl)) return null;
+        base.imageDataUrl = raw.imageDataUrl;
+      } else {
+        const text = typeof raw.text === 'string' ? raw.text.trim() : '';
+        if (!text) return null;
+        base.text = text;
+        if (typeof raw.color === 'string' && TEMPLATE_STAMP_COLOR_PATTERN.test(raw.color.trim())) {
+          base.color = raw.color.trim().toLowerCase();
+        }
+      }
+      return base;
     }
 
     // Repairs whatever came back out of localStorage into a store the panel can
@@ -3972,6 +4020,53 @@
       };
     }
 
+    // Turns a stamp already placed on the document into a template item,
+    // mirroring templateItemFromField() above. Unlike a signature/text
+    // field, a stamp has no /T to fall back on for a name -- a text stamp is
+    // named after its own text, an image stamp after its /Name or a generic
+    // fallback. `stamp.imageDataUrl` is supplied by the caller (the panel
+    // reads the placed image's bytes into a data URL client-side, since the
+    // server's stamp info carries no image bytes of its own).
+    function templateItemFromStamp(stamp, id) {
+      const rect = stamp.rect || {};
+      const defaults = TEMPLATE_DEFAULT_SIZE.stamp;
+      const width = Math.max(TEMPLATE_MIN_DIMENSION, roundTemplatePoint(templateToFiniteNumber(rect.width, defaults.width)));
+      const height = Math.max(TEMPLATE_MIN_DIMENSION, roundTemplatePoint(templateToFiniteNumber(rect.height, defaults.height)));
+      const page = Math.max(0, Math.round(templateToFiniteNumber(stamp.page, 0)));
+      const x = roundTemplatePoint(rect.x);
+      const y = roundTemplatePoint(rect.y);
+
+      if (stamp.kind === 'image') {
+        if (!isValidStampImageDataUrl(stamp.imageDataUrl)) {
+          throw new Error('This stamp has no usable image data to save as a template.');
+        }
+        return {
+          id,
+          name: (typeof stamp.name === 'string' && stamp.name.trim()) || 'Image Stamp',
+          type: 'stamp',
+          stampKind: 'image',
+          width, height, x, y, page,
+          required: false,
+          multiline: false,
+          imageDataUrl: stamp.imageDataUrl,
+        };
+      }
+
+      const text = typeof stamp.text === 'string' ? stamp.text.trim() : '';
+      if (!text) throw new Error('This stamp has no text to save as a template.');
+      return {
+        id,
+        name: text,
+        type: 'stamp',
+        stampKind: 'text',
+        width, height, x, y, page,
+        required: false,
+        multiline: false,
+        text,
+        color: typeof stamp.color === 'string' ? stamp.color : undefined,
+      };
+    }
+
     // Appends `item`, or replaces the existing entry of the same name in
     // place. Dragging the same field in twice means "update what I saved",
     // not "keep two copies" -- and two same-named items in one template would
@@ -4025,6 +4120,24 @@
         // and the server would reject the add outright.
         if (!Number.isFinite(pageCount) || item.page < 0 || item.page >= pageCount) {
           skipped.push({ name: item.name, page: item.page, reason: 'page-missing' });
+          continue;
+        }
+
+        // Stamps aren't AcroForm fields -- they have no /T, so there's no
+        // name collision to avoid and nothing to reserve in `claimed`.
+        if (item.type === 'stamp') {
+          placements.push({
+            name: item.name,
+            type: 'stamp',
+            required: false,
+            multiline: false,
+            page: item.page,
+            rect: { x: item.x, y: item.y, width: item.width, height: item.height },
+            stampKind: item.stampKind,
+            text: item.text,
+            color: item.color,
+            imageDataUrl: item.imageDataUrl,
+          });
           continue;
         }
 
