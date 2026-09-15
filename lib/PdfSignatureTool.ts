@@ -2,6 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import {
   PDFDocument,
   PDFName,
@@ -27,7 +28,20 @@ import {
   PDFDropdown,
   PDFOptionList,
   PDFButton,
+  StandardFonts,
+  rgb,
+  degrees,
+  drawText,
+  drawRectangle,
+  drawImage,
+  pushGraphicsState,
+  popGraphicsState,
 } from 'pdf-lib';
+
+/** Bit 128 (1 << 7) of an annotation's /F flags: "Locked" per ISO 32000-1 Table 165. */
+const ANNOTATION_FLAG_LOCKED = 128;
+/** Default border/fill color for a text stamp when none is supplied. */
+const DEFAULT_STAMP_COLOR = '#cc0000';
 
 /**
  * Map a pdf-lib form field to its human-readable type name.
@@ -991,6 +1005,491 @@ class PdfSignatureTool {
   }
 
   // ---------------------------------------------------------------------
+  // Stamp annotations
+  // ---------------------------------------------------------------------
+  //
+  // A stamp is a PDF `/Annot /Subtype /Stamp` -- not an AcroForm field, so
+  // it has no /T and isn't addressed by name. Instead:
+  //   - Stamps this tool creates get a private /NM of the form
+  //     "pdfseal-stamp-<uuid>", set at creation time.
+  //   - Stamps found in a document from another tool are addressed by their
+  //     own /NM if they have one, or else by a synthetic "ref:<obj> <gen>"
+  //     id derived from their indirect object reference (stable across a
+  //     save() round-trip, since pdf-lib preserves object numbers). The
+  //     first edit of such a stamp assigns it a real /NM so it keeps a
+  //     stable identity even if its object number later changes.
+  //
+  // Stamps this tool creates also carry a private, non-standard
+  // `/PdfSealStamp` marker dict recording enough to regenerate their
+  // appearance stream (/AP /N) after a move/resize/retext. Stamps from
+  // other tools have no marker and keep their own /AP untouched -- movement
+  // and resizing still work because viewers scale a stamp's BBox to its
+  // Rect regardless of who authored the appearance stream.
+
+  /** The public identity of one stamp annotation: its own /NM, or a synthetic id derived from its object reference. */
+  _stampIdForDict(dict: any, ref: any): string | null {
+    const nm = this._getTextValue(dict, 'NM');
+    if (nm) return nm;
+    return ref instanceof PDFRef ? `ref:${ref.objectNumber} ${ref.generationNumber}` : null;
+  }
+
+  /** Walk every page's /Annots and invoke `callback` for each /Subtype /Stamp annotation found. Returning `false` stops the walk early. */
+  _forEachStampAnnot(callback: (entry: { dict: any; ref: any; page: any; pageIndex: number }) => void | false) {
+    const pdfDoc = this.pdfDoc;
+    const pages = pdfDoc.getPages();
+    const context = pdfDoc.context;
+    const stampSubtype = PDFName.of('Stamp');
+
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+      const page = pages[pageIndex];
+      const annots = page.node.Annots();
+      if (!annots) continue;
+      for (let i = 0; i < annots.size(); i++) {
+        const entryRef = annots.get(i);
+        const dict = context.lookupMaybe(entryRef, PDFDict);
+        if (!dict) continue;
+        if (dict.get(PDFName.of('Subtype')) !== stampSubtype) continue;
+        const ref = entryRef instanceof PDFRef ? entryRef : context.getObjectRef(dict);
+        if (callback({ dict, ref, page, pageIndex }) === false) return;
+      }
+    }
+  }
+
+  _findStampAnnot(id: string): { dict: any; ref: any; page: any; pageIndex: number } | null {
+    let found: any = null;
+    this._forEachStampAnnot((entry) => {
+      if (this._stampIdForDict(entry.dict, entry.ref) === id) {
+        found = entry;
+        return false;
+      }
+    });
+    return found;
+  }
+
+  _requireStamp(id: string) {
+    const found = this._findStampAnnot(id);
+    if (!found) throw new Error(`No stamp annotation with id "${id}" was found.`);
+    // The first edit of a stamp that lacks a real /NM (i.e. one from another
+    // tool, currently addressed by its synthetic "ref:..." id) assigns it one,
+    // so its identity survives even if a later save() renumbers objects.
+    if (!this._getTextValue(found.dict, 'NM')) {
+      found.dict.set(PDFName.of('NM'), PDFString.of(id));
+    }
+    return found;
+  }
+
+  _rectFromArray(arr: any): { x: number; y: number; width: number; height: number } {
+    const nums: number[] = [];
+    for (let i = 0; i < arr.size(); i++) nums.push(arr.lookup(i, PDFNumber).asNumber());
+    const [x1, y1, x2, y2] = nums;
+    return {
+      x: Math.min(x1, x2),
+      y: Math.min(y1, y2),
+      width: Math.abs(x2 - x1),
+      height: Math.abs(y2 - y1),
+    };
+  }
+
+  /** '#rrggbb', validated -- throws on anything else. Returns null only when `color` itself is absent. */
+  _normalizeColor(color: any): string | null {
+    if (color === undefined || color === null) return null;
+    const match = /^#?([0-9a-fA-F]{6})$/.exec(String(color).trim());
+    if (!match) throw new Error(`Invalid stamp color "${color}"; expected a hex string like "#RRGGBB".`);
+    return `#${match[1].toLowerCase()}`;
+  }
+
+  _hexToRgb01(hex: string): number[] {
+    const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if (!match) return [0, 0, 0];
+    return [parseInt(match[1], 16) / 255, parseInt(match[2], 16) / 255, parseInt(match[3], 16) / 255];
+  }
+
+  _colorFromArray(arr: any): string | undefined {
+    if (!arr || arr.size() < 3) return undefined;
+    const toHex = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
+    const [r, g, b] = [0, 1, 2].map((i) => arr.lookup(i, PDFNumber).asNumber());
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+
+  /** The /AP /N reference of a stamp's dict, if it has one. */
+  _stampApRef(dict: any): any {
+    const ap = dict.get(PDFName.of('AP'));
+    const apDict = ap ? this.pdfDoc.context.lookupMaybe(ap, PDFDict) : null;
+    if (!apDict) return null;
+    const n = apDict.get(PDFName.of('N'));
+    return n instanceof PDFRef ? n : null;
+  }
+
+  /** The first /XObject reference in an appearance stream's /Resources, if any (our stamps have at most one: the image, for image stamps). */
+  _apImageRef(apRef: any): any {
+    const context = this.pdfDoc.context;
+    const stream = context.lookupMaybe(apRef, PDFStream);
+    if (!stream) return null;
+    const resources = stream.dict.lookupMaybe(PDFName.of('Resources'), PDFDict);
+    if (!resources) return null;
+    const xobjDict = resources.lookupMaybe(PDFName.of('XObject'), PDFDict);
+    if (!xobjDict) return null;
+    for (const [, value] of xobjDict.entries()) {
+      if (value instanceof PDFRef) return value;
+    }
+    return null;
+  }
+
+  _describeStamp(dict: any, ref: any, pageIndex: number) {
+    const id = this._stampIdForDict(dict, ref) || '';
+    const rectArr = dict.lookupMaybe(PDFName.of('Rect'), PDFArray);
+    const rect = rectArr ? this._rectFromArray(rectArr) : null;
+
+    const marker = dict.lookupMaybe(PDFName.of('PdfSealStamp'), PDFDict);
+    const createdByPdfSeal = !!marker;
+    let kind: 'text' | 'image' | 'external' = 'external';
+    let text: string | undefined;
+    let color: string | undefined;
+    if (marker) {
+      kind = this._getRawName(marker, 'Kind') === 'Image' ? 'image' : 'text';
+      text = this._getTextValue(marker, 'Text') ?? undefined;
+      color = this._colorFromArray(marker.lookupMaybe(PDFName.of('Color'), PDFArray));
+    }
+
+    const flagsRaw = dict.lookupMaybe(PDFName.of('F'), PDFNumber);
+    const flags = flagsRaw ? flagsRaw.asNumber() : 0;
+    const caRaw = dict.lookupMaybe(PDFName.of('CA'), PDFNumber);
+
+    const objectRefs = new Set<string>();
+    if (ref) objectRefs.add(ref.toString());
+    const apRef = this._stampApRef(dict);
+    if (apRef) objectRefs.add(apRef.toString());
+    const imgRef = apRef ? this._apImageRef(apRef) : null;
+    if (imgRef) objectRefs.add(imgRef.toString());
+
+    return {
+      id,
+      ref: ref ? ref.toString() : null,
+      page: pageIndex,
+      rect,
+      kind,
+      text,
+      color,
+      name: this._getTextValue(dict, 'Name') ?? undefined,
+      note: this._getTextValue(dict, 'Contents') ?? undefined,
+      author: this._getTextValue(dict, 'T') ?? undefined,
+      opacity: caRaw ? caRaw.asNumber() : 1,
+      locked: !!(flags & ANNOTATION_FLAG_LOCKED),
+      createdByPdfSeal,
+      objectRefs: Array.from(objectRefs),
+    };
+  }
+
+  /** Every stamp annotation in the document, ours and third-party alike. */
+  listStamps() {
+    const out: any[] = [];
+    this._forEachStampAnnot(({ dict, ref, pageIndex }) => {
+      out.push(this._describeStamp(dict, ref, pageIndex));
+    });
+    return out;
+  }
+
+  /** Build a text stamp's appearance stream: a double border plus centered, size-fitted bold text. */
+  async _buildTextStampAppearance(text: string, colorHex: string, width: number, height: number) {
+    const pdfDoc = this.pdfDoc;
+    const context = pdfDoc.context;
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const [r, g, b] = this._hexToRgb01(colorHex);
+    const color = rgb(r, g, b);
+
+    const padding = Math.min(width, height) * 0.12;
+    const maxTextWidth = Math.max(width - padding * 2, 1);
+    const maxTextHeight = Math.max(height - padding * 2, 1);
+    let fontSize = Math.min(maxTextHeight * 0.7, 24);
+    while (fontSize > 4 && font.widthOfTextAtSize(text, fontSize) > maxTextWidth) {
+      fontSize -= 1;
+    }
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+    const textHeight = font.heightAtSize(fontSize);
+    const textX = (width - textWidth) / 2;
+    const textY = (height - textHeight) / 2 + textHeight * 0.15;
+
+    const borderWidth = Math.max(1.5, Math.min(width, height) * 0.04);
+    const inset = borderWidth * 2.5;
+
+    const ops = [
+      pushGraphicsState(),
+      ...drawRectangle({
+        x: borderWidth / 2,
+        y: borderWidth / 2,
+        width: Math.max(width - borderWidth, 0),
+        height: Math.max(height - borderWidth, 0),
+        borderWidth,
+        color: undefined,
+        borderColor: color,
+        rotate: degrees(0),
+        xSkew: degrees(0),
+        ySkew: degrees(0),
+      }),
+      ...drawRectangle({
+        x: inset,
+        y: inset,
+        width: Math.max(width - inset * 2, 0),
+        height: Math.max(height - inset * 2, 0),
+        borderWidth: Math.max(borderWidth * 0.6, 0.5),
+        color: undefined,
+        borderColor: color,
+        rotate: degrees(0),
+        xSkew: degrees(0),
+        ySkew: degrees(0),
+      }),
+      ...drawText(font.encodeText(text), {
+        x: textX,
+        y: textY,
+        size: fontSize,
+        font: 'StampFont',
+        color,
+        rotate: degrees(0),
+        xSkew: degrees(0),
+        ySkew: degrees(0),
+      }),
+      popGraphicsState(),
+    ];
+
+    const resources = context.obj({ Font: { StampFont: font.ref } });
+    const formXObject = context.formXObject(ops, {
+      BBox: [0, 0, width, height],
+      Matrix: [1, 0, 0, 1, 0, 0],
+      Resources: resources,
+    });
+    return context.register(formXObject);
+  }
+
+  /** Build an image stamp's appearance stream from an already-embedded image's ref: `q <scale> cm /StampImage Do Q`. */
+  _buildImageStampAppearanceFromRef(imageRef: any, width: number, height: number) {
+    const context = this.pdfDoc.context;
+    const ops = drawImage('StampImage', {
+      x: 0,
+      y: 0,
+      width,
+      height,
+      rotate: degrees(0),
+      xSkew: degrees(0),
+      ySkew: degrees(0),
+    });
+    const resources = context.obj({ XObject: { StampImage: imageRef } });
+    const formXObject = context.formXObject(ops, {
+      BBox: [0, 0, width, height],
+      Matrix: [1, 0, 0, 1, 0, 0],
+      Resources: resources,
+    });
+    return context.register(formXObject);
+  }
+
+  /** Embed PNG/JPEG bytes chosen by magic bytes; throws for anything else. */
+  async _embedStampImage(imageBytes: Uint8Array) {
+    const bytes = imageBytes instanceof Uint8Array ? imageBytes : new Uint8Array(imageBytes);
+    const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+    const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    if (isPng) return this.pdfDoc.embedPng(bytes);
+    if (isJpeg) return this.pdfDoc.embedJpg(bytes);
+    throw new Error('Stamp images must be PNG or JPEG.');
+  }
+
+  /** Create the /Annot /Subtype /Stamp dict itself, add it to the page, and record the private /PdfSealStamp marker. */
+  _createStampAnnot(
+    page: any,
+    pageIndex: number,
+    rect: { x: number; y: number; width: number; height: number },
+    apRef: any,
+    marker: { kind: 'Text' | 'Image'; text?: string; color?: string; opacity?: number; note?: string },
+  ) {
+    const context = this.pdfDoc.context;
+    const { x, y, width, height } = rect;
+    const id = `pdfseal-stamp-${randomUUID()}`;
+
+    const dictEntries: Record<string, any> = {
+      Type: 'Annot',
+      Subtype: 'Stamp',
+      Rect: [x, y, x + width, y + height],
+      P: page.ref,
+      F: 4,
+      NM: PDFString.of(id),
+      AP: { N: apRef },
+      M: PDFString.fromDate(new Date()),
+    };
+    if (marker.opacity !== undefined && marker.opacity !== null) {
+      const n = Number(marker.opacity);
+      if (!Number.isFinite(n) || n < 0 || n > 1) throw new Error('Stamp opacity must be a number between 0 and 1.');
+      dictEntries.CA = n;
+    }
+    if (marker.note) dictEntries.Contents = PDFString.of(marker.note);
+
+    const markerEntries: Record<string, any> = { Kind: marker.kind };
+    if (marker.text !== undefined) markerEntries.Text = PDFString.of(marker.text);
+    if (marker.color) markerEntries.Color = this._hexToRgb01(marker.color);
+    dictEntries.PdfSealStamp = markerEntries;
+
+    const annotDict = context.obj(dictEntries);
+    const annotRef = context.register(annotDict);
+    page.node.addAnnot(annotRef);
+
+    return this._describeStamp(annotDict, annotRef, pageIndex);
+  }
+
+  /**
+   * Add a new text stamp: preset or custom text over a double border, in
+   * `color` (default a stamp red), fitted to `width`x`height`.
+   */
+  async addTextStamp(
+    pageIndex: number,
+    options: { text: string; color?: string; x?: number; y?: number; width?: number; height?: number; opacity?: number; note?: string },
+  ) {
+    const { text, color, x = 50, y = 50, width = 160, height = 50, opacity, note } = options || ({} as any);
+    const pages = this.pdfDoc.getPages();
+    const page = pages[pageIndex];
+    if (!page) {
+      throw new Error(`Page index ${pageIndex} does not exist (document has ${pages.length} page(s)).`);
+    }
+    const trimmed = typeof text === 'string' ? text.trim() : '';
+    if (!trimmed) throw new Error('Stamp text is required.');
+    const colorHex = this._normalizeColor(color) || DEFAULT_STAMP_COLOR;
+
+    const apRef = await this._buildTextStampAppearance(trimmed, colorHex, width, height);
+    return this._createStampAnnot(page, pageIndex, { x, y, width, height }, apRef, {
+      kind: 'Text',
+      text: trimmed,
+      color: colorHex,
+      opacity,
+      note,
+    });
+  }
+
+  /** Add a new image stamp from PNG/JPEG bytes, scaled to `width`x`height`. */
+  async addImageStamp(
+    pageIndex: number,
+    imageBytes: Uint8Array,
+    options: { x?: number; y?: number; width?: number; height?: number; opacity?: number; note?: string } = {},
+  ) {
+    const { x = 50, y = 50, width = 160, height = 120, opacity, note } = options;
+    const pages = this.pdfDoc.getPages();
+    const page = pages[pageIndex];
+    if (!page) {
+      throw new Error(`Page index ${pageIndex} does not exist (document has ${pages.length} page(s)).`);
+    }
+
+    const image = await this._embedStampImage(imageBytes);
+    const apRef = this._buildImageStampAppearanceFromRef(image.ref, width, height);
+    return this._createStampAnnot(page, pageIndex, { x, y, width, height }, apRef, { kind: 'Image', opacity, note });
+  }
+
+  /** Regenerate a stamp we created's appearance stream at a new size, reusing its embedded image (for image stamps) or re-rendering its text (for text stamps). */
+  async _regenerateStampAppearance(dict: any, marker: any, width: number, height: number) {
+    const context = this.pdfDoc.context;
+    const kind = this._getRawName(marker, 'Kind');
+    const oldApRef = this._stampApRef(dict);
+    let newApRef;
+
+    if (kind === 'Image') {
+      const imgRef = oldApRef ? this._apImageRef(oldApRef) : null;
+      if (!imgRef) throw new Error('Stamp is missing its embedded image and cannot be resized.');
+      newApRef = this._buildImageStampAppearanceFromRef(imgRef, width, height);
+    } else {
+      const text = this._getTextValue(marker, 'Text') || '';
+      const colorHex = this._colorFromArray(marker.lookupMaybe(PDFName.of('Color'), PDFArray)) || DEFAULT_STAMP_COLOR;
+      newApRef = await this._buildTextStampAppearance(text, colorHex, width, height);
+    }
+
+    dict.set(PDFName.of('AP'), context.obj({ N: newApRef }));
+    if (oldApRef) context.delete(oldApRef);
+  }
+
+  /** Move/resize a stamp. Regenerates the appearance stream when the stamp is ours, so text/border thickness stay crisp instead of stretching. */
+  async setStampRect(id: string, rect: { x?: number; y?: number; width?: number; height?: number }) {
+    const { dict, ref, pageIndex } = this._requireStamp(id);
+    const current = this._rectFromArray(dict.lookup(PDFName.of('Rect'), PDFArray));
+    const merged = {
+      x: rect.x ?? current.x,
+      y: rect.y ?? current.y,
+      width: rect.width ?? current.width,
+      height: rect.height ?? current.height,
+    };
+    dict.set(
+      PDFName.of('Rect'),
+      this.pdfDoc.context.obj([merged.x, merged.y, merged.x + merged.width, merged.y + merged.height]),
+    );
+
+    const marker = dict.lookupMaybe(PDFName.of('PdfSealStamp'), PDFDict);
+    if (marker) await this._regenerateStampAppearance(dict, marker, merged.width, merged.height);
+
+    return this._describeStamp(dict, ref, pageIndex);
+  }
+
+  /** Retext/recolor a text stamp we created. Throws for image stamps and for stamps from other tools. */
+  async setStampText(id: string, text: string, color?: string) {
+    const { dict, ref, pageIndex } = this._requireStamp(id);
+    const marker = dict.lookupMaybe(PDFName.of('PdfSealStamp'), PDFDict);
+    if (!marker || this._getRawName(marker, 'Kind') !== 'Text') {
+      throw new Error(`Stamp "${id}" is not a text stamp created by this tool and cannot have its text edited.`);
+    }
+    const trimmed = typeof text === 'string' ? text.trim() : '';
+    if (!trimmed) throw new Error('Stamp text is required.');
+    const colorHex = this._normalizeColor(color) || this._colorFromArray(marker.lookupMaybe(PDFName.of('Color'), PDFArray)) || DEFAULT_STAMP_COLOR;
+
+    marker.set(PDFName.of('Text'), PDFString.of(trimmed));
+    marker.set(PDFName.of('Color'), this.pdfDoc.context.obj(this._hexToRgb01(colorHex)));
+
+    const rect = this._rectFromArray(dict.lookup(PDFName.of('Rect'), PDFArray));
+    await this._regenerateStampAppearance(dict, marker, rect.width, rect.height);
+    return this._describeStamp(dict, ref, pageIndex);
+  }
+
+  /** Set or clear (/CA) a stamp's opacity, 0-1. */
+  setStampOpacity(id: string, opacity: number | null | undefined) {
+    const { dict, ref, pageIndex } = this._requireStamp(id);
+    if (opacity === null || opacity === undefined) {
+      dict.delete(PDFName.of('CA'));
+    } else {
+      const n = Number(opacity);
+      if (!Number.isFinite(n) || n < 0 || n > 1) throw new Error('Stamp opacity must be a number between 0 and 1.');
+      dict.set(PDFName.of('CA'), this.pdfDoc.context.obj(n));
+    }
+    return this._describeStamp(dict, ref, pageIndex);
+  }
+
+  /** Set or clear (/Contents) a stamp's note. */
+  setStampNote(id: string, note: string | null | undefined) {
+    const { dict, ref, pageIndex } = this._requireStamp(id);
+    if (!note) dict.delete(PDFName.of('Contents'));
+    else dict.set(PDFName.of('Contents'), PDFString.of(String(note)));
+    return this._describeStamp(dict, ref, pageIndex);
+  }
+
+  /** True if some other stamp's appearance still references `imageRef`. */
+  _isImageRefUsedElsewhere(imageRef: any): boolean {
+    let used = false;
+    this._forEachStampAnnot(({ dict }) => {
+      const apRef = this._stampApRef(dict);
+      const usedImgRef = apRef ? this._apImageRef(apRef) : null;
+      if (usedImgRef && usedImgRef.toString() === imageRef.toString()) {
+        used = true;
+        return false;
+      }
+    });
+    return used;
+  }
+
+  /** Remove a stamp annotation, its appearance stream, and (if orphaned) its embedded image. */
+  removeStamp(id: string) {
+    const context = this.pdfDoc.context;
+    const { dict, ref, page } = this._requireStamp(id);
+    const apRef = this._stampApRef(dict);
+    const imgRef = apRef ? this._apImageRef(apRef) : null;
+
+    if (ref) {
+      page.node.removeAnnot(ref);
+      context.delete(ref);
+    }
+    if (apRef) context.delete(apRef);
+    if (imgRef && !this._isImageRefUsedElsewhere(imgRef)) context.delete(imgRef);
+  }
+
+  // ---------------------------------------------------------------------
   // Document metadata
   // ---------------------------------------------------------------------
 
@@ -1218,6 +1717,17 @@ class PdfSignatureTool {
     const fields = this.listFields();
     const signatureFieldCount = fields.filter((f: any) => f.type === 'Signature').length;
     const signatureInfo = this.getSignatureInfo();
+    const stamps = this.listStamps();
+
+    let annotationCount = 0;
+    try {
+      for (const page of doc.getPages()) {
+        const annots = page.node.Annots();
+        if (annots) annotationCount += annots.size();
+      }
+    } catch (_e) {
+      // No resolvable page tree in this snapshot -- mirror getMetadata()'s tolerance.
+    }
 
     let hasJavaScript = false;
     let hasLinearized = false;
@@ -1319,6 +1829,8 @@ class PdfSignatureTool {
         xmpMetadata: !!xmp,
         incrementalUpdates: options.incrementalUpdates ?? null,
         signatureCount: signatureInfo.length,
+        stampCount: stamps.length,
+        annotationCount,
       },
       pages,
       attachments,
@@ -1422,12 +1934,13 @@ class PdfSignatureTool {
     // session; the full summary is fetched separately, on demand, only when
     // a view that actually shows it (Metadata) is opened.
     if (options.fieldsOnly) {
-      return { fields: this.listFields() };
+      return { fields: this.listFields(), stamps: this.listStamps() };
     }
     return {
       metadata: this.getMetadata(),
       rawInfo: this.getRawInfoDict(),
       fields: this.listFields(),
+      stamps: this.listStamps(),
       rawObjects: this.getFullRawDump(),
       overview: this.getMetadataOverview(options),
     };
