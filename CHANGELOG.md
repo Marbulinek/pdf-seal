@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/Marbulinek/pdf-seal/compare/v1.6.2...v1.7.0) (2026-09-15)
+
+
+### Features
+
+* implementation of the stamps ([#58](https://github.com/Marbulinek/pdf-seal/issues/58)) ([6507c50](https://github.com/Marbulinek/pdf-seal/commit/6507c507797159eadc3a7be6d626f9d7a84703f3))
+
 ## [1.6.2](https://github.com/Marbulinek/pdf-seal/compare/v1.6.1...v1.6.2) (2026-09-15)
 
 
