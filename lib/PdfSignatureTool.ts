@@ -29,6 +29,9 @@ import {
   PDFButton,
 } from 'pdf-lib';
 
+/** Bit 128 (1 << 7) of an annotation's /F flags: "Locked" per ISO 32000-1 Table 165. */
+const ANNOTATION_FLAG_LOCKED = 128;
+
 /**
  * Map a pdf-lib form field to its human-readable type name.
  *
@@ -991,6 +994,147 @@ class PdfSignatureTool {
   }
 
   // ---------------------------------------------------------------------
+  // Stamp annotations (read-only detection)
+  // ---------------------------------------------------------------------
+  //
+  // A stamp is a PDF `/Annot /Subtype /Stamp` -- not an AcroForm field, so
+  // it has no /T and isn't addressed by name. This tool only detects and
+  // describes stamps already present in a document (for the Metadata and
+  // Revisions panels); it never creates, edits or removes one. A stamp is
+  // identified by its own /NM if it has one, or else by a synthetic
+  // "ref:<obj> <gen>" id derived from its indirect object reference.
+  //
+  // A stamp created by some *other* tool may carry its own private marker
+  // conventions -- none are assumed here beyond the standard /Rect, /Name,
+  // /Contents, /CA and /F entries every stamp annotation can have.
+
+  /** The public identity of one stamp annotation: its own /NM, or a synthetic id derived from its object reference. */
+  _stampIdForDict(dict: any, ref: any): string | null {
+    const nm = this._getTextValue(dict, 'NM');
+    if (nm) return nm;
+    return ref instanceof PDFRef ? `ref:${ref.objectNumber} ${ref.generationNumber}` : null;
+  }
+
+  /** Walk every page's /Annots and invoke `callback` for each /Subtype /Stamp annotation found. Returning `false` stops the walk early. */
+  _forEachStampAnnot(callback: (entry: { dict: any; ref: any; page: any; pageIndex: number }) => void | false) {
+    const pdfDoc = this.pdfDoc;
+    const pages = pdfDoc.getPages();
+    const context = pdfDoc.context;
+    const stampSubtype = PDFName.of('Stamp');
+
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+      const page = pages[pageIndex];
+      const annots = page.node.Annots();
+      if (!annots) continue;
+      for (let i = 0; i < annots.size(); i++) {
+        const entryRef = annots.get(i);
+        const dict = context.lookupMaybe(entryRef, PDFDict);
+        if (!dict) continue;
+        if (dict.get(PDFName.of('Subtype')) !== stampSubtype) continue;
+        const ref = entryRef instanceof PDFRef ? entryRef : context.getObjectRef(dict);
+        if (callback({ dict, ref, page, pageIndex }) === false) return;
+      }
+    }
+  }
+
+  _rectFromArray(arr: any): { x: number; y: number; width: number; height: number } {
+    const nums: number[] = [];
+    for (let i = 0; i < arr.size(); i++) nums.push(arr.lookup(i, PDFNumber).asNumber());
+    const [x1, y1, x2, y2] = nums;
+    return {
+      x: Math.min(x1, x2),
+      y: Math.min(y1, y2),
+      width: Math.abs(x2 - x1),
+      height: Math.abs(y2 - y1),
+    };
+  }
+
+  _colorFromArray(arr: any): string | undefined {
+    if (!arr || arr.size() < 3) return undefined;
+    const toHex = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
+    const [r, g, b] = [0, 1, 2].map((i) => arr.lookup(i, PDFNumber).asNumber());
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+
+  /** The /AP /N reference of a stamp's dict, if it has one. */
+  _stampApRef(dict: any): any {
+    const ap = dict.get(PDFName.of('AP'));
+    const apDict = ap ? this.pdfDoc.context.lookupMaybe(ap, PDFDict) : null;
+    if (!apDict) return null;
+    const n = apDict.get(PDFName.of('N'));
+    return n instanceof PDFRef ? n : null;
+  }
+
+  /** The first /XObject reference in an appearance stream's /Resources, if any (our stamps have at most one: the image, for image stamps). */
+  _apImageRef(apRef: any): any {
+    const context = this.pdfDoc.context;
+    const stream = context.lookupMaybe(apRef, PDFStream);
+    if (!stream) return null;
+    const resources = stream.dict.lookupMaybe(PDFName.of('Resources'), PDFDict);
+    if (!resources) return null;
+    const xobjDict = resources.lookupMaybe(PDFName.of('XObject'), PDFDict);
+    if (!xobjDict) return null;
+    for (const [, value] of xobjDict.entries()) {
+      if (value instanceof PDFRef) return value;
+    }
+    return null;
+  }
+
+  _describeStamp(dict: any, ref: any, pageIndex: number) {
+    const id = this._stampIdForDict(dict, ref) || '';
+    const rectArr = dict.lookupMaybe(PDFName.of('Rect'), PDFArray);
+    const rect = rectArr ? this._rectFromArray(rectArr) : null;
+
+    const marker = dict.lookupMaybe(PDFName.of('PdfSealStamp'), PDFDict);
+    const createdByPdfSeal = !!marker;
+    let kind: 'text' | 'image' | 'external' = 'external';
+    let text: string | undefined;
+    let color: string | undefined;
+    if (marker) {
+      kind = this._getRawName(marker, 'Kind') === 'Image' ? 'image' : 'text';
+      text = this._getTextValue(marker, 'Text') ?? undefined;
+      color = this._colorFromArray(marker.lookupMaybe(PDFName.of('Color'), PDFArray));
+    }
+
+    const flagsRaw = dict.lookupMaybe(PDFName.of('F'), PDFNumber);
+    const flags = flagsRaw ? flagsRaw.asNumber() : 0;
+    const caRaw = dict.lookupMaybe(PDFName.of('CA'), PDFNumber);
+
+    const objectRefs = new Set<string>();
+    if (ref) objectRefs.add(ref.toString());
+    const apRef = this._stampApRef(dict);
+    if (apRef) objectRefs.add(apRef.toString());
+    const imgRef = apRef ? this._apImageRef(apRef) : null;
+    if (imgRef) objectRefs.add(imgRef.toString());
+
+    return {
+      id,
+      ref: ref ? ref.toString() : null,
+      page: pageIndex,
+      rect,
+      kind,
+      text,
+      color,
+      name: this._getTextValue(dict, 'Name') ?? undefined,
+      note: this._getTextValue(dict, 'Contents') ?? undefined,
+      author: this._getTextValue(dict, 'T') ?? undefined,
+      opacity: caRaw ? caRaw.asNumber() : 1,
+      locked: !!(flags & ANNOTATION_FLAG_LOCKED),
+      createdByPdfSeal,
+      objectRefs: Array.from(objectRefs),
+    };
+  }
+
+  /** Every stamp annotation in the document, ours and third-party alike. */
+  listStamps() {
+    const out: any[] = [];
+    this._forEachStampAnnot(({ dict, ref, pageIndex }) => {
+      out.push(this._describeStamp(dict, ref, pageIndex));
+    });
+    return out;
+  }
+
+  // ---------------------------------------------------------------------
   // Document metadata
   // ---------------------------------------------------------------------
 
@@ -1218,6 +1362,17 @@ class PdfSignatureTool {
     const fields = this.listFields();
     const signatureFieldCount = fields.filter((f: any) => f.type === 'Signature').length;
     const signatureInfo = this.getSignatureInfo();
+    const stamps = this.listStamps();
+
+    let annotationCount = 0;
+    try {
+      for (const page of doc.getPages()) {
+        const annots = page.node.Annots();
+        if (annots) annotationCount += annots.size();
+      }
+    } catch (_e) {
+      // No resolvable page tree in this snapshot -- mirror getMetadata()'s tolerance.
+    }
 
     let hasJavaScript = false;
     let hasLinearized = false;
@@ -1319,6 +1474,8 @@ class PdfSignatureTool {
         xmpMetadata: !!xmp,
         incrementalUpdates: options.incrementalUpdates ?? null,
         signatureCount: signatureInfo.length,
+        stampCount: stamps.length,
+        annotationCount,
       },
       pages,
       attachments,
@@ -1422,12 +1579,13 @@ class PdfSignatureTool {
     // session; the full summary is fetched separately, on demand, only when
     // a view that actually shows it (Metadata) is opened.
     if (options.fieldsOnly) {
-      return { fields: this.listFields() };
+      return { fields: this.listFields(), stamps: this.listStamps() };
     }
     return {
       metadata: this.getMetadata(),
       rawInfo: this.getRawInfoDict(),
       fields: this.listFields(),
+      stamps: this.listStamps(),
       rawObjects: this.getFullRawDump(),
       overview: this.getMetadataOverview(options),
     };

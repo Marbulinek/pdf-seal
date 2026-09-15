@@ -1781,6 +1781,7 @@
       eye: '<span class="icon icon-eye" aria-hidden="true"></span>',
       eyeOff: '<span class="icon icon-eye-off" aria-hidden="true"></span>',
       code: '<span class="icon icon-code" aria-hidden="true"></span>',
+      stamp: '<span class="icon icon-stamp" aria-hidden="true"></span>',
     };
 
     // Some signature fields are authored with a near-zero /Rect (commonly
@@ -6859,6 +6860,8 @@ function renderFeaturesCard(features) {
     { label: 'XFA', value: true, html: yesNoBadge(features.xfa), keep: true },
     { label: 'AcroForm', value: true, html: yesNoBadge(features.acroForm), keep: true },
     { label: 'Signature fields', value: features.signatureFieldCount, keep: true },
+    { label: 'Stamps', value: features.stampCount, keep: true },
+    { label: 'Annotations', value: features.annotationCount, keep: true },
     { label: 'JavaScript', value: true, html: yesNoBadge(features.javascript), keep: true },
     { label: 'Attachments', value: features.attachmentCount, keep: true },
     { label: 'XMP metadata', value: true, html: yesNoBadge(features.xmpMetadata), keep: true },
@@ -8284,6 +8287,7 @@ function renderRevisionsTimeline(revisions) {
           { label: 'Images',           value: changeSummary.imageCount        ?? 0 },
           { label: 'Signature fields', value: changeSummary.fieldCount        ?? (rev.fields ? rev.fields.length : 0) },
           { label: 'AcroForm',         value: changeSummary.acroFormCount     ?? 0 },
+          { label: 'Stamps',           value: changeSummary.stampCount        ?? (rev.stamps ? rev.stamps.length : 0) },
           { label: 'Metadata',         value: changeSummary.metadataFieldCount ?? 0 },
           { label: 'Signature',        value: changeSummary.signatureCount    ?? 0 },
         ];
@@ -9246,6 +9250,7 @@ function renderChecklistHtml(diff) {
     checklistItemHtml('Images', c.imagesUnchanged, c.imagesChangedCount, 'image(s) changed', visual),
     checklistItemHtml('Signature fields', c.signatureFieldsUnchanged, c.signatureFieldsChangedCount, 'field(s) changed', { tab: 'details', section: 'fields' }),
     checklistItemHtml('AcroForm', c.acroFormUnchanged, c.acroFormChangedCount, 'object(s) changed', { tab: 'details', section: 'objects' }),
+    checklistItemHtml('Stamps', c.stampsUnchanged, c.stampsChangedCount, 'stamp(s) changed', { tab: 'details', section: 'stamps' }),
     checklistItemHtml('Metadata', c.metadataUnchanged, c.metadataChangedCount, 'value(s) changed', { tab: 'details', section: 'metadata' }),
     checklistItemHtml('Signature', c.signatureUnchanged, c.signatureChangedCount, 'signature event(s)', { tab: 'details', section: 'signature' }),
   ];
@@ -9266,7 +9271,7 @@ function compareVerdict(diff) {
   const c = diff.checklist;
   const counts = c
     ? [c.pagesChangedCount, c.textChangedCount, c.imagesChangedCount, c.signatureFieldsChangedCount,
-       c.acroFormChangedCount, c.metadataChangedCount, c.signatureChangedCount]
+       c.acroFormChangedCount, c.stampsChangedCount, c.metadataChangedCount, c.signatureChangedCount]
     : [];
   const total = counts.reduce((sum, n) => sum + (n || 0), 0);
 
@@ -9275,6 +9280,8 @@ function compareVerdict(diff) {
   else if (diff.signatureChanges?.removed?.length) headline.push('signature removed');
   if (diff.fieldChanges?.added?.length) headline.push(`${diff.fieldChanges.added.length} field(s) added`);
   if (diff.fieldChanges?.removed?.length) headline.push(`${diff.fieldChanges.removed.length} field(s) removed`);
+  if (diff.stampChanges?.added?.length) headline.push(`${diff.stampChanges.added.length} stamp(s) added`);
+  if (diff.stampChanges?.removed?.length) headline.push(`${diff.stampChanges.removed.length} stamp(s) removed`);
   if (diff.pageCountDelta) headline.push(`${diff.pageCountDelta > 0 ? '+' : '−'}${Math.abs(diff.pageCountDelta)} page(s)`);
 
   const parts = [total === 0 ? 'No changes detected' : `${total} change${total === 1 ? '' : 's'}`];
@@ -9437,7 +9444,7 @@ function attachRawObjectFilterHandlers(container) {
 // field/signature on the page it lives on. Rows without integer page + rect
 // geometry stay inert (no class, no attributes).
 function diffRowLocateAttrs(page, rect, side, key) {
-  if (!Number.isInteger(page) || !rect) return { cls: '', attrs: '' };
+  if (!Number.isInteger(page) || !rect || rect.width <= 0 || rect.height <= 0) return { cls: '', attrs: '' };
   const rectStr = `${rect.x},${rect.y},${rect.width},${rect.height}`;
   return {
     cls: ' is-locatable',
@@ -9488,6 +9495,28 @@ function renderDiffDetails(diff, fromRev, toRev) {
     ? `<div class="diff-section" data-diff-section="signature"><h4 class="diff-section-title">${signaturesTitleHtml}</h4><ul class="diff-list">${sigRows.join('')}</ul></div>`
     : `<div class="diff-section" data-diff-section="signature"><h4 class="diff-section-title">${signaturesTitleHtml}</h4><p class="diff-empty-note">No changes.</p></div>`;
 
+  const stampLabel = (s) => s.text || s.name || (s.kind === 'image' ? 'Image Stamp' : 'Stamp');
+  const stampRows = [
+    ...(diff.stampChanges?.added || []).map((s) => {
+      const { cls, attrs } = diffRowLocateAttrs(s.page, s.rect, 'to', `stamp-added:${s.id}`);
+      return `<li class="diff-row${cls}"${attrs}><span class="diff-row-badge badge-added">added</span><span class="diff-row-key">${escapeHtml(stampLabel(s))}</span><span class="diff-row-values">${escapeHtml(s.kind || '')}</span></li>`;
+    }),
+    ...(diff.stampChanges?.removed || []).map((s) => {
+      const { cls, attrs } = diffRowLocateAttrs(s.page, s.rect, 'from', `stamp-removed:${s.id}`);
+      return `<li class="diff-row${cls}"${attrs}><span class="diff-row-badge badge-removed">removed</span><span class="diff-row-key">${escapeHtml(stampLabel(s))}</span><span class="diff-row-values">${escapeHtml(s.kind || '')}</span></li>`;
+    }),
+    ...(diff.stampChanges?.modified || []).map((s) => {
+      const { cls, attrs } = diffRowLocateAttrs(s.page, s.rect, 'to', `stamp-modified:${s.id}`);
+      return `<li class="diff-row${cls}"${attrs}><span class="diff-row-badge badge-modified">changed</span><span class="diff-row-key">${escapeHtml(s.label || 'Stamp')}</span><span class="diff-row-values">${s.changes
+        .map((c) => `${escapeHtml(c.key)}: <del>${escapeHtml(String(c.before))}</del> → <ins>${escapeHtml(String(c.after))}</ins>`)
+        .join('; ')}</span></li>`;
+    }),
+  ];
+  const stampsTitleHtml = sectionTitleHtml(ICONS.stamp, 'Stamps');
+  const stampsHtml = stampRows.length
+    ? `<div class="diff-section" data-diff-section="stamps"><h4 class="diff-section-title">${stampsTitleHtml}</h4><ul class="diff-list">${stampRows.join('')}</ul></div>`
+    : `<div class="diff-section" data-diff-section="stamps"><h4 class="diff-section-title">${stampsTitleHtml}</h4><p class="diff-empty-note">No changes.</p></div>`;
+
   const objectCount = diff.objectChanges.added.length + diff.objectChanges.removed.length + diff.objectChanges.modified.length;
   currentRawObjectItems.clear();
   const allObjectDetails = [
@@ -9510,7 +9539,7 @@ function renderDiffDetails(diff, fromRev, toRev) {
       ${diff.objectChanges.truncated ? '<p class="diff-truncated-note">Showing the first 500 changes of each kind — this revision touched more objects than that.</p>' : ''}
     </details>`;
 
-  container.innerHTML = metadataHtml + fieldsHtml + signaturesHtml + objectsHtml;
+  container.innerHTML = metadataHtml + fieldsHtml + stampsHtml + signaturesHtml + objectsHtml;
   document.getElementById('revisionsDiffEmpty').hidden = true;
   attachDiffObjectPreviewHandlers(container);
   attachDiffRowLocateHandlers(container);

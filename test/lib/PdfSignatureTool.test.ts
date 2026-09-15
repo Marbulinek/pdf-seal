@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { PDFArray, PDFHexString, PDFName } from 'pdf-lib';
+import { PDFArray, PDFHexString, PDFName, PDFString } from 'pdf-lib';
 import PdfSignatureTool from '../../lib/PdfSignatureTool';
 import { buildSignedPdfFixture } from './helpers/pdfSigner';
 import { mintStandardChain } from './helpers/certificateFactory';
@@ -448,8 +448,9 @@ describe('PdfSignatureTool', () => {
     tool.addPage();
     tool.addSignatureField(0, 'signature1', {});
     const summary = tool.getDocumentInfoSummary({ fieldsOnly: true });
-    expect(Object.keys(summary)).toEqual(['fields']);
+    expect(Object.keys(summary)).toEqual(['fields', 'stamps']);
     expect(summary.fields).toHaveLength(1);
+    expect(summary.stamps).toEqual([]);
   });
 
   it('produces the full document info summary with metadata, raw info, fields, raw objects and overview', async () => {
@@ -697,3 +698,109 @@ describe('PdfSignatureTool: signature dictionaries and certificates', () => {
     expect(dss.vri[0].certRefs).toEqual([dss.certs[0].objectRef]);
   }, 40000);
 });
+
+// PdfSignatureTool only detects/describes stamp annotations already present
+// in a document -- it never creates, edits or removes one -- so these tests
+// build a raw /Annot /Subtype /Stamp dict directly via pdf-lib's context,
+// the way another tool's output would look, rather than through any
+// stamp-creating helper of this tool's own.
+function addRawStampAnnot(tool: any, pageIndex: number, entries: Record<string, any> = {}) {
+  const pdfDoc = tool.pdfDoc;
+  const page = pdfDoc.getPages()[pageIndex];
+  const context = pdfDoc.context;
+  const annotDict = context.obj({
+    Type: 'Annot',
+    Subtype: 'Stamp',
+    Rect: [10, 10, 110, 60],
+    P: page.ref,
+    F: 4,
+    ...entries,
+  });
+  const annotRef = context.register(annotDict);
+  page.node.addAnnot(annotRef);
+  return { dict: annotDict, ref: annotRef };
+}
+
+describe('PdfSignatureTool: stamp annotation detection', () => {
+  it('lists an existing stamp annotation with its rect and standard properties', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0, {
+      NM: PDFString.of('acrobat-stamp-1'),
+      Contents: PDFString.of('Reviewed by Acrobat'),
+      CA: 0.75,
+    });
+
+    const [stamp] = tool.listStamps();
+    expect(stamp.id).toBe('acrobat-stamp-1');
+    expect(stamp.page).toBe(0);
+    expect(stamp.rect).toEqual({ x: 10, y: 10, width: 100, height: 50 });
+    expect(stamp.kind).toBe('external');
+    expect(stamp.createdByPdfSeal).toBe(false);
+    expect(stamp.note).toBe('Reviewed by Acrobat');
+    expect(stamp.opacity).toBe(0.75);
+    expect(stamp.locked).toBe(false);
+  });
+
+  it('assigns a synthetic ref-based id to a stamp with no /NM', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0);
+
+    const [stamp] = tool.listStamps();
+    expect(stamp.id).toMatch(/^ref:\d+ \d+$/);
+  });
+
+  it('reports a locked stamp (F bit 128) as locked', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0, { F: 4 | 128 });
+
+    const [stamp] = tool.listStamps();
+    expect(stamp.locked).toBe(true);
+  });
+
+  it('lists stamps on the correct page across a multi-page document', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addPage();
+    addRawStampAnnot(tool, 1, { NM: PDFString.of('page2-stamp') });
+
+    const stamps = tool.listStamps();
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].page).toBe(1);
+  });
+
+  it('survives a toBytes/fromBytes round-trip', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('roundtrip-stamp') });
+
+    const bytes = await tool.toBytes();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    const stamps = reloaded.listStamps();
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].id).toBe('roundtrip-stamp');
+  });
+
+  it('reports stamp and annotation counts in the metadata overview', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'sig1', {});
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('stamp-a') });
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('stamp-b'), Rect: [20, 20, 120, 70] });
+
+    const overview = tool.getMetadataOverview();
+    expect(overview.features.stampCount).toBe(2);
+    // 1 signature widget + 2 stamps live in the page's /Annots array.
+    expect(overview.features.annotationCount).toBe(3);
+  });
+
+  it('returns no stamps for a document that has none', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(tool.listStamps()).toEqual([]);
+    expect(tool.getMetadataOverview().features.stampCount).toBe(0);
+  });
+});
+

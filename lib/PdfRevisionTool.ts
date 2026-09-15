@@ -80,6 +80,7 @@ async function summarizeSnapshot(bytes: Uint8Array, revisionIndex: number, isFin
       page: f.page,
     }));
     const signatures = tool.getSignatureInfo();
+    const stamps = tool.listStamps();
     const rawDump = tool.getFullRawDump();
     const changeSummary = {
       pageCount: metadata.pageCount,
@@ -89,6 +90,7 @@ async function summarizeSnapshot(bytes: Uint8Array, revisionIndex: number, isFin
       acroFormCount: countAcroFormObjects(rawDump),
       metadataFieldCount: countMetadataFields(metadata),
       signatureCount: signatures.length,
+      stampCount: stamps.length,
     };
     return {
       ...base,
@@ -97,6 +99,7 @@ async function summarizeSnapshot(bytes: Uint8Array, revisionIndex: number, isFin
       metadata,
       fields,
       signatures,
+      stamps,
       changeSummary,
     };
   } catch (error: any) {
@@ -107,6 +110,7 @@ async function summarizeSnapshot(bytes: Uint8Array, revisionIndex: number, isFin
       metadata: null,
       fields: null,
       signatures: [],
+      stamps: null,
     };
   }
 }
@@ -247,6 +251,65 @@ function diffSignatures(a: any[], b: any[], fieldsA: any[] | null, fieldsB: any[
   const removed: any[] = [];
   for (const [name, sig] of before) if (!after.has(name)) removed.push(withGeometry(sig, fieldsByNameA.get(name)));
   return { added, removed };
+}
+
+/** Human label for a stamp in a diff row: its own text, its /Name, or a generic fallback by kind. */
+function stampLabel(stamp: any): string {
+  if (stamp.text) return stamp.text;
+  if (stamp.name) return stamp.name;
+  return stamp.kind === 'image' ? 'Image Stamp' : 'Stamp';
+}
+
+function toStampSummary(stamp: any) {
+  return {
+    id: stamp.id,
+    kind: stamp.kind,
+    page: stamp.page,
+    rect: stamp.rect,
+    text: stamp.text ?? null,
+    color: stamp.color ?? null,
+    opacity: stamp.opacity,
+    note: stamp.note ?? null,
+    name: stamp.name ?? null,
+  };
+}
+
+/**
+ * Diff stamp annotations between two snapshots, keyed by id (their /NM, or
+ * a synthetic ref-based id -- see PdfSignatureTool). Unlike diffFields(),
+ * which ignores rect, a moved-but-otherwise-identical stamp is still worth
+ * reporting: geometry IS the content for a visual stamp.
+ */
+function diffStamps(a: any[] | null, b: any[] | null) {
+  const before = new Map((a || []).map((s) => [s.id, s]));
+  const after = new Map((b || []).map((s) => [s.id, s]));
+
+  const added: any[] = [];
+  const modified: Array<{ id: string; label: string; page: number | null; rect: any; changes: Array<{ key: string; before: any; after: any }> }> = [];
+  for (const [id, stamp] of after) {
+    const prev = before.get(id);
+    if (!prev) {
+      added.push(toStampSummary(stamp));
+      continue;
+    }
+    const changes: Array<{ key: string; before: any; after: any }> = [];
+    for (const key of ['page', 'text', 'color', 'opacity', 'note']) {
+      const beforeVal = (prev as any)[key] ?? null;
+      const afterVal = (stamp as any)[key] ?? null;
+      if (JSON.stringify(beforeVal) !== JSON.stringify(afterVal)) changes.push({ key, before: beforeVal, after: afterVal });
+    }
+    if (JSON.stringify(prev.rect) !== JSON.stringify(stamp.rect)) {
+      changes.push({ key: 'rect', before: prev.rect, after: stamp.rect });
+    }
+    if (changes.length) modified.push({ id, label: stampLabel(stamp), page: stamp.page, rect: stamp.rect, changes });
+  }
+
+  const removed: any[] = [];
+  for (const [id, stamp] of before) {
+    if (!after.has(id)) removed.push(toStampSummary(stamp));
+  }
+
+  return { added, removed, modified };
 }
 
 // Cap how many raw-object diff entries we ever hand back -- a large,
@@ -893,6 +956,12 @@ function humanObjectName(node: any, category: ObjectCategory, page: number | nul
       return type === 'Sig' ? 'Signature Dictionary' : withField('Signature Field');
     case 'formField':
       return node && node.Subtype === 'Widget' ? withField('Widget Annotation') : withField('Form Field');
+    case 'stamp': {
+      const marker = node && typeof node === 'object' ? (node as any).PdfSealStamp : null;
+      const text = marker && typeof marker === 'object' && typeof marker.Text === 'string' ? marker.Text : null;
+      const stampName = node && typeof node === 'object' && typeof node.Name === 'string' ? node.Name : null;
+      return `Stamp Annotation (${text || stampName || 'image'})`;
+    }
     case 'acroform':
       return 'AcroForm';
     case 'xmp':
@@ -928,6 +997,7 @@ function classifyChanges(params: {
   }
 
   if (nonLengthChanges.length) tags.add('dictionary');
+  if (category === 'stamp') tags.add('visual-content');
 
   const type = node && typeof node === 'object' && typeof node.Type === 'string' ? node.Type : null;
   const isSigningRelated =
@@ -1111,6 +1181,7 @@ type ObjectCategory =
   | 'image'
   | 'signatureField'
   | 'formField'
+  | 'stamp'
   | 'xmp'
   | 'font'
   | 'other';
@@ -1122,10 +1193,41 @@ const CATEGORY_LABELS: Record<ObjectCategory, string> = {
   image: 'Image',
   signatureField: 'Signature',
   formField: 'Form Field',
+  stamp: 'Stamp',
   xmp: 'XMP Metadata',
   font: 'Font',
   other: 'Object',
 };
+
+/**
+ * Map every AP form-XObject and image-XObject a stamp annotation owns back
+ * to that annotation's own object key. A stamp added or moved touches three
+ * objects (the annotation, its /AP form XObject, and -- for an image stamp
+ * -- the embedded image XObject); without this index they'd each show up as
+ * their own added/modified `stamp`/`image`/`other` diff entry with an
+ * overlapping rect, instead of being reported as the one change they are.
+ */
+function buildStampOwnedRefIndex(dump: any): Map<string, string> {
+  const objects = dump?.objects || {};
+  const owner = new Map<string, string>();
+  for (const [key, node] of Object.entries(objects)) {
+    if (!node || typeof node !== 'object') continue;
+    if ((node as any).Type !== 'Annot' || (node as any).Subtype !== 'Stamp') continue;
+    const ap = (node as any).AP;
+    const apRef = ap && typeof ap === 'object' ? ap.N : null;
+    if (typeof apRef !== 'string') continue;
+    owner.set(apRef, key);
+    const apNode = objects[apRef];
+    const resources = apNode && typeof apNode === 'object' ? (apNode as any).Resources : null;
+    const xobjDict = resources && typeof resources === 'object' ? resources.XObject : null;
+    if (xobjDict && typeof xobjDict === 'object') {
+      for (const value of Object.values(xobjDict)) {
+        if (typeof value === 'string') owner.set(value, key);
+      }
+    }
+  }
+  return owner;
+}
 
 function findAcroFormRef(dump: any): string | null {
   const objects = dump?.objects || {};
@@ -1148,6 +1250,8 @@ function classifyObjectKey(
   if (contentStreamPages.has(key)) return 'content';
   if (!node || typeof node !== 'object') return 'other';
 
+  if (node.Type === 'Annot' && node.Subtype === 'Stamp') return 'stamp';
+
   const subtype = typeof node.Subtype === 'string' ? node.Subtype : '';
   const ft = typeof node.FT === 'string' ? node.FT : (typeof node.V === 'object' && node.V ? 'Sig' : '');
   if (subtype === 'Image') return 'image';
@@ -1163,8 +1267,8 @@ function diffRawObjects(dumpA: any, dumpB: any, toolA: any = null, toolB: any = 
   const keysA = new Set(Object.keys(objectsA));
   const keysB = new Set(Object.keys(objectsB));
 
-  const added: string[] = [];
-  const modified: string[] = [];
+  let added: string[] = [];
+  let modified: string[] = [];
   for (const key of keysB) {
     if (!keysA.has(key)) {
       added.push(key);
@@ -1172,10 +1276,24 @@ function diffRawObjects(dumpA: any, dumpB: any, toolA: any = null, toolB: any = 
       modified.push(key);
     }
   }
-  const removed: string[] = [];
+  let removed: string[] = [];
   for (const key of keysA) {
     if (!keysB.has(key)) removed.push(key);
   }
+
+  // A stamp's own AP form XObject and (for an image stamp) its embedded
+  // image XObject are consolidated into the stamp annotation's single diff
+  // entry rather than reported as their own added/removed/modified objects
+  // -- see buildStampOwnedRefIndex().
+  const stampOwnerB = buildStampOwnedRefIndex(dumpB);
+  const stampOwnerA = buildStampOwnedRefIndex(dumpA);
+  const isOwnedStampRef = (key: string) => {
+    const owner = stampOwnerB.get(key) ?? stampOwnerA.get(key);
+    return !!owner && owner !== key;
+  };
+  added = added.filter((key) => !isOwnedStampRef(key));
+  removed = removed.filter((key) => !isOwnedStampRef(key));
+  modified = modified.filter((key) => !isOwnedStampRef(key));
 
   const truncated =
     added.length > MAX_OBJECT_DIFF_ENTRIES ||
@@ -1212,7 +1330,13 @@ function diffRawObjects(dumpA: any, dumpB: any, toolA: any = null, toolB: any = 
   // Every key that already has its own added/modified/removed entry in this
   // diff -- passed into describeRawObject() so a Page's derived rect
   // doesn't re-report a rectangle that one of these entries already covers.
+  // Stamp-owned AP/image refs are folded in too, even though they were just
+  // filtered out of addedKeys/modifiedKeys/removedKeys above -- their change
+  // is already accounted for by the owning stamp annotation's own entry.
   const independentlyTrackedKeys = new Set<string>([...addedKeys, ...modifiedKeys, ...removedKeys]);
+  for (const [ref, owner] of [...stampOwnerB.entries(), ...stampOwnerA.entries()]) {
+    if (ref !== owner) independentlyTrackedKeys.add(ref);
+  }
 
   return {
     added: addedKeys,
@@ -1306,8 +1430,9 @@ function buildRevisionChecklist(params: {
   objectChanges: ReturnType<typeof diffRawObjects>;
   metadataChanges: Array<{ key: string; before: any; after: any }>;
   signatureChanges: { added: any[]; removed: any[] };
+  stampChanges: { added: any[]; removed: any[]; modified: any[] };
 }) {
-  const { pageCountDelta, objectChanges, metadataChanges, signatureChanges } = params;
+  const { pageCountDelta, objectChanges, metadataChanges, signatureChanges, stampChanges } = params;
   const categoryValues = Object.values(objectChanges.categories || {});
   const countCat = (c: ObjectCategory) => categoryValues.filter((v) => v === c).length;
 
@@ -1317,6 +1442,7 @@ function buildRevisionChecklist(params: {
   const signatureFieldChangedCount = countCat('signatureField');
   const acroFormChangedCount = countCat('acroform') + countCat('formField');
   const signatureChangedCount = signatureChanges.added.length + signatureChanges.removed.length;
+  const stampChangedCount = stampChanges.added.length + stampChanges.removed.length + stampChanges.modified.length;
 
   return {
     pagesUnchanged: pageCountDelta === 0 && pagesChangedCount === 0,
@@ -1329,6 +1455,8 @@ function buildRevisionChecklist(params: {
     signatureFieldsChangedCount: signatureFieldChangedCount,
     acroFormUnchanged: acroFormChangedCount === 0,
     acroFormChangedCount,
+    stampsUnchanged: stampChangedCount === 0,
+    stampsChangedCount: stampChangedCount,
     metadataUnchanged: metadataChanges.length === 0,
     metadataChangedCount: metadataChanges.length,
     signatureUnchanged: signatureChangedCount === 0,
@@ -1351,6 +1479,7 @@ async function diffSnapshotBytes(bytesA: Uint8Array, bytesB: Uint8Array) {
   const fieldsA = toolA.listFields();
   const fieldsB = toolB.listFields();
   const signatureChanges = diffSignatures(toolA.getSignatureInfo(), toolB.getSignatureInfo(), fieldsA, fieldsB);
+  const stampChanges = diffStamps(toolA.listStamps(), toolB.listStamps());
   const objectChanges = diffRawObjects(toolA.getFullRawDump(), toolB.getFullRawDump(), toolA, toolB);
   const pageCountDelta = (metaB.pageCount || 0) - (metaA.pageCount || 0);
 
@@ -1365,8 +1494,9 @@ async function diffSnapshotBytes(bytesA: Uint8Array, bytesB: Uint8Array) {
     metadataChanges,
     fieldChanges: diffFields(fieldsA, fieldsB),
     signatureChanges,
+    stampChanges,
     objectChanges,
-    checklist: buildRevisionChecklist({ pageCountDelta, objectChanges, metadataChanges, signatureChanges }),
+    checklist: buildRevisionChecklist({ pageCountDelta, objectChanges, metadataChanges, signatureChanges, stampChanges }),
     integrity: {
       ok: integrityIssues.length === 0,
       issues: integrityIssues,
