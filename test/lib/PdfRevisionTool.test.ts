@@ -588,3 +588,147 @@ describe('PdfRevisionTool: a rewritten signature is visible as a change', () => 
     expect(contents.before).not.toBe(contents.after);
   }, 60000);
 });
+
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
+
+describe('PdfRevisionTool: stamp annotations', () => {
+  it('reports an added text stamp in stampChanges and the checklist', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    await after.addTextStamp(0, { text: 'APPROVED', color: '#00aa00', x: 10, y: 10, width: 120, height: 40 });
+    const afterBytes = await after.toBytes();
+
+    const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    expect(diff.stampChanges.added).toHaveLength(1);
+    expect(diff.stampChanges.added[0]).toMatchObject({ kind: 'text', text: 'APPROVED', color: '#00aa00' });
+    expect(diff.stampChanges.removed).toEqual([]);
+    expect(diff.stampChanges.modified).toEqual([]);
+    expect(diff.checklist.stampsUnchanged).toBe(false);
+    expect(diff.checklist.stampsChangedCount).toBe(1);
+  });
+
+  it('reports a removed stamp', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const stamp = await before.addTextStamp(0, { text: 'DRAFT' });
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    after.removeStamp(stamp.id);
+    const afterBytes = await after.toBytes();
+
+    const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    expect(diff.stampChanges.removed).toHaveLength(1);
+    expect(diff.stampChanges.added).toEqual([]);
+    expect(diff.checklist.stampsChangedCount).toBe(1);
+  });
+
+  it('reports a moved stamp as modified, tracking its rect', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const stamp = await before.addTextStamp(0, { text: 'PAID', x: 10, y: 10, width: 100, height: 40 });
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    await after.setStampRect(stamp.id, { x: 200 });
+    const afterBytes = await after.toBytes();
+
+    const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    expect(diff.stampChanges.modified).toHaveLength(1);
+    const [entry] = diff.stampChanges.modified;
+    expect(entry.label).toBe('PAID');
+    expect(entry.changes.find((c: any) => c.key === 'rect')).toBeTruthy();
+  });
+
+  it('reports a retexted stamp as modified with a text change', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const stamp = await before.addTextStamp(0, { text: 'DRAFT', color: '#111111' });
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    await after.setStampText(stamp.id, 'FINAL', '#ff0000');
+    const afterBytes = await after.toBytes();
+
+    const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+    expect(diff.stampChanges.modified).toHaveLength(1);
+    const [entry] = diff.stampChanges.modified;
+    const textChange = entry.changes.find((c: any) => c.key === 'text');
+    const colorChange = entry.changes.find((c: any) => c.key === 'color');
+    expect(textChange).toMatchObject({ before: 'DRAFT', after: 'FINAL' });
+    expect(colorChange).toMatchObject({ before: '#111111', after: '#ff0000' });
+  });
+
+  it('reports stampCount in summarizeIndependentSnapshots', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    await tool.addTextStamp(0, { text: 'CONFIDENTIAL' });
+    const bytes = await tool.toBytes();
+
+    const [summary] = await PdfRevisionTool.summarizeIndependentSnapshots([bytes]);
+    expect(summary.changeSummary.stampCount).toBe(1);
+    expect(summary.stamps).toHaveLength(1);
+  });
+
+  it('consolidates an added image stamp into exactly one stamp-category object change', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    await after.addImageStamp(0, TINY_PNG, { x: 30, y: 30, width: 60, height: 60 });
+    const afterBytes = await after.toBytes();
+
+    const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+
+    const stampCategoryAdds = diff.objectChanges.addedDetails.filter((d: any) => d.category === 'Stamp');
+    expect(stampCategoryAdds).toHaveLength(1);
+    expect(stampCategoryAdds[0].classifications).toContain('visual-content');
+    expect(stampCategoryAdds[0].humanName).toMatch(/^Stamp Annotation/);
+
+    // The AP form XObject and the embedded image XObject must NOT show up as
+    // their own separate added entries alongside the stamp annotation --
+    // regardless of whatever else two independent full save()s may turn over
+    // (e.g. pdf-lib's own AcroForm/content-stream bookkeeping), none of the
+    // stamp's *other* owned refs should appear as their own top-level entry.
+    const [stamp] = after.listStamps();
+    const ownedRefs = stamp.objectRefs.filter((ref: string) => ref !== stamp.ref);
+    expect(ownedRefs.length).toBeGreaterThan(0); // sanity: an image stamp does own an AP + image ref
+    const allKeys = [...diff.objectChanges.added, ...diff.objectChanges.modified, ...diff.objectChanges.removed];
+    for (const ref of ownedRefs) expect(allKeys).not.toContain(ref);
+  });
+
+  it('consolidates a resized text stamp into exactly one modified stamp entry, with the old AP not orphaned as a separate entry', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const stamp = await before.addTextStamp(0, { text: 'PAID', width: 100, height: 40 });
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    await after.setStampRect(stamp.id, { width: 200, height: 80 });
+    const afterBytes = await after.toBytes();
+
+    const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+
+    const stampModified = diff.objectChanges.modifiedDetails.filter((d: any) => d.category === 'Stamp');
+    expect(stampModified).toHaveLength(1);
+
+    const [stampBefore] = before.listStamps();
+    const [stampAfter] = after.listStamps();
+    const oldApRef = stampBefore.objectRefs.find((ref: string) => ref !== stampBefore.ref);
+    const newApRef = stampAfter.objectRefs.find((ref: string) => ref !== stampAfter.ref);
+    expect(oldApRef).toBeTruthy();
+    expect(newApRef).toBeTruthy();
+    expect(oldApRef).not.toBe(newApRef); // resize regenerated the appearance stream under a new ref
+
+    const allKeys = [...diff.objectChanges.added, ...diff.objectChanges.modified, ...diff.objectChanges.removed];
+    expect(allKeys).not.toContain(oldApRef);
+    expect(allKeys).not.toContain(newApRef);
+  });
+});
