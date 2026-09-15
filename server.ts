@@ -77,6 +77,25 @@ const MAX_REVISION_BUNDLE_BYTES = 40 * 1024 * 1024; // 40MB combined (pdfDocumen
 const MAX_CERT_UPLOAD_BYTES = 64 * 1024; // 64KB
 const certUpload = multer({ dest: "uploads/", limits: { fileSize: MAX_CERT_UPLOAD_BYTES } });
 
+// /api/apply-changes accepts a `stampImages` part per pending image stamp
+// alongside the PDF itself -- its own multer instance since it needs a
+// second upload field, and a per-image size cap tighter than the PDF's own
+// (multer's `limits.fileSize` applies to every file in one call, so the
+// per-image 2MB cap is enforced by hand below rather than here). The
+// mimetype filter is a coarse, spoofable-by-the-client first pass only --
+// PdfSignatureTool re-validates by magic bytes before ever embedding one.
+const MAX_STAMP_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB per stamp image
+const stampUpload = multer({
+  dest: "uploads/",
+  limits: { fileSize: MAX_UPLOAD_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (file.fieldname === "stampImages" && file.mimetype !== "image/png" && file.mimetype !== "image/jpeg") {
+      return cb(null, false); // skip storing it -- the op referencing this slot then fails with a clear message
+    }
+    cb(null, true);
+  },
+});
+
 // Serve the self-hosted pdf.js vendor bundle (~1.3MB) with a long,
 // immutable cache: on a slow/constrained host, letting every colleague's
 // browser cache it across visits instead of re-fetching it each time saves
@@ -193,6 +212,40 @@ function logShare(event: string, details?: Record<string, unknown>) {
 
 function logError(context: string, error: unknown, details?: Record<string, unknown>) {
   console.error(`[error] ${context}`, details ?? {}, error);
+}
+
+/**
+ * A stamp's color as sent by the client can be a hex string (with or
+ * without the leading '#'), a CSS `rgb()`/`rgba()` string, or a `{r,g,b}`
+ * triple (each 0-255) -- normalized here into the '#rrggbb' hex string
+ * PdfSignatureTool's stamp methods accept. Returns undefined for an absent
+ * color (leave the default/existing color alone); throws for anything else
+ * unparseable.
+ */
+function normalizeStampColorInput(raw: any): string | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (/^#?[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+    const rgbMatch = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(trimmed);
+    if (rgbMatch) {
+      const clamp = (n: string) => Math.max(0, Math.min(255, parseInt(n, 10)));
+      const [r, g, b] = [rgbMatch[1], rgbMatch[2], rgbMatch[3]].map(clamp);
+      return `#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+    }
+    throw new Error(`Invalid stamp color "${raw}".`);
+  }
+
+  if (typeof raw === "object") {
+    const { r, g, b } = raw as Record<string, unknown>;
+    if ([r, g, b].every((v) => Number.isFinite(Number(v)))) {
+      const clamp = (v: unknown) => Math.max(0, Math.min(255, Math.round(Number(v))));
+      return `#${[r, g, b].map((v) => clamp(v).toString(16).padStart(2, "0")).join("")}`;
+    }
+  }
+
+  throw new Error("Invalid stamp color.");
 }
 
 // --- API Endpoint: Get PDF Info ---
@@ -365,92 +418,160 @@ app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async
 // call per operation) and sends them all here at once when the user hits
 // "Apply changes" -- one upload, one PDF open/save, one download, instead
 // of one full round trip per field edit.
-app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
+app.post(
+  "/api/apply-changes",
+  uploadLimiter,
+  stampUpload.fields([{ name: "pdfDocument", maxCount: 1 }, { name: "stampImages", maxCount: 20 }]),
+  async (req: Request, res: Response) => {
+    const filesByField = (req.files || {}) as Record<string, Express.Multer.File[]>;
+    const file = filesByField.pdfDocument?.[0];
+    const stampImageFiles = filesByField.stampImages || [];
+    if (!file) {
+      cleanupFiles(...stampImageFiles.map((f) => f.path));
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
-  let outputPath: string | null = null;
+    const oversizedImage = stampImageFiles.find((f) => f.size > MAX_STAMP_IMAGE_BYTES);
+    if (oversizedImage) {
+      cleanupFiles(file.path, ...stampImageFiles.map((f) => f.path));
+      return res.status(413).json({
+        error: `Stamp image too large. Maximum size is ${Math.floor(MAX_STAMP_IMAGE_BYTES / (1024 * 1024))}MB.`,
+      });
+    }
 
-  try {
-    const safePath = resolveUploadPath(file.path);
-    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+    let outputPath: string | null = null;
 
-    let ops: any[];
     try {
-      ops = JSON.parse(req.body.ops || "[]");
-    } catch (_e) {
-      throw new Error("Invalid changes payload.");
-    }
-    if (!Array.isArray(ops) || ops.length === 0) {
-      throw new Error("No changes to apply.");
-    }
+      const safePath = resolveUploadPath(file.path);
+      const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
 
-    for (const op of ops) {
-      if (!op || typeof op !== "object") continue;
-
-      if (op.op === "add") {
-        const page = parseInt(op.page, 10) || 0;
-        const name = String(op.name || `SigField_${Date.now()}`);
-        const fieldOptions = {
-          x: parseFloat(op.x) || 50,
-          y: parseFloat(op.y) || 50,
-          width: parseFloat(op.width) || 200,
-          height: parseFloat(op.height) || 60,
-          required: op.required === true || op.required === "true",
-        };
-        if (op.type === "text") {
-          tool.addTextField(page, name, { ...fieldOptions, multiline: op.multiline === true || op.multiline === "true" });
-        } else {
-          tool.addSignatureField(page, name, fieldOptions);
-        }
-      } else if (op.op === "edit") {
-        const originalName = String(op.originalName || "");
-        const newName = String(op.name || originalName);
-        if (!originalName) throw new Error("Field name is required.");
-
-        if (originalName !== newName) {
-          tool.renameField(originalName, newName);
-        }
-
-        const x = parseFloat(op.x);
-        const y = parseFloat(op.y);
-        const width = parseFloat(op.width);
-        const height = parseFloat(op.height);
-        if ([x, y, width, height].every((value) => Number.isFinite(value))) {
-          tool.setFieldRect(newName, { x, y, width, height });
-        }
-
-        tool.setFieldRequired(newName, op.required === true || op.required === "true");
-        if (op.multiline !== undefined) {
-          const fieldInfo = tool.listFields().find((f: any) => f.name === newName);
-          if (fieldInfo?.type === "TextField") {
-            tool.setFieldMultiline(newName, op.multiline === true || op.multiline === "true");
-          }
-        }
-      } else if (op.op === "remove") {
-        const name = String(op.name || "");
-        if (!name) throw new Error("Field name is required.");
-        tool.removeField(name);
-      } else {
-        throw new Error(`Unknown operation "${op.op}".`);
+      let ops: any[];
+      try {
+        ops = JSON.parse(req.body.ops || "[]");
+      } catch (_e) {
+        throw new Error("Invalid changes payload.");
       }
+      if (!Array.isArray(ops) || ops.length === 0) {
+        throw new Error("No changes to apply.");
+      }
+
+      for (const op of ops) {
+        if (!op || typeof op !== "object") continue;
+
+        if (op.op === "add") {
+          const page = parseInt(op.page, 10) || 0;
+          const name = String(op.name || `SigField_${Date.now()}`);
+          const fieldOptions = {
+            x: parseFloat(op.x) || 50,
+            y: parseFloat(op.y) || 50,
+            width: parseFloat(op.width) || 200,
+            height: parseFloat(op.height) || 60,
+            required: op.required === true || op.required === "true",
+          };
+          if (op.type === "text") {
+            tool.addTextField(page, name, { ...fieldOptions, multiline: op.multiline === true || op.multiline === "true" });
+          } else {
+            tool.addSignatureField(page, name, fieldOptions);
+          }
+        } else if (op.op === "edit") {
+          const originalName = String(op.originalName || "");
+          const newName = String(op.name || originalName);
+          if (!originalName) throw new Error("Field name is required.");
+
+          if (originalName !== newName) {
+            tool.renameField(originalName, newName);
+          }
+
+          const x = parseFloat(op.x);
+          const y = parseFloat(op.y);
+          const width = parseFloat(op.width);
+          const height = parseFloat(op.height);
+          if ([x, y, width, height].every((value) => Number.isFinite(value))) {
+            tool.setFieldRect(newName, { x, y, width, height });
+          }
+
+          tool.setFieldRequired(newName, op.required === true || op.required === "true");
+          if (op.multiline !== undefined) {
+            const fieldInfo = tool.listFields().find((f: any) => f.name === newName);
+            if (fieldInfo?.type === "TextField") {
+              tool.setFieldMultiline(newName, op.multiline === true || op.multiline === "true");
+            }
+          }
+        } else if (op.op === "remove") {
+          const name = String(op.name || "");
+          if (!name) throw new Error("Field name is required.");
+          tool.removeField(name);
+        } else if (op.op === "add-stamp") {
+          const page = parseInt(op.page, 10) || 0;
+          const isImage = op.kind === "image";
+          const rect = {
+            x: parseFloat(op.x) || 50,
+            y: parseFloat(op.y) || 50,
+            width: parseFloat(op.width) || 160,
+            height: parseFloat(op.height) || (isImage ? 120 : 50),
+          };
+          const opacity = op.opacity !== undefined && op.opacity !== "" ? parseFloat(op.opacity) : undefined;
+          const note = typeof op.note === "string" && op.note ? op.note.slice(0, 500) : undefined;
+
+          if (isImage) {
+            const imageIndex = parseInt(op.imageIndex, 10);
+            const imageFile = Number.isInteger(imageIndex) ? stampImageFiles[imageIndex] : undefined;
+            if (!imageFile) throw new Error("Stamp image was not uploaded or is not a supported format (PNG/JPEG only).");
+            const imageBytes = fs.readFileSync(resolveUploadPath(imageFile.path));
+            await tool.addImageStamp(page, imageBytes, { ...rect, opacity, note });
+          } else {
+            const text = String(op.text ?? "").slice(0, 64);
+            await tool.addTextStamp(page, { ...rect, text, color: normalizeStampColorInput(op.color), opacity, note });
+          }
+        } else if (op.op === "edit-stamp") {
+          const id = String(op.id || "");
+          if (!id) throw new Error("Stamp id is required.");
+
+          const x = parseFloat(op.x);
+          const y = parseFloat(op.y);
+          const width = parseFloat(op.width);
+          const height = parseFloat(op.height);
+          const rectPatch: { x?: number; y?: number; width?: number; height?: number } = {};
+          if (Number.isFinite(x)) rectPatch.x = x;
+          if (Number.isFinite(y)) rectPatch.y = y;
+          if (Number.isFinite(width)) rectPatch.width = width;
+          if (Number.isFinite(height)) rectPatch.height = height;
+          if (Object.keys(rectPatch).length) await tool.setStampRect(id, rectPatch);
+
+          if (op.text !== undefined) {
+            await tool.setStampText(id, String(op.text).slice(0, 64), normalizeStampColorInput(op.color));
+          }
+          if (op.opacity !== undefined) {
+            tool.setStampOpacity(id, op.opacity === null || op.opacity === "" ? null : parseFloat(op.opacity));
+          }
+          if (op.note !== undefined) {
+            tool.setStampNote(id, op.note ? String(op.note).slice(0, 500) : null);
+          }
+        } else if (op.op === "remove-stamp") {
+          const id = String(op.id || "");
+          if (!id) throw new Error("Stamp id is required.");
+          tool.removeStamp(id);
+        } else {
+          throw new Error(`Unknown operation "${op.op}".`);
+        }
+      }
+
+      tool.setMetadata({ modificationDate: new Date() });
+      tool.clearRevisionSnapshotChain();
+
+      outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+      await tool.save(outputPath, { baseDir: UPLOADS_DIR });
+
+      res.download(outputPath, "signed-document.pdf", () => {
+        cleanupFiles(file.path, ...stampImageFiles.map((f) => f.path), outputPath);
+      });
+    } catch (error: any) {
+      logError("api-apply-changes", error, { filePath: file.path });
+      cleanupFiles(file.path, ...stampImageFiles.map((f) => f.path), outputPath);
+      res.status(500).json({ error: error?.message ?? "Unexpected error" });
     }
-
-    tool.setMetadata({ modificationDate: new Date() });
-    tool.clearRevisionSnapshotChain();
-
-    outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
-    await tool.save(outputPath, { baseDir: UPLOADS_DIR });
-
-    res.download(outputPath, "signed-document.pdf", () => {
-      cleanupFiles(file.path, outputPath);
-    });
-  } catch (error: any) {
-    logError("api-apply-changes", error, { filePath: file.path });
-    cleanupFiles(file.path, outputPath);
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  }
-});
+  },
+);
 
 // --- API Endpoint: Read a PDF's Embedded/Native Revision History ---
 // A file can carry its prior revisions in two different ways, and the
