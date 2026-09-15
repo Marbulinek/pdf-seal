@@ -449,19 +449,19 @@
   <div class="modal-backdrop" id="removeFieldModal">
     <div class="modal-box remove-field-modal-box" role="dialog" aria-modal="true" aria-labelledby="removeFieldModalTitle">
       <div class="modal-header">
-        <h3 id="removeFieldModalTitle">Remove <span id="removeFieldModalNoun">Field</span></h3>
+        <h3 id="removeFieldModalTitle">Remove Field</h3>
         <button type="button" class="modal-close" id="closeRemoveFieldModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <div class="remove-field-body">
         <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
         <div class="remove-field-text">
-          <p class="modal-hint remove-field-hint">Remove the <span id="removeFieldModalNounLower">field</span> <strong id="removeFieldModalName"></strong> from this document?</p>
+          <p class="modal-hint remove-field-hint">Remove the field <strong id="removeFieldModalName"></strong> from this document?</p>
           <p class="modal-hint remove-field-hint">This is staged like any other change — you can still <strong>Discard</strong> it before hitting Apply.</p>
         </div>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelRemoveFieldBtn">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmRemoveFieldBtn">Remove <span id="confirmRemoveFieldBtnNoun">Field</span></button>
+        <button type="button" class="btn btn-danger" id="confirmRemoveFieldBtn">Remove Field</button>
       </div>
     </div>
   </div>
@@ -734,52 +734,11 @@
               <div class="field-type-tabs" id="fieldTypeTabs" role="tablist" aria-label="Field type">
                 <button type="button" class="field-type-tab active" id="fieldTypeTabSignature" data-field-type="signature" role="tab" aria-selected="true"><span class="icon icon-pen" aria-hidden="true"></span> Signature</button>
                 <button type="button" class="field-type-tab" id="fieldTypeTabText" data-field-type="text" role="tab" aria-selected="false"><span class="icon icon-file-text" aria-hidden="true"></span> TextBox</button>
-                <button type="button" class="field-type-tab" id="fieldTypeTabStamp" data-field-type="stamp" role="tab" aria-selected="false"><span class="icon icon-stamp" aria-hidden="true"></span> Stamp</button>
               </div>
               <form id="addSigForm">
-                <div class="form-group" id="sigNameGroup">
+                <div class="form-group">
                   <label for="sigName">Field Name</label>
                   <input type="text" id="sigName" placeholder="e.g. Signature1" required>
-                </div>
-
-                <div class="form-group" id="stampKindGroup" hidden>
-                  <label>Stamp Type</label>
-                  <div class="field-type-tabs" id="stampKindTabs" role="tablist" aria-label="Stamp type">
-                    <button type="button" class="field-type-tab active" id="stampKindTabText" data-stamp-kind="text" role="tab" aria-selected="true">Text</button>
-                    <button type="button" class="field-type-tab" id="stampKindTabImage" data-stamp-kind="image" role="tab" aria-selected="false">Image</button>
-                  </div>
-                </div>
-
-                <div class="form-group" id="stampTextOptions" hidden>
-                  <label for="stampPreset">Preset</label>
-                  <div class="select-field">
-                    <select id="stampPreset">
-                      <option value="">Custom…</option>
-                      <option value="APPROVED">APPROVED</option>
-                      <option value="REJECTED">REJECTED</option>
-                      <option value="DRAFT">DRAFT</option>
-                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
-                      <option value="PAID">PAID</option>
-                    </select>
-                    <span class="icon icon-chevron-down select-field-arrow" aria-hidden="true"></span>
-                  </div>
-                  <label for="stampText">Text</label>
-                  <input type="text" id="stampText" maxlength="64" placeholder="e.g. APPROVED">
-                  <label>Color</label>
-                  <div class="stamp-color-swatches" id="stampColorSwatches" role="radiogroup" aria-label="Stamp color">
-                    <button type="button" class="stamp-color-swatch active" data-color="#cc0000" style="background:#cc0000" role="radio" aria-checked="true" aria-label="Red"></button>
-                    <button type="button" class="stamp-color-swatch" data-color="#1a7f37" style="background:#1a7f37" role="radio" aria-checked="false" aria-label="Green"></button>
-                    <button type="button" class="stamp-color-swatch" data-color="#0969da" style="background:#0969da" role="radio" aria-checked="false" aria-label="Blue"></button>
-                    <button type="button" class="stamp-color-swatch" data-color="#9a6700" style="background:#9a6700" role="radio" aria-checked="false" aria-label="Amber"></button>
-                    <button type="button" class="stamp-color-swatch" data-color="#24292f" style="background:#24292f" role="radio" aria-checked="false" aria-label="Black"></button>
-                  </div>
-                  <div class="stamp-preview" id="stampTextPreview"></div>
-                </div>
-
-                <div class="form-group" id="stampImageOptions" hidden>
-                  <label for="stampImageInput">Image (PNG or JPEG, up to 2MB)</label>
-                  <input type="file" id="stampImageInput" accept="image/png,image/jpeg">
-                  <div class="stamp-preview" id="stampImagePreview"></div>
                 </div>
 
                 <div class="form-row">
@@ -787,8 +746,8 @@
                   <div><label for="sigHeight">Height</label><input type="number" id="sigHeight" value="60" min="10" step="0.1"></div>
                 </div>
 
-                <div class="checkbox-group-row" id="sigCheckboxRow">
-                  <label class="checkbox-group checkbox-group-block" for="sigRequired" id="sigRequiredGroup">
+                <div class="checkbox-group-row">
+                  <label class="checkbox-group checkbox-group-block" for="sigRequired">
                     <div class="checkbox-group-main">
                       <input type="checkbox" id="sigRequired">
                       <span>Required Field</span>
@@ -1028,27 +987,9 @@
           </div>
           <form id="editFieldForm">
             <input type="hidden" id="editOriginalName">
-            <div class="form-group" id="editNameGroup">
+            <div class="form-group">
               <label for="editName">Field Name</label>
               <input type="text" id="editName" required>
-            </div>
-
-            <div class="form-group" id="editStampTextGroup" hidden>
-              <label for="editStampText">Text</label>
-              <input type="text" id="editStampText" maxlength="64">
-              <label>Color</label>
-              <div class="stamp-color-swatches" id="editStampColorSwatches" role="radiogroup" aria-label="Stamp color">
-                <button type="button" class="stamp-color-swatch" data-color="#cc0000" style="background:#cc0000" role="radio" aria-label="Red"></button>
-                <button type="button" class="stamp-color-swatch" data-color="#1a7f37" style="background:#1a7f37" role="radio" aria-label="Green"></button>
-                <button type="button" class="stamp-color-swatch" data-color="#0969da" style="background:#0969da" role="radio" aria-label="Blue"></button>
-                <button type="button" class="stamp-color-swatch" data-color="#9a6700" style="background:#9a6700" role="radio" aria-label="Amber"></button>
-                <button type="button" class="stamp-color-swatch" data-color="#24292f" style="background:#24292f" role="radio" aria-label="Black"></button>
-              </div>
-            </div>
-
-            <div class="form-group" id="editStampImageGroup" hidden>
-              <label>Image</label>
-              <div class="stamp-preview" id="editStampImagePreview"></div>
             </div>
 
             <div class="field-geometry">
@@ -1064,18 +1005,8 @@
               <p class="field-geometry-note" id="fieldGeometryNote">Dragging the field on the document edits these too.</p>
             </div>
 
-            <div class="form-group" id="editStampOpacityGroup" hidden>
-              <label for="editStampOpacity">Opacity</label>
-              <input type="range" id="editStampOpacity" min="0.1" max="1" step="0.05">
-            </div>
-
-            <div class="form-group" id="editStampNoteGroup" hidden>
-              <label for="editStampNote">Note (/Contents)</label>
-              <input type="text" id="editStampNote" maxlength="500">
-            </div>
-
-            <div class="checkbox-group-row" id="editCheckboxRow">
-              <label class="checkbox-group checkbox-group-block" for="editRequired" id="editRequiredGroup">
+            <div class="checkbox-group-row">
+              <label class="checkbox-group checkbox-group-block" for="editRequired">
                 <div class="checkbox-group-main">
                   <input type="checkbox" id="editRequired">
                   <span>Required Field</span>
@@ -1097,7 +1028,7 @@
           </form>
         </div>
         <div class="edit-sheet-footer">
-          <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" disabled><span class="icon icon-close" aria-hidden="true"></span> <span id="btnRemoveFieldLabel">Remove field</span></button>
+          <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" disabled><span class="icon icon-close" aria-hidden="true"></span> Remove field</button>
         </div>
       </aside>
 
@@ -1425,17 +1356,6 @@
     // the user clicks "Apply changes". Kept in sync with documentFields everywhere
     // the latter is set from server truth (or restored on rollback).
     let fieldsBaseline = [];
-    // Stamp annotations, parallel to documentFields/fieldsBaseline above but
-    // keyed by `id` (a stamp's /NM, or -- for one staged locally and not yet
-    // applied -- a client-only `__localId`) rather than by name, since a
-    // stamp has no /T to be addressed by. See cloneStamps()/computeStampOps().
-    let documentStamps = [];
-    let stampsBaseline = [];
-    let nextStampLocalId = 1;
-    // Blobs for image stamps staged locally (added this session, not yet
-    // applied) -- keyed by the owning stamp's __localId, resolved to a
-    // `stampImages` FormData part at Apply time (see applyPendingFieldChanges()).
-    const pendingStampImageBlobs = new Map();
     // Undo/redo stacks of `documentFields` snapshots for the currently open
     // document. Each entry is the full field list as it was right before a
     // staged add/move/resize/rename/toggle/remove -- reset whenever a new
@@ -1529,46 +1449,7 @@
         placeLabel: 'Place on Document',
         placementHintIdle: 'Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.',
       },
-      stamp: {
-        label: 'Stamp',
-        panelTitle: 'Add New Stamp',
-        namePlaceholder: '',
-        defaultWidth: 160,
-        defaultHeight: 50,
-        icon: 'icon-stamp',
-        placeLabel: 'Place on Document',
-        placementHintIdle: 'Set up the stamp above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.',
-      },
     };
-
-    let stampKind = 'text'; // 'text' | 'image' -- which sub-form of the Stamp tab is showing
-    let stampColor = '#cc0000';
-    let stampImageBlob = null; // the file picked in stampImageInput, staged until placement
-    let stampImageDataUrl = null; // data: URL of the same file, used for the overlay preview
-
-    function updateStampTextPreview() {
-      const preview = document.getElementById('stampTextPreview');
-      if (!preview) return;
-      const text = document.getElementById('stampText').value.trim() || 'APPROVED';
-      preview.textContent = text;
-      preview.style.color = stampColor;
-      preview.style.borderColor = stampColor;
-    }
-
-    function setStampKind(kind) {
-      stampKind = kind === 'image' ? 'image' : 'text';
-      document.querySelectorAll('#stampKindTabs .field-type-tab').forEach((tab) => {
-        const isActive = tab.dataset.stampKind === stampKind;
-        tab.classList.toggle('active', isActive);
-        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      });
-      const textOptions = document.getElementById('stampTextOptions');
-      const imageOptions = document.getElementById('stampImageOptions');
-      if (textOptions) textOptions.hidden = stampKind !== 'text';
-      if (imageOptions) imageOptions.hidden = stampKind !== 'image';
-      if (stampKind === 'text') updateStampTextPreview();
-      updateViewerControlsState();
-    }
 
     function setAddFieldType(type) {
       if (!FIELD_TYPE_CONFIG[type] || isPlacing) return;
@@ -1604,25 +1485,6 @@
         if (multilineInput) multilineInput.checked = false;
       }
 
-      // A stamp has no /T -- no name, no Required flag -- but reuses the same
-      // width/height inputs and placement flow as a field.
-      const isStamp = type === 'stamp';
-      const nameGroup = document.getElementById('sigNameGroup');
-      if (nameGroup) nameGroup.hidden = isStamp;
-      if (nameInput) nameInput.required = !isStamp;
-      const requiredGroup = document.getElementById('sigRequiredGroup');
-      if (requiredGroup) requiredGroup.hidden = isStamp;
-      const stampKindGroup = document.getElementById('stampKindGroup');
-      if (stampKindGroup) stampKindGroup.hidden = !isStamp;
-      if (isStamp) {
-        setStampKind(stampKind);
-      } else {
-        const textOptions = document.getElementById('stampTextOptions');
-        const imageOptions = document.getElementById('stampImageOptions');
-        if (textOptions) textOptions.hidden = true;
-        if (imageOptions) imageOptions.hidden = true;
-      }
-
       setPlacementHint(config.placementHintIdle, 'idle');
     }
 
@@ -1646,10 +1508,6 @@
     // Currently selected existing field (for the Edit panel + drag/resize)
     let activeField = null;
     let activeFieldDiv = null;
-    // Same idea, for a selected stamp -- mutually exclusive with activeField
-    // (selecting one deselects the other; both share #editSheet).
-    let activeStamp = null;
-    let activeStampDiv = null;
 
     // ---------------------------------------------------------------
     // Local revision store (IndexedDB)
@@ -2715,13 +2573,11 @@
         fileNameEl.classList.toggle('is-visible', Boolean(displayName));
       }
 
-      const hasSelectedField = hasDocument && Boolean(activeField || activeStamp);
+      const hasSelectedField = hasDocument && Boolean(activeField);
       // A signed field is shown read-only: its name, /Rect and flags all live
       // inside the byte range its signature covers, so offering the edit and
       // then breaking the signature would be worse than not offering it.
-      // A locked stamp (F bit 128) gets the same read-only treatment.
-      const selectedFieldIsSigned = hasSelectedField
-        && ((activeField && activeField.signed === true) || (activeStamp && activeStamp.locked === true));
+      const selectedFieldIsSigned = hasSelectedField && activeField.signed === true;
       // The sheet's own header/close button is deliberately outside this loop --
       // it has to stay clickable while the sheet animates out.
       if (editForm) {
@@ -2730,7 +2586,7 @@
         });
       }
       // Safety net: a reload or snapshot restore can drop the selection without
-      // going through deselectActiveField()/deselectActiveStamp().
+      // going through deselectActiveField().
       if (!hasSelectedField) closeEditSheet();
 
       if (addSigForm) {
@@ -2749,14 +2605,9 @@
         tab.disabled = !hasDocument;
       });
 
-      if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !hasSelectedField || selectedFieldIsSigned;
+      if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !activeField || activeField.signed === true;
       const sigNameFilled = Boolean(document.getElementById('sigName').value.trim());
-      const stampReady = addFieldType === 'stamp'
-        ? (stampKind === 'image' ? Boolean(stampImageBlob) : Boolean(document.getElementById('stampText').value.trim()))
-        : true;
-      if (placeFieldBtn) {
-        placeFieldBtn.disabled = !hasDocument || (addFieldType === 'stamp' ? !stampReady : !sigNameFilled);
-      }
+      if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument || !sigNameFilled;
 
       const docInfoPanelOverlay = document.getElementById('docInfoPanelOverlay');
       const metaSearchInput = document.getElementById('metaSearchInput');
@@ -2948,12 +2799,6 @@
         documentFields = transferredFields;
         documentFields.forEach((f) => { f.__baselineName = f.name; });
         fieldsBaseline = cloneFields(documentFields);
-        // A file received over the P2P share link carries no stamp data of
-        // its own -- the sharing protocol only transfers field definitions --
-        // so a shared document's stamps aren't editable client-side until
-        // it's re-opened through a normal upload.
-        documentStamps = [];
-        stampsBaseline = [];
         updatePendingChangesUi();
       }
 
@@ -3000,8 +2845,6 @@
           documentFields = data.fields || [];
           documentFields.forEach((f) => { f.__baselineName = f.name; });
           fieldsBaseline = cloneFields(documentFields);
-          documentStamps = (data.stamps || []).map((s) => ({ ...s, __baselineId: s.id }));
-          stampsBaseline = cloneStamps(documentStamps);
           updatePendingChangesUi();
         }
         setDocumentLoadingProgress(50);
@@ -3125,9 +2968,6 @@
           pdfDoc = null;
           documentFields = [];
           fieldsBaseline = [];
-          documentStamps = [];
-          stampsBaseline = [];
-          pendingStampImageBlobs.clear();
           resetFieldHistory();
           updatePendingChangesUi();
           documentMeta = null;
@@ -3462,177 +3302,6 @@
       });
 
       if (invisibleFieldPins.length) layoutInvisibleFieldPins(invisibleFieldPins);
-      drawStampOverlays(viewport);
-    }
-
-    // Renders (or re-renders) a stamp's own preview inside its overlay div.
-    // A stamp already saved on the server is normally drawn by pdf.js's own
-    // annotation layer straight onto the canvas -- this overlay only needs
-    // to add the interactive chrome (move/resize/delete) on top of that. A
-    // stamp staged this session (not yet applied) has nothing on the canvas
-    // yet, so its overlay renders the only visible copy of it: a live preview
-    // matching what addTextStamp()/addImageStamp() will actually produce.
-    //
-    // KNOWN LIMITATION: moving or removing an *existing* (already-applied)
-    // stamp still leaves its old rendering visible on the canvas underneath
-    // until the next Apply reloads the real file -- the vendored pdf.js
-    // (3.11.174) has no way to selectively hide one annotation's appearance
-    // without re-rendering the page with every annotation disabled, which
-    // this build does not attempt. The moved/removed stamp's overlay itself
-    // reflects the pending change correctly; only the stale pixels underneath
-    // it don't disappear until Apply.
-    function renderStampOverlayPreview(div, stamp) {
-      const preview = div.querySelector('.stamp-overlay-preview');
-      if (!preview) return;
-      preview.replaceChildren();
-      if (stamp.kind === 'image') {
-        if (stamp.imageDataUrl) {
-          const img = document.createElement('img');
-          img.src = stamp.imageDataUrl;
-          preview.appendChild(img);
-        }
-        // An existing image stamp with no local data URL renders via pdf.js
-        // itself -- nothing to draw here, the overlay is chrome-only.
-      } else if (stamp.text) {
-        preview.textContent = stamp.text;
-        preview.style.color = stamp.color || '#cc0000';
-        preview.style.borderColor = stamp.color || '#cc0000';
-      }
-      div.style.opacity = String(stamp.opacity ?? 1);
-    }
-
-    function drawStampOverlays(viewport) {
-      overlayLayer.querySelectorAll('.field-overlay.is-stamp').forEach((el) => el.remove());
-      activeStampDiv = null;
-      const stampsOnThisPage = documentStamps.filter((s) => s.page === (pageNum - 1));
-
-      stampsOnThisPage.forEach((stamp) => {
-        if (!stamp.rect) return;
-
-        const div = document.createElement('div');
-        div.className = `field-overlay is-stamp${isStampStaged(stamp) ? ' is-staged' : ''}${stamp.locked ? ' is-signed' : ''}`;
-        div.title = `${stampDisplayLabel(stamp)}${stamp.locked ? ' — locked, cannot be moved or removed' : ''}`;
-        applyRectToOverlay(div, stamp.rect);
-
-        // Unlike a field's icon-only body, a stamp's preview is the actual
-        // content (its text or image) -- see renderStampOverlayPreview().
-        const preview = document.createElement('div');
-        preview.className = 'stamp-overlay-preview';
-        div.appendChild(preview);
-
-        const isLocked = stamp.locked === true;
-        let handle = null;
-        if (!isLocked) {
-          handle = document.createElement('div');
-          handle.className = 'resize-handle';
-          div.appendChild(handle);
-        }
-
-        if (stamp.createdByPdfSeal !== false && !isLocked) {
-          const templateGrip = document.createElement('div');
-          templateGrip.className = 'template-save-handle';
-          templateGrip.draggable = true;
-          templateGrip.title = `Drag "${stampDisplayLabel(stamp)}" into Signature Templates to save it`;
-          templateGrip.innerHTML = ICONS.layers;
-          templateGrip.addEventListener('mousedown', (e) => e.stopPropagation());
-          templateGrip.addEventListener('dragstart', (e) => beginDocumentStampDrag(stamp, e));
-          templateGrip.addEventListener('dragend', endDocumentFieldDrag);
-          div.appendChild(templateGrip);
-        }
-
-        const deleteHandle = document.createElement('button');
-        deleteHandle.type = 'button';
-        deleteHandle.className = 'field-delete-handle';
-        deleteHandle.title = `Remove "${stampDisplayLabel(stamp)}"`;
-        deleteHandle.setAttribute('aria-label', 'Remove stamp');
-        deleteHandle.innerHTML = ICONS.x;
-        if (isLocked) deleteHandle.hidden = true;
-        deleteHandle.addEventListener('mousedown', (e) => e.stopPropagation());
-        deleteHandle.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (!activeFile) return;
-          selectStampOverlay(div, stamp);
-          openRemoveStampModal(stamp);
-        });
-        div.appendChild(deleteHandle);
-
-        div.addEventListener('mousedown', (e) => {
-          if (document.body.dataset.activeSection !== 'signatures') return;
-          if (handle && e.target === handle) return;
-          if (isPanning) return;
-          e.preventDefault();
-          const wasActive = activeStamp === stamp;
-          selectStampOverlay(div, stamp);
-          if (isLocked) return;
-
-          const startX = e.clientX, startY = e.clientY;
-          const startLeft = parseFloat(div.style.left);
-          const startTop = parseFloat(div.style.top);
-          let moved = false;
-
-          function onMove(ev) {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
-            let newLeft = startLeft + dx;
-            let newTop = startTop + dy;
-            newLeft = Math.max(0, Math.min(newLeft, canvas.width - div.offsetWidth));
-            newTop = Math.max(0, Math.min(newTop, canvas.height - div.offsetHeight));
-            div.style.left = `${newLeft}px`;
-            div.style.top = `${newTop}px`;
-          }
-          function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            if (moved) {
-              commitOverlayToStamp(div, stamp);
-            } else if (wasActive) {
-              deselectActiveStamp();
-            }
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
-
-        handle?.addEventListener('mousedown', (e) => {
-          if (isPanning) return;
-          e.preventDefault();
-          e.stopPropagation();
-          selectStampOverlay(div, stamp);
-
-          const startX = e.clientX, startY = e.clientY;
-          const startWidth = parseFloat(div.style.width);
-          const startHeight = parseFloat(div.style.height);
-          const left = parseFloat(div.style.left);
-          const top = parseFloat(div.style.top);
-
-          function onMove(ev) {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            let newWidth = Math.max(20, startWidth + dx);
-            let newHeight = Math.max(20, startHeight + dy);
-            newWidth = Math.min(newWidth, canvas.width - left);
-            newHeight = Math.min(newHeight, canvas.height - top);
-            div.style.width = `${newWidth}px`;
-            div.style.height = `${newHeight}px`;
-          }
-          function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            commitOverlayToStamp(div, stamp);
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
-
-        renderStampOverlayPreview(div, stamp);
-
-        if (activeStamp === stamp) {
-          div.classList.add('active');
-          activeStampDiv = div;
-        }
-        overlayLayer.appendChild(div);
-      });
     }
 
     // Invisible-field pins are fixed-size, so a field parked hard against a
@@ -3772,7 +3441,6 @@
     });
 
     function selectFieldOverlay(div, field) {
-      deselectActiveStamp();
       overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
         el.classList.remove('active');
         const label = el.querySelector('.field-label');
@@ -3791,46 +3459,10 @@
       updateViewerControlsState();
     }
 
-    // A short, human label for a stamp: its own text, its /Name, or a
-    // generic fallback by kind -- used in the remove-confirmation modal, the
-    // template drag grip's title, and the overlay's hover tooltip.
-    function stampDisplayLabel(stamp) {
-      if (stamp.text) return stamp.text;
-      if (stamp.name) return stamp.name;
-      return stamp.kind === 'image' ? 'Image Stamp' : 'Stamp';
-    }
-
-    function selectStampOverlay(div, stamp) {
-      deselectActiveField();
-      overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
-        el.classList.remove('active');
-        const label = el.querySelector('.field-label');
-        if (label) label.style.display = 'none';
-      });
-      div.classList.add('active');
-      activeStamp = stamp;
-      activeStampDiv = div;
-      populateStampEditPanel(stamp);
-      openEditSheet(stamp);
-      updateViewerControlsState();
-    }
-
-    // Clears the current stamp selection. Mirrors deselectActiveField();
-    // called from it (and vice versa) so selecting one always clears the other.
-    function deselectActiveStamp() {
-      if (!activeStamp) return;
-      closeEditSheet();
-      if (activeStampDiv) activeStampDiv.classList.remove('active');
-      activeStamp = null;
-      activeStampDiv = null;
-      updateViewerControlsState();
-    }
-
     // Clears the current selection (a second click on the already-selected
     // field, or navigating away from the Signatures section) and resets the
     // Edit panel back to its empty state.
     function deselectActiveField() {
-      deselectActiveStamp();
       closeEditSheet();
       if (activeFieldDiv) {
         activeFieldDiv.classList.remove('active');
@@ -3868,17 +3500,6 @@
     }
 
     function populateEditPanel(field) {
-      document.getElementById('editSheetTitle').textContent = 'Edit field';
-      document.getElementById('btnRemoveFieldLabel').textContent = 'Remove field';
-      document.getElementById('editNameGroup').hidden = false;
-      document.getElementById('editCheckboxRow').hidden = false;
-      document.getElementById('editRequiredGroup').hidden = false;
-      document.getElementById('editStampTextGroup').hidden = true;
-      document.getElementById('editStampImageGroup').hidden = true;
-      document.getElementById('editStampOpacityGroup').hidden = true;
-      document.getElementById('editStampNoteGroup').hidden = true;
-      document.getElementById('fieldDetailsBlock').hidden = false;
-
       document.getElementById('editOriginalName').value = field.name;
       document.getElementById('editName').value = field.name;
       document.getElementById('editX').value = field.rect.x.toFixed(1);
@@ -3903,77 +3524,6 @@
       renderFieldDetails(field);
     }
 
-    // Mirrors populateEditPanel() for a stamp: no name, no Required/Multiline
-    // (a stamp has neither), and its own text/color, opacity and note groups
-    // instead. There's no raw-PDF-properties dump for a stamp yet, so that
-    // block stays hidden rather than showing an empty one.
-    function populateStampEditPanel(stamp) {
-      document.getElementById('editSheetTitle').textContent = 'Edit stamp';
-      document.getElementById('btnRemoveFieldLabel').textContent = 'Remove stamp';
-      document.getElementById('editNameGroup').hidden = true;
-      document.getElementById('editCheckboxRow').hidden = true;
-      document.getElementById('editRequiredGroup').hidden = true;
-      document.getElementById('editMultilineGroup').hidden = true;
-      document.getElementById('editSignedNotice').hidden = true;
-      document.getElementById('fieldGeometryNote').hidden = true;
-      document.getElementById('fieldDetailsBlock').hidden = true;
-
-      document.getElementById('editX').value = stamp.rect.x.toFixed(1);
-      document.getElementById('editY').value = stamp.rect.y.toFixed(1);
-      document.getElementById('editWidth').value = stamp.rect.width.toFixed(1);
-      document.getElementById('editHeight').value = stamp.rect.height.toFixed(1);
-
-      const isText = stamp.kind === 'text';
-      const canEditText = isText && stamp.createdByPdfSeal !== false;
-      document.getElementById('editStampTextGroup').hidden = !canEditText;
-      document.getElementById('editStampImageGroup').hidden = isText;
-      document.getElementById('editStampOpacityGroup').hidden = false;
-      document.getElementById('editStampNoteGroup').hidden = false;
-
-      if (canEditText) {
-        document.getElementById('editStampText').value = stamp.text || '';
-        syncEditStampColorSwatches();
-      }
-      if (!isText) {
-        const preview = document.getElementById('editStampImagePreview');
-        if (preview) {
-          if (stamp.imageDataUrl) {
-            const img = document.createElement('img');
-            img.src = stamp.imageDataUrl;
-            preview.replaceChildren(img);
-          } else {
-            preview.replaceChildren(document.createTextNode('Rendered on the page above.'));
-          }
-        }
-      }
-      document.getElementById('editStampOpacity').value = stamp.opacity ?? 1;
-      document.getElementById('editStampNote').value = stamp.note || '';
-    }
-
-    // Whether `stamp` differs from its last-applied server state -- mirrors
-    // isFieldStaged() below.
-    function isStampStaged(stamp) {
-      if (!stamp.id) return true; // staged locally, never applied
-      const base = stampsBaseline.find((s) => s.id === stamp.id);
-      if (!base) return true;
-      return !rectsEqual(base.rect, stamp.rect) || base.text !== stamp.text || base.color !== stamp.color
-        || (base.opacity ?? 1) !== (stamp.opacity ?? 1) || (base.note || '') !== (stamp.note || '');
-    }
-
-    // After a drag/resize finishes on a stamp overlay.
-    function commitOverlayToStamp(div, stamp) {
-      const screenLeft = parseFloat(div.style.left);
-      const screenTop = parseFloat(div.style.top);
-      const screenWidth = parseFloat(div.style.width);
-      const screenHeight = parseFloat(div.style.height);
-      pushFieldHistory();
-      stamp.rect = screenRectToPdf(screenLeft, screenTop, screenWidth, screenHeight);
-      populateStampEditPanel(stamp);
-      div.classList.toggle('is-staged', isStampStaged(stamp));
-      renderStampOverlayPreview(div, stamp);
-      updatePendingChangesUi();
-    }
-
     // Typing into the position/size fields moves or resizes the selected overlay live,
     // keeping the numbers and the on-page box always in sync with each other
     const rectInputIds = ['editX', 'editY', 'editWidth', 'editHeight'];
@@ -3988,33 +3538,24 @@
         const goingTo = e.relatedTarget;
         if (goingTo && rectInputIds.includes(goingTo.id)) return; // still editing this field's rect
         if (rectEditHistorySnapshot !== null) {
-          if (JSON.stringify(rectEditHistorySnapshot.documentFields) !== JSON.stringify(documentFields)
-            || JSON.stringify(rectEditHistorySnapshot.documentStamps) !== JSON.stringify(documentStamps)) {
+          if (JSON.stringify(rectEditHistorySnapshot.documentFields) !== JSON.stringify(documentFields)) {
             commitFieldHistorySnapshot(rectEditHistorySnapshot);
           }
           rectEditHistorySnapshot = null;
         }
       });
       el.addEventListener('input', () => {
-        if (!currentViewport) return;
+        if (!activeField || !activeFieldDiv || !currentViewport) return;
         const x = parseFloat(document.getElementById('editX').value);
         const y = parseFloat(document.getElementById('editY').value);
         const width = parseFloat(document.getElementById('editWidth').value);
         const height = parseFloat(document.getElementById('editHeight').value);
         if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return;
 
-        if (activeStamp && activeStampDiv) {
-          activeStamp.rect = { x, y, width, height };
-          applyRectToOverlay(activeStampDiv, activeStamp.rect);
-          activeStampDiv.classList.toggle('is-staged', isStampStaged(activeStamp));
-          renderStampOverlayPreview(activeStampDiv, activeStamp);
-          updatePendingChangesUi();
-        } else if (activeField && activeFieldDiv) {
-          activeField.rect = { x, y, width, height };
-          applyRectToOverlay(activeFieldDiv, activeField.rect);
-          activeFieldDiv.classList.toggle('is-staged', isFieldStaged(activeField));
-          updatePendingChangesUi();
-        }
+        activeField.rect = { x, y, width, height };
+        applyRectToOverlay(activeFieldDiv, activeField.rect);
+        activeFieldDiv.classList.toggle('is-staged', isFieldStaged(activeField));
+        updatePendingChangesUi();
       });
     });
 
@@ -4054,69 +3595,6 @@
       if (!activeField || activeField.type !== 'TextField') return;
       pushFieldHistory();
       activeField.multiline = document.getElementById('editMultiline').checked;
-      updatePendingChangesUi();
-    });
-
-    // A text stamp's text/color, like a field's rename, stage on blur (text)
-    // or immediately (color swatch, opacity, note) -- there's no separate
-    // "Update" step anywhere else in this panel either.
-    document.getElementById('editStampText').addEventListener('blur', () => {
-      if (!activeStamp || activeStamp.kind !== 'text') return;
-      const text = document.getElementById('editStampText').value.trim();
-      if (!text || text === activeStamp.text) {
-        document.getElementById('editStampText').value = activeStamp.text;
-        return;
-      }
-      pushFieldHistory();
-      activeStamp.text = text;
-      activeStamp.name = text;
-      if (activeStampDiv) {
-        activeStampDiv.classList.toggle('is-staged', isStampStaged(activeStamp));
-        renderStampOverlayPreview(activeStampDiv, activeStamp);
-      }
-      updatePendingChangesUi();
-    });
-
-    document.querySelectorAll('#editStampColorSwatches .stamp-color-swatch').forEach((swatch) => {
-      swatch.addEventListener('click', () => {
-        if (!activeStamp || activeStamp.kind !== 'text') return;
-        pushFieldHistory();
-        activeStamp.color = swatch.dataset.color;
-        syncEditStampColorSwatches();
-        if (activeStampDiv) {
-          activeStampDiv.classList.toggle('is-staged', isStampStaged(activeStamp));
-          renderStampOverlayPreview(activeStampDiv, activeStamp);
-        }
-        updatePendingChangesUi();
-      });
-    });
-
-    function syncEditStampColorSwatches() {
-      document.querySelectorAll('#editStampColorSwatches .stamp-color-swatch').forEach((s) => {
-        const isActive = activeStamp && s.dataset.color === activeStamp.color;
-        s.classList.toggle('active', isActive);
-        s.setAttribute('aria-checked', isActive ? 'true' : 'false');
-      });
-    }
-
-    document.getElementById('editStampOpacity').addEventListener('input', () => {
-      if (!activeStamp) return;
-      pushFieldHistory();
-      activeStamp.opacity = parseFloat(document.getElementById('editStampOpacity').value) || 1;
-      if (activeStampDiv) {
-        activeStampDiv.classList.toggle('is-staged', isStampStaged(activeStamp));
-        activeStampDiv.style.opacity = String(activeStamp.opacity);
-      }
-      updatePendingChangesUi();
-    });
-
-    document.getElementById('editStampNote').addEventListener('blur', () => {
-      if (!activeStamp) return;
-      const note = document.getElementById('editStampNote').value.trim();
-      if (note === (activeStamp.note || '')) return;
-      pushFieldHistory();
-      activeStamp.note = note;
-      if (activeStampDiv) activeStampDiv.classList.toggle('is-staged', isStampStaged(activeStamp));
       updatePendingChangesUi();
     });
 
@@ -4257,67 +3735,6 @@
       tab.addEventListener('click', () => setSignatureTab(tab.dataset.sigTab));
     });
 
-    document.querySelectorAll('#stampKindTabs .field-type-tab').forEach((tab) => {
-      tab.addEventListener('click', () => setStampKind(tab.dataset.stampKind));
-    });
-
-    document.getElementById('stampPreset').addEventListener('change', (e) => {
-      if (e.target.value) document.getElementById('stampText').value = e.target.value;
-      updateStampTextPreview();
-      updateViewerControlsState();
-    });
-
-    document.getElementById('stampText').addEventListener('input', () => {
-      updateStampTextPreview();
-      updateViewerControlsState();
-    });
-
-    document.querySelectorAll('#stampColorSwatches .stamp-color-swatch').forEach((swatch) => {
-      swatch.addEventListener('click', () => {
-        stampColor = swatch.dataset.color;
-        document.querySelectorAll('#stampColorSwatches .stamp-color-swatch').forEach((s) => {
-          const isActive = s === swatch;
-          s.classList.toggle('active', isActive);
-          s.setAttribute('aria-checked', isActive ? 'true' : 'false');
-        });
-        updateStampTextPreview();
-      });
-    });
-
-    document.getElementById('stampImageInput').addEventListener('change', async (e) => {
-      const file = e.target.files && e.target.files[0];
-      const preview = document.getElementById('stampImagePreview');
-      if (!file) {
-        stampImageBlob = null;
-        stampImageDataUrl = null;
-        if (preview) preview.replaceChildren();
-        updateViewerControlsState();
-        return;
-      }
-      if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
-        showNotification('Stamp images must be PNG or JPEG.', 'error');
-        e.target.value = '';
-        return;
-      }
-      if (file.size > 2 * 1024 * 1024) {
-        showNotification('Stamp image too large. Maximum size is 2MB.', 'error');
-        e.target.value = '';
-        return;
-      }
-      stampImageBlob = file;
-      stampImageDataUrl = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.readAsDataURL(file);
-      });
-      if (preview) {
-        const img = document.createElement('img');
-        img.src = stampImageDataUrl;
-        preview.replaceChildren(img);
-      }
-      updateViewerControlsState();
-    });
-
     document.getElementById('btnPlaceField').addEventListener('click', () => {
       if (!pdfDoc) return;
       isPlacing = true;
@@ -4371,36 +3788,6 @@
     function commitPendingFieldToDocument() {
       if (!pendingField) return false;
 
-      if (addFieldType === 'stamp') {
-        const rect = { x: pendingField.x, y: pendingField.y, width: pendingField.width, height: pendingField.height };
-        if (stampKind === 'image') {
-          if (!stampImageBlob) {
-            showNotification('Choose a PNG or JPEG image for the stamp.', 'error');
-            return false;
-          }
-          stageNewStamp({ kind: 'image', page: pendingFieldPage, rect, imageBlob: stampImageBlob, imageDataUrl: stampImageDataUrl });
-        } else {
-          const text = document.getElementById('stampText').value.trim();
-          if (!text) {
-            showNotification('Enter the stamp text.', 'error');
-            return false;
-          }
-          stageNewStamp({ kind: 'text', page: pendingFieldPage, rect, text, color: stampColor });
-        }
-        const config = FIELD_TYPE_CONFIG.stamp;
-        clearPendingField();
-        document.getElementById('addSigForm').reset();
-        stampImageBlob = null;
-        stampImageDataUrl = null;
-        const imagePreview = document.getElementById('stampImagePreview');
-        if (imagePreview) imagePreview.replaceChildren();
-        setAddFieldType('stamp');
-        document.getElementById('sigWidth').value = config.defaultWidth;
-        document.getElementById('sigHeight').value = config.defaultHeight;
-        showNotification('Stamp staged — click Apply changes to save it.', 'info');
-        return true;
-      }
-
       const name = document.getElementById('sigName').value.trim();
       if (!name) {
         showNotification('Enter a field name.', 'error');
@@ -4427,36 +3814,6 @@
       document.getElementById('sigHeight').value = config.defaultHeight;
       showNotification(`"${name}" staged — click Apply changes to save it.`, 'info');
       return true;
-    }
-
-    // Pushes one already-resolved stamp into `documentStamps` as a staged
-    // (id-less) change, mirroring stageNewField() above. An image stamp's
-    // Blob is kept client-side in pendingStampImageBlobs, keyed by the
-    // stamp's own __localId, and only reaches the server at Apply time.
-    function stageNewStamp({ kind, page, rect, text, color, imageBlob, imageDataUrl }, options = {}) {
-      const { history = true, redraw = true } = options;
-      if (history) pushFieldHistory();
-      const localId = `local_${nextStampLocalId++}`;
-      if (kind === 'image' && imageBlob) pendingStampImageBlobs.set(localId, imageBlob);
-      documentStamps.push({
-        id: null,
-        __localId: localId,
-        kind,
-        page,
-        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-        text: kind === 'text' ? text : undefined,
-        color: kind === 'text' ? color : undefined,
-        opacity: 1,
-        note: '',
-        name: kind === 'text' ? text : 'Image Stamp',
-        locked: false,
-        createdByPdfSeal: true,
-        imageDataUrl: kind === 'image' ? imageDataUrl : undefined,
-      });
-      if (redraw) {
-        if (currentViewport) drawFieldOverlays(currentViewport);
-        updatePendingChangesUi();
-      }
     }
 
     // Pushes one already-resolved field into `documentFields` as a staged
@@ -4517,22 +3874,13 @@
     // space as `field.rect`), and `page` is 0-indexed like `field.page`.
 
     const TEMPLATES_STORAGE_KEY = 'pdfseal-signature-templates';
-    // v2 added the 'stamp' item type (stampKind/text/color/imageDataUrl) --
-    // purely additive, so a v1 store still normalizes identically.
-    const TEMPLATE_STORE_VERSION = 2;
+    const TEMPLATE_STORE_VERSION = 1;
 
     const TEMPLATE_DEFAULT_SIZE = {
       signature: { width: 200, height: 60 },
       text: { width: 200, height: 30 },
-      stamp: { width: 160, height: 50 },
     };
     const TEMPLATE_MIN_DIMENSION = 1;
-
-    // Keeps a stamp template item's embedded image small enough that a
-    // handful of them don't threaten localStorage's ~5MB-per-origin budget.
-    const TEMPLATE_MAX_STAMP_IMAGE_DECODED_BYTES = 500 * 1024;
-    const TEMPLATE_STAMP_IMAGE_DATA_URL_PATTERN = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/;
-    const TEMPLATE_STAMP_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
     function templateToFiniteNumber(value, fallback) {
       const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
@@ -4543,39 +3891,19 @@
       return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
     }
 
-    // Validates both the data URL's shape (PNG/JPEG only, matching what
-    // PdfSignatureTool.addImageStamp() accepts) and its decoded size, without
-    // actually decoding it -- base64 encodes 3 bytes per 4 characters, so the
-    // decoded length is derivable from the string length and padding alone.
-    function isValidStampImageDataUrl(value) {
-      if (typeof value !== 'string') return false;
-      const match = TEMPLATE_STAMP_IMAGE_DATA_URL_PATTERN.exec(value.trim());
-      if (!match) return false;
-      const base64 = match[2];
-      const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-      const decodedBytes = (base64.length / 4) * 3 - padding;
-      return decodedBytes > 0 && decodedBytes <= TEMPLATE_MAX_STAMP_IMAGE_DECODED_BYTES;
-    }
-
-    function normalizeTemplateItemType(value) {
-      if (value === 'text') return 'text';
-      if (value === 'stamp') return 'stamp';
-      return 'signature';
-    }
-
     function normalizeTemplateItem(raw, seenIds) {
       if (!raw || typeof raw !== 'object') return null;
       const name = typeof raw.name === 'string' ? raw.name.trim() : '';
       if (!name) return null; // an unnamed field can't be added to a PDF at all
 
-      const type = normalizeTemplateItemType(raw.type);
+      const type = raw.type === 'text' ? 'text' : 'signature';
       const defaults = TEMPLATE_DEFAULT_SIZE[type];
 
       let id = typeof raw.id === 'string' && raw.id ? raw.id : makeTemplateId('itm');
       if (seenIds.has(id)) id = makeTemplateId('itm');
       seenIds.add(id);
 
-      const base = {
+      return {
         id,
         name,
         type,
@@ -4587,25 +3915,6 @@
         required: raw.required === true,
         multiline: type === 'text' && raw.multiline === true,
       };
-
-      if (type !== 'stamp') return base;
-
-      // A stamp item with neither usable image data nor text is inert -- it
-      // would place nothing -- so it's dropped rather than kept broken.
-      const stampKind = raw.stampKind === 'image' ? 'image' : 'text';
-      base.stampKind = stampKind;
-      if (stampKind === 'image') {
-        if (!isValidStampImageDataUrl(raw.imageDataUrl)) return null;
-        base.imageDataUrl = raw.imageDataUrl;
-      } else {
-        const text = typeof raw.text === 'string' ? raw.text.trim() : '';
-        if (!text) return null;
-        base.text = text;
-        if (typeof raw.color === 'string' && TEMPLATE_STAMP_COLOR_PATTERN.test(raw.color.trim())) {
-          base.color = raw.color.trim().toLowerCase();
-        }
-      }
-      return base;
     }
 
     // Repairs whatever came back out of localStorage into a store the panel can
@@ -4664,53 +3973,6 @@
       };
     }
 
-    // Turns a stamp already placed on the document into a template item,
-    // mirroring templateItemFromField() above. Unlike a signature/text
-    // field, a stamp has no /T to fall back on for a name -- a text stamp is
-    // named after its own text, an image stamp after its /Name or a generic
-    // fallback. `stamp.imageDataUrl` is supplied by the caller (the panel
-    // reads the placed image's bytes into a data URL client-side, since the
-    // server's stamp info carries no image bytes of its own).
-    function templateItemFromStamp(stamp, id) {
-      const rect = stamp.rect || {};
-      const defaults = TEMPLATE_DEFAULT_SIZE.stamp;
-      const width = Math.max(TEMPLATE_MIN_DIMENSION, roundTemplatePoint(templateToFiniteNumber(rect.width, defaults.width)));
-      const height = Math.max(TEMPLATE_MIN_DIMENSION, roundTemplatePoint(templateToFiniteNumber(rect.height, defaults.height)));
-      const page = Math.max(0, Math.round(templateToFiniteNumber(stamp.page, 0)));
-      const x = roundTemplatePoint(rect.x);
-      const y = roundTemplatePoint(rect.y);
-
-      if (stamp.kind === 'image') {
-        if (!isValidStampImageDataUrl(stamp.imageDataUrl)) {
-          throw new Error('This stamp has no usable image data to save as a template.');
-        }
-        return {
-          id,
-          name: (typeof stamp.name === 'string' && stamp.name.trim()) || 'Image Stamp',
-          type: 'stamp',
-          stampKind: 'image',
-          width, height, x, y, page,
-          required: false,
-          multiline: false,
-          imageDataUrl: stamp.imageDataUrl,
-        };
-      }
-
-      const text = typeof stamp.text === 'string' ? stamp.text.trim() : '';
-      if (!text) throw new Error('This stamp has no text to save as a template.');
-      return {
-        id,
-        name: text,
-        type: 'stamp',
-        stampKind: 'text',
-        width, height, x, y, page,
-        required: false,
-        multiline: false,
-        text,
-        color: typeof stamp.color === 'string' ? stamp.color : undefined,
-      };
-    }
-
     // Appends `item`, or replaces the existing entry of the same name in
     // place. Dragging the same field in twice means "update what I saved",
     // not "keep two copies" -- and two same-named items in one template would
@@ -4764,24 +4026,6 @@
         // and the server would reject the add outright.
         if (!Number.isFinite(pageCount) || item.page < 0 || item.page >= pageCount) {
           skipped.push({ name: item.name, page: item.page, reason: 'page-missing' });
-          continue;
-        }
-
-        // Stamps aren't AcroForm fields -- they have no /T, so there's no
-        // name collision to avoid and nothing to reserve in `claimed`.
-        if (item.type === 'stamp') {
-          placements.push({
-            name: item.name,
-            type: 'stamp',
-            required: false,
-            multiline: false,
-            page: item.page,
-            rect: { x: item.x, y: item.y, width: item.width, height: item.height },
-            stampKind: item.stampKind,
-            text: item.text,
-            color: item.color,
-            imageDataUrl: item.imageDataUrl,
-          });
           continue;
         }
 
@@ -5219,13 +4463,9 @@
     // dataTransfer's payload is unreadable during dragover, which is where the
     // drop target has to decide whether to accept.
     let draggingDocumentField = null;
-    // Same idea, for a stamp -- kept separate since saving one to a template
-    // goes through templateItemFromStamp() instead of templateItemFromField().
-    let draggingDocumentStamp = null;
-    // A field/stamp dropped before any template existed: held while the
-    // new-template modal asks for a name, then saved into whatever that creates.
+    // A field dropped before any template existed: held while the new-template
+    // modal asks for a name, then saved into whatever that creates.
     let pendingTemplateCaptureField = null;
-    let pendingTemplateCaptureStamp = null;
 
     function beginDocumentFieldDrag(field, e) {
       draggingDocumentField = field;
@@ -5241,19 +4481,8 @@
       e.dataTransfer.setData('text/plain', field.name);
     }
 
-    function beginDocumentStampDrag(stamp, e) {
-      draggingDocumentStamp = stamp;
-      document.body.classList.add('is-capturing-field');
-      setSignatureTab('templates');
-      editSheet?.classList.add('is-suppressed');
-      e.dataTransfer.effectAllowed = 'copy';
-      e.dataTransfer.setData(DOCUMENT_FIELD_DRAG_MIME, stamp.id || stamp.__localId || '');
-      e.dataTransfer.setData('text/plain', stampDisplayLabel(stamp));
-    }
-
     function endDocumentFieldDrag() {
       draggingDocumentField = null;
-      draggingDocumentStamp = null;
       document.body.classList.remove('is-capturing-field');
       editSheet?.classList.remove('is-suppressed');
       templateDropzone?.classList.remove('is-drop-target');
@@ -5292,65 +4521,35 @@
       if (activeField === field) deselectActiveField();
     }
 
-    // Mirrors saveFieldToTemplate() for a stamp.
-    function saveStampToTemplate(stamp, templateId) {
-      const template = templateStore.templates.find((t) => t.id === templateId);
-      if (!template || !stamp) return;
-
-      let item;
-      try {
-        item = templateItemFromStamp(stamp, makeTemplateId('itm'));
-      } catch (err) {
-        showNotification(err?.message || 'This stamp cannot be saved as a template.', 'error');
-        return;
-      }
-
-      const { items, replaced } = upsertTemplateItem(template.items, item);
-      saveTemplateStore({
-        ...templateStore,
-        templates: templateStore.templates.map((t) => (
-          t.id === templateId ? { ...t, items, updatedAt: Date.now() } : t
-        )),
-      });
-      showNotification(
-        replaced ? `Updated "${item.name}" in "${template.name}".` : `Saved "${item.name}" to "${template.name}".`,
-        'success',
-      );
-      if (activeStamp === stamp) deselectActiveStamp();
-    }
-
     const templateDropzone = document.getElementById('templateDropzone');
 
     templateDropzone.addEventListener('dragover', (e) => {
-      if (!draggingDocumentField && !draggingDocumentStamp) return;
+      if (!draggingDocumentField) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       templateDropzone.classList.add('is-drop-target');
     });
 
     templateDropzone.addEventListener('dragleave', (e) => {
-      if (!draggingDocumentField && !draggingDocumentStamp) return;
+      if (!draggingDocumentField) return;
       if (e.relatedTarget && templateDropzone.contains(e.relatedTarget)) return;
       templateDropzone.classList.remove('is-drop-target');
     });
 
     templateDropzone.addEventListener('drop', (e) => {
-      if (!draggingDocumentField && !draggingDocumentStamp) return;
+      if (!draggingDocumentField) return;
       e.preventDefault();
       const field = draggingDocumentField;
-      const stamp = draggingDocumentStamp;
       endDocumentFieldDrag();
 
       if (!getSelectedTemplate()) {
-        // Nothing to drop into yet -- ask for a name and let the item land in
+        // Nothing to drop into yet -- ask for a name and let the field land in
         // the template that creates.
         pendingTemplateCaptureField = field;
-        pendingTemplateCaptureStamp = stamp;
         openTemplateNameModal(null);
         return;
       }
-      if (stamp) saveStampToTemplate(stamp, selectedTemplateId);
-      else saveFieldToTemplate(field, selectedTemplateId);
+      saveFieldToTemplate(field, selectedTemplateId);
     });
 
     // --- Manual placement: drag an item from the panel onto the page ---
@@ -5398,18 +4597,6 @@
     // page and x/y are deliberately ignored here -- those exist for automatic
     // placing; a dragged field belongs where the user dropped it. Only its
     // name, type, size, required and multiline flags come from the template.
-    // Decodes a `data:image/...;base64,...` URL (a template item's staged
-    // image) back into a Blob, for pendingStampImageBlobs -- the form/Apply
-    // path only ever deals in Blobs, never data URLs.
-    function dataUrlToBlob(dataUrl) {
-      const [header, base64] = dataUrl.split(',');
-      const mime = /data:(.*?);base64/.exec(header)?.[1] || 'image/png';
-      const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      return new Blob([bytes], { type: mime });
-    }
-
     function placeTemplateItemAt(item, clickX, clickY) {
       const scaleX = currentViewport.scaleX ?? currentViewport.scale;
       const scaleY = currentViewport.scaleY ?? scaleX;
@@ -5420,21 +4607,6 @@
       // same treatment placeFieldAt() gives a click-placed field.
       const screenLeft = Math.max(0, Math.min(clickX - screenW / 2, canvas.width - screenW));
       const screenTop = Math.max(0, Math.min(clickY - screenH / 2, canvas.height - screenH));
-      const rect = screenRectToPdf(screenLeft, screenTop, screenW, screenH);
-
-      if (item.type === 'stamp') {
-        stageNewStamp({
-          kind: item.stampKind,
-          page: pageNum - 1,
-          rect,
-          text: item.text,
-          color: item.color,
-          imageBlob: item.imageDataUrl ? dataUrlToBlob(item.imageDataUrl) : null,
-          imageDataUrl: item.imageDataUrl,
-        });
-        showNotification(`"${item.name}" staged — click Apply changes to save it.`, 'info');
-        return;
-      }
 
       const name = uniqueFieldName(item.name, new Set(documentFields.map((f) => f.name)));
       stageNewField({
@@ -5443,7 +4615,7 @@
         required: item.required,
         multiline: item.multiline,
         page: pageNum - 1,
-        rect,
+        rect: screenRectToPdf(screenLeft, screenTop, screenW, screenH),
       });
 
       const renamed = name !== item.name ? ` as "${name}"` : '';
@@ -5500,21 +4672,7 @@
           if (activeField && !documentFields.includes(activeField)) deselectActiveField();
         }
 
-        plan.placements.forEach((placement) => {
-          if (placement.type === 'stamp') {
-            stageNewStamp({
-              kind: placement.stampKind,
-              page: placement.page,
-              rect: placement.rect,
-              text: placement.text,
-              color: placement.color,
-              imageBlob: placement.imageDataUrl ? dataUrlToBlob(placement.imageDataUrl) : null,
-              imageDataUrl: placement.imageDataUrl,
-            }, { history: false, redraw: false });
-          } else {
-            stageNewField(placement, { history: false, redraw: false });
-          }
-        });
+        plan.placements.forEach((placement) => stageNewField(placement, { history: false, redraw: false }));
         if (currentViewport) drawFieldOverlays(currentViewport);
         updatePendingChangesUi();
 
@@ -5676,14 +4834,12 @@
       templateNameEditingId = existing?.id ?? null;
 
       const captured = pendingTemplateCaptureField;
-      const capturedStamp = pendingTemplateCaptureStamp;
-      const capturedLabel = captured?.name || (capturedStamp ? stampDisplayLabel(capturedStamp) : null);
       document.getElementById('templateNameTitle').textContent = existing ? 'Rename template' : 'New signature template';
       document.getElementById('saveTemplateNameLabel').textContent = existing ? 'Save name' : 'Create template';
       document.getElementById('templateNameHint').textContent = existing
         ? 'Only the label changes — the fields saved in this template stay exactly as they are.'
-        : (capturedLabel
-          ? `Name the template and "${capturedLabel}" goes straight into it. Drag your other fields in the same way to fill it out.`
+        : (captured
+          ? `Name the template and "${captured.name}" goes straight into it. Drag your other fields in the same way to fill it out.`
           : 'Give the template a name. To fill it, place fields on your document as usual, then drag each one into the Signature Templates panel.');
 
       const input = document.getElementById('templateNameInput');
@@ -5700,9 +4856,8 @@
       templateNameModal.classList.remove('is-open');
       templateNameModal.setAttribute('aria-hidden', 'true');
       templateNameEditingId = null;
-      // A field/stamp waiting on a template it never got has nowhere to go.
+      // A field waiting on a template it never got has nowhere to go.
       pendingTemplateCaptureField = null;
-      pendingTemplateCaptureStamp = null;
     }
 
     function submitTemplateName() {
@@ -5722,7 +4877,6 @@
       const now = Date.now();
       const isRename = !!templateNameEditingId;
       const captured = pendingTemplateCaptureField;
-      const capturedStamp = pendingTemplateCaptureStamp;
       let savedId = templateNameEditingId;
       let templates;
 
@@ -5739,8 +4893,6 @@
 
       if (!isRename && captured) {
         saveFieldToTemplate(captured, savedId);
-      } else if (!isRename && capturedStamp) {
-        saveStampToTemplate(capturedStamp, savedId);
       } else {
         showNotification(isRename ? `Renamed template to "${name}".` : `Created template "${name}".`, 'success');
       }
@@ -6160,25 +5312,6 @@
       }));
     }
 
-    function cloneStamps(stamps) {
-      return (stamps || []).map((s) => ({
-        id: s.id,
-        __localId: s.__localId,
-        __baselineId: s.__baselineId,
-        kind: s.kind,
-        page: s.page,
-        rect: s.rect ? { x: s.rect.x, y: s.rect.y, width: s.rect.width, height: s.rect.height } : null,
-        text: s.text,
-        color: s.color,
-        opacity: s.opacity ?? 1,
-        note: s.note || '',
-        name: s.name,
-        locked: s.locked === true,
-        createdByPdfSeal: s.createdByPdfSeal !== false,
-        imageDataUrl: s.imageDataUrl,
-      }));
-    }
-
     // --- Field-change history (undo/redo) ---
     // Every discrete staged mutation (add/move/resize/rename/toggle/remove/
     // discard) -- and "Apply changes" itself -- pushes a full pre-mutation
@@ -6206,8 +5339,6 @@
         pageNum,
         documentFields: cloneFields(documentFields),
         fieldsBaseline: cloneFields(fieldsBaseline),
-        documentStamps: cloneStamps(documentStamps),
-        stampsBaseline: cloneStamps(stampsBaseline),
         documentMeta,
         documentRawInfo,
         documentRawObjects,
@@ -6292,8 +5423,6 @@
       pageNum = snapshot.pageNum;
       documentFields = snapshot.documentFields;
       fieldsBaseline = snapshot.fieldsBaseline;
-      documentStamps = snapshot.documentStamps || [];
-      stampsBaseline = snapshot.stampsBaseline || [];
       documentMeta = snapshot.documentMeta;
       documentRawInfo = snapshot.documentRawInfo;
       documentRawObjects = snapshot.documentRawObjects;
@@ -6467,81 +5596,6 @@
       return ops;
     }
 
-    // Same idea as computeFieldOps(), but for documentStamps/stampsBaseline,
-    // keyed by `id` rather than name. A stamp staged this session has no
-    // server-assigned id yet (`id` is null until the first Apply resolves
-    // it) -- those are matched by `__localId` instead and always emit an
-    // 'add-stamp' op; image ones carry `__localId` through onto the op so
-    // applyPendingFieldChanges() can resolve the right Blob to send.
-    function computeStampOps() {
-      const baselineById = new Map(stampsBaseline.filter((s) => s.id).map((s) => [s.id, s]));
-      const matchedIds = new Set();
-      const ops = [];
-
-      for (const stamp of documentStamps) {
-        if (!stamp.id) {
-          const rect = stamp.rect;
-          const op = {
-            op: 'add-stamp',
-            kind: stamp.kind,
-            page: stamp.page,
-            x: rect.x, y: rect.y, width: rect.width, height: rect.height,
-            opacity: stamp.opacity,
-            note: stamp.note || undefined,
-          };
-          if (stamp.kind === 'image') {
-            op.__localId = stamp.__localId;
-          } else {
-            op.text = stamp.text;
-            op.color = stamp.color;
-          }
-          ops.push(op);
-          continue;
-        }
-
-        matchedIds.add(stamp.id);
-        const base = baselineById.get(stamp.id);
-        if (!base) continue;
-        const positionChanged = !coordsEqual(base.rect, stamp.rect);
-        const sizeChanged = !sizeEqual(base.rect, stamp.rect);
-        const textChanged = stamp.kind === 'text' && stamp.text !== base.text;
-        const colorChanged = stamp.kind === 'text' && stamp.color !== base.color;
-        const opacityChanged = (stamp.opacity ?? 1) !== (base.opacity ?? 1);
-        const noteChanged = (stamp.note || '') !== (base.note || '');
-        if (positionChanged || sizeChanged || textChanged || colorChanged || opacityChanged || noteChanged) {
-          ops.push({
-            op: 'edit-stamp',
-            id: stamp.id,
-            x: stamp.rect.x, y: stamp.rect.y, width: stamp.rect.width, height: stamp.rect.height,
-            text: stamp.kind === 'text' && (textChanged || colorChanged) ? stamp.text : undefined,
-            color: stamp.kind === 'text' && (textChanged || colorChanged) ? stamp.color : undefined,
-            opacity: opacityChanged ? stamp.opacity : undefined,
-            note: noteChanged ? stamp.note || '' : undefined,
-            // UI-only markers for describePendingFieldChanges() -- stripped
-            // before the ops payload is sent to the server.
-            _positionChanged: positionChanged,
-            _sizeChanged: sizeChanged,
-            _textChanged: textChanged,
-            _colorChanged: colorChanged,
-            _opacityChanged: opacityChanged,
-            _noteChanged: noteChanged,
-          });
-        }
-      }
-
-      for (const stamp of stampsBaseline) {
-        if (stamp.id && !matchedIds.has(stamp.id)) ops.push({ op: 'remove-stamp', id: stamp.id });
-      }
-
-      return ops;
-    }
-
-    // The combined field + stamp ops payload -- what every "are there
-    // unsaved changes" check and the Apply request itself actually use.
-    function computeAllOps() {
-      return computeFieldOps().concat(computeStampOps());
-    }
-
     // Keeps the bar's left edge/width tracking the PDF viewer column
     // (.viewer-column) so it reads as attached to that panel rather than
     // floating at a fixed spot on the viewport.
@@ -6616,19 +5670,6 @@
       if (requiredChanged) parts.push(`Changed ${requiredChanged} field requirement${requiredChanged === 1 ? '' : 's'}`);
       if (multilineChanged) parts.push(`Changed multiline on ${multilineChanged} field${multilineChanged === 1 ? '' : 's'}`);
       if (removed) parts.push(`Removed ${removed} field${removed === 1 ? '' : 's'}`);
-
-      const stampsAdded = ops.filter((op) => op.op === 'add-stamp').length;
-      const stampEditOps = ops.filter((op) => op.op === 'edit-stamp');
-      const stampsMoved = stampEditOps.filter((op) => op._positionChanged).length;
-      const stampsResized = stampEditOps.filter((op) => op._sizeChanged).length;
-      const stampsEdited = stampEditOps.filter((op) => op._textChanged || op._colorChanged || op._opacityChanged || op._noteChanged).length;
-      const stampsRemoved = ops.filter((op) => op.op === 'remove-stamp').length;
-      if (stampsAdded) parts.push(`Added ${stampsAdded} stamp${stampsAdded === 1 ? '' : 's'}`);
-      if (stampsMoved) parts.push(`Moved ${stampsMoved} stamp${stampsMoved === 1 ? '' : 's'}`);
-      if (stampsResized) parts.push(`Resized ${stampsResized} stamp${stampsResized === 1 ? '' : 's'}`);
-      if (stampsEdited) parts.push(`Edited ${stampsEdited} stamp${stampsEdited === 1 ? '' : 's'}`);
-      if (stampsRemoved) parts.push(`Removed ${stampsRemoved} stamp${stampsRemoved === 1 ? '' : 's'}`);
-
       return parts.join(', ');
     }
 
@@ -6637,22 +5678,6 @@
     // it carries, in a fixed, meaningful order.
     function buildPendingChangesDetails(ops) {
       return ops.map((op) => {
-        if (op.op === 'add-stamp' || op.op === 'edit-stamp' || op.op === 'remove-stamp') {
-          const tags = [];
-          if (op.op === 'add-stamp') {
-            tags.push({ cls: 'add', text: 'Added' });
-          } else if (op.op === 'remove-stamp') {
-            tags.push({ cls: 'remove', text: 'Removed' });
-          } else {
-            if (op._positionChanged) tags.push({ cls: 'move', text: 'Moved' });
-            if (op._sizeChanged) tags.push({ cls: 'resize', text: 'Resized' });
-            if (op._textChanged || op._colorChanged) tags.push({ cls: 'rename', text: 'Retexted' });
-            if (op._opacityChanged || op._noteChanged) tags.push({ cls: 'required', text: 'Edited' });
-          }
-          const label = op.text || (op.kind === 'image' ? 'Image Stamp' : 'Stamp');
-          return { name: label, fromName: null, tags };
-        }
-
         const tags = [];
         if (op.op === 'add') {
           tags.push({ cls: 'add', text: 'Added' });
@@ -6720,7 +5745,7 @@
     function updatePendingChangesUi() {
       const bar = document.getElementById('pendingChangesBar');
       if (!bar) return;
-      const ops = computeAllOps();
+      const ops = computeFieldOps();
       const count = ops.length;
       const label = document.getElementById('pendingChangesLabel');
       if (label) label.textContent = `${count} unsaved change${count === 1 ? '' : 's'}`;
@@ -6747,7 +5772,7 @@
     // succeeded (or there was nothing to send). Also used by Download/Share/
     // Copy-as-Base64 so they never export a file missing in-progress edits.
     async function applyPendingFieldChanges() {
-      const ops = computeAllOps();
+      const ops = computeFieldOps();
       if (!ops.length) return true;
       // Captured before the request so Undo can reach back across this Apply
       // to the pre-apply file/fields -- only committed to history on success,
@@ -6756,22 +5781,8 @@
       const preApplySnapshot = captureDocumentSnapshot();
       const formData = new FormData();
       formData.append('pdfDocument', activeFile);
-      // A new image stamp's op carries a __localId rather than real bytes --
-      // resolve each to a `stampImages` part here and stamp the resulting
-      // index onto the op so the server's imageIndex can find it.
-      let stampImageIndex = 0;
-      for (const op of ops) {
-        if (op.op === 'add-stamp' && op.kind === 'image' && op.__localId) {
-          const blob = pendingStampImageBlobs.get(op.__localId);
-          if (blob) {
-            formData.append('stampImages', blob, `stamp-${stampImageIndex}.${blob.type === 'image/png' ? 'png' : 'jpg'}`);
-            op.imageIndex = stampImageIndex;
-            stampImageIndex += 1;
-          }
-        }
-      }
-      // Strip the UI-only `_`/`__`-prefixed markers (see computeFieldOps()/
-      // computeStampOps()) -- the server only needs the actual op fields.
+      // Strip the UI-only `_`-prefixed markers (see computeFieldOps()) --
+      // the server only needs the actual op fields.
       formData.append('ops', JSON.stringify(ops, (key, value) => (key.startsWith('_') ? undefined : value)));
       const label = ops.length === 1 ? '1 change' : `${ops.length} changes`;
       const success = await handleApiUpdate('/api/apply-changes', formData, `Applied ${label}.`);
@@ -6780,11 +5791,9 @@
     }
 
     function discardPendingFieldChanges() {
-      if (!computeAllOps().length) return;
+      if (!computeFieldOps().length) return;
       pushFieldHistory();
       documentFields = cloneFields(fieldsBaseline);
-      documentStamps = cloneStamps(stampsBaseline);
-      pendingStampImageBlobs.clear();
       deselectActiveField();
       clearPendingField();
       if (currentViewport) drawFieldOverlays(currentViewport);
@@ -6812,41 +5821,22 @@
 
     const removeFieldModal = document.getElementById('removeFieldModal');
     const removeFieldModalName = document.getElementById('removeFieldModalName');
-    // { kind: 'field', name } | { kind: 'stamp', key, label } -- one modal,
-    // shared between removing a field and removing a stamp.
-    let pendingRemoveTarget = null;
-
-    function openRemoveTargetModal(kind, key, label) {
-      pendingRemoveTarget = { kind, key, label };
-      removeFieldModalName.textContent = label;
-      const noun = kind === 'stamp' ? 'Stamp' : 'Field';
-      document.getElementById('removeFieldModalNoun').textContent = noun;
-      document.getElementById('removeFieldModalNounLower').textContent = noun.toLowerCase();
-      document.getElementById('confirmRemoveFieldBtnNoun').textContent = noun;
-      removeFieldModal.classList.add('is-open');
-    }
+    let pendingRemoveFieldName = null;
 
     function openRemoveFieldModal(fieldName) {
-      openRemoveTargetModal('field', fieldName, fieldName);
-    }
-
-    function openRemoveStampModal(stamp) {
-      openRemoveTargetModal('stamp', stamp.id || stamp.__localId, stampDisplayLabel(stamp));
+      pendingRemoveFieldName = fieldName;
+      removeFieldModalName.textContent = fieldName;
+      removeFieldModal.classList.add('is-open');
     }
 
     function closeRemoveFieldModal() {
       removeFieldModal.classList.remove('is-open');
-      pendingRemoveTarget = null;
+      pendingRemoveFieldName = null;
     }
 
     if (removeFieldBtn) {
       removeFieldBtn.addEventListener('click', () => {
-        if (!activeFile) return;
-        if (activeStamp) {
-          openRemoveStampModal(activeStamp);
-          return;
-        }
-        if (!activeField) return;
+        if (!activeFile || !activeField) return;
 
         const fieldName = activeField.name || document.getElementById('editOriginalName').value;
         if (!fieldName) return;
@@ -6864,24 +5854,10 @@
       if (e.key === 'Escape' && removeFieldModal.classList.contains('is-open')) closeRemoveFieldModal();
     });
     document.getElementById('confirmRemoveFieldBtn').addEventListener('click', () => {
-      if (!activeFile || !pendingRemoveTarget) return;
-      const target = pendingRemoveTarget;
+      if (!activeFile || !pendingRemoveFieldName) return;
+      const fieldName = pendingRemoveFieldName;
       closeRemoveFieldModal();
 
-      if (target.kind === 'stamp') {
-        pushFieldHistory();
-        pendingStampImageBlobs.delete(target.key);
-        documentStamps = documentStamps.filter((s) => (s.id || s.__localId) !== target.key);
-        if (activeStamp && (activeStamp.id || activeStamp.__localId) === target.key) {
-          deselectActiveStamp();
-        }
-        if (currentViewport) drawFieldOverlays(currentViewport);
-        updatePendingChangesUi();
-        showNotification(`${target.label} removed — click Apply changes to save it.`, 'info');
-        return;
-      }
-
-      const fieldName = target.key;
       pushFieldHistory();
       documentFields = documentFields.filter((f) => f.name !== fieldName);
       if (activeField && activeField.name === fieldName) {
@@ -7000,7 +5976,7 @@
       // Any staged (not-yet-applied) field edits live only in `documentFields`
       // -- `activeFile` itself doesn't have them yet -- so apply them first,
       // otherwise the exported file would silently miss in-progress changes.
-      if (computeAllOps().length) {
+      if (computeFieldOps().length) {
         confirmSaveAsBtn.disabled = true;
         const applied = await applyPendingFieldChanges();
         confirmSaveAsBtn.disabled = false;
@@ -7061,7 +6037,7 @@
       if (!activeFile) return;
       // Staged field edits live only in `documentFields` until applied --
       // make sure the bytes we're about to copy actually include them.
-      if (computeAllOps().length && !(await applyPendingFieldChanges())) return;
+      if (computeFieldOps().length && !(await applyPendingFieldChanges())) return;
       let fileToCopy = activeFile;
       const includeHistory = Boolean(loadSettings().includeRevisionHistoryByDefault);
       let toast = null;
@@ -8884,7 +7860,7 @@ async function startSendingShare() {
   }
   // Staged field edits live only in `documentFields` until applied -- make
   // sure what gets shared actually includes them.
-  if (computeAllOps().length) {
+  if (computeFieldOps().length) {
     setShareStatus('Applying unsaved field changes…', 'waiting');
     if (!(await applyPendingFieldChanges())) {
       return setShareStatus('Could not apply pending field changes. Fix them and try again.', 'error');
@@ -13291,7 +12267,7 @@ const tourPopoverProgressEl = document.getElementById('tourPopoverProgress');
 const tourPopoverSpinnerEl = document.getElementById('tourPopoverSpinner');
 
 async function loadDemoSampleDocument() {
-  if (demoSampleFile && activeFile === demoSampleFile && computeAllOps().length === 0) {
+  if (demoSampleFile && activeFile === demoSampleFile && computeFieldOps().length === 0) {
     return demoSampleFile;
   }
   const res = await fetch('/assets/demo/pdf-seal-sample.pdf');
@@ -13310,7 +12286,7 @@ function openDemoReplaceModal() {
   const modal = document.getElementById('demoReplaceModal');
   if (!modal) return;
   const note = document.getElementById('demoReplaceUnappliedNote');
-  if (note) note.hidden = computeAllOps().length === 0;
+  if (note) note.hidden = computeFieldOps().length === 0;
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');
 }
@@ -13546,24 +12522,6 @@ function buildTourSteps() {
       title: 'Undo / redo',
       body: 'Every staged change can be undone or redone — including adding a field. Watch the demo Witness_Signature field disappear.',
       enter: async () => { if (documentFields.some((f) => f.name === 'Witness_Signature')) undoFieldChange(); },
-    },
-    {
-      id: 'sig-stamp', chapter: 'signatures', target: '#sigTabPanelAdd', placement: 'right',
-      title: 'Stamps',
-      body: 'A Stamp is a visual mark — a preset or custom text like APPROVED, or your own PNG/JPEG image — not a cryptographic signature. Pick a color, drop it on the page, and it moves/resizes/deletes just like a field.',
-      enter: async () => {
-        deselectActiveField();
-        closeEditSheet();
-        setSignatureTab('add');
-        setAddFieldType('stamp');
-        const textInput = document.getElementById('stampText');
-        if (textInput) textInput.value = 'APPROVED';
-        updateStampTextPreview();
-        await tourGoToPage(2);
-        if (canvas && canvas.width && canvas.height && !documentStamps.some((s) => s.text === 'APPROVED' && s.page === 1)) {
-          stageNewStamp({ kind: 'text', page: 1, rect: screenRectToPdf(canvas.width * 0.1, canvas.height * 0.75, 160, 50), text: 'APPROVED', color: stampColor });
-        }
-      },
     },
     // Chapter: templates
     {

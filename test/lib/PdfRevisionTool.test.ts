@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PDFName, PDFString, PDFHexString, PDFRef } from 'pdf-lib';
+import { PDFName, PDFString, PDFHexString, PDFRef, PDFDict } from 'pdf-lib';
 import PdfSignatureTool from '../../lib/PdfSignatureTool';
 import PdfRevisionTool from '../../lib/PdfRevisionTool';
 import { applyCertificateOperation } from '../../lib/PdfCertificateModifier';
@@ -594,6 +594,63 @@ const TINY_PNG = Buffer.from(
   'base64',
 );
 
+// PdfRevisionTool's stamp diffing works purely off PdfSignatureTool.listStamps()
+// (read-only detection) -- these fixtures build a raw /Annot /Subtype /Stamp
+// dict, its /AP appearance stream, and (for a stamp this app itself produced)
+// a private /PdfSealStamp marker directly via pdf-lib's context, the same way
+// the PdfSignatureTool detection tests do, rather than through any
+// stamp-creating helper.
+function hexToRgb01(hex: string): number[] {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return [0, 0, 0];
+  return [parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255];
+}
+
+function addRawStampAnnot(tool: any, pageIndex: number, entries: Record<string, any> = {}) {
+  const pdfDoc = tool.pdfDoc;
+  const page = pdfDoc.getPages()[pageIndex];
+  const context = pdfDoc.context;
+  const annotDict = context.obj({
+    Type: 'Annot',
+    Subtype: 'Stamp',
+    Rect: [10, 10, 110, 50],
+    P: page.ref,
+    F: 4,
+    ...entries,
+  });
+  const annotRef = context.register(annotDict);
+  page.node.addAnnot(annotRef);
+  return { dict: annotDict, ref: annotRef };
+}
+
+// An empty Form XObject appearance stream, optionally referencing an
+// embedded image XObject -- enough shape for the raw-object consolidation
+// logic to recognize it as a stamp's own /AP.
+function addRawStampAppearance(tool: any, width: number, height: number, imageRef?: any) {
+  const context = tool.pdfDoc.context;
+  const resources = context.obj(imageRef ? { XObject: { Im1: imageRef } } : {});
+  const stream = context.formXObject([], { BBox: [0, 0, width, height], Resources: resources });
+  return context.register(stream);
+}
+
+function pdfSealMarker(tool: any, { kind, text, color }: { kind: 'Text' | 'Image'; text?: string; color?: string }) {
+  const entries: Record<string, any> = { Kind: kind };
+  if (text !== undefined) entries.Text = PDFString.of(text);
+  if (color) entries.Color = hexToRgb01(color);
+  return tool.pdfDoc.context.obj(entries);
+}
+
+function findStampDictById(tool: any, id: string) {
+  let found: any = null;
+  tool._forEachStampAnnot((entry: any) => {
+    if (tool._stampIdForDict(entry.dict, entry.ref) === id) {
+      found = entry;
+      return false;
+    }
+  });
+  return found;
+}
+
 describe('PdfRevisionTool: stamp annotations', () => {
   it('reports an added text stamp in stampChanges and the checklist', async () => {
     const before = await PdfSignatureTool.create();
@@ -601,7 +658,11 @@ describe('PdfRevisionTool: stamp annotations', () => {
     const beforeBytes = await before.toBytes();
 
     const after = await PdfSignatureTool.fromBytes(beforeBytes);
-    await after.addTextStamp(0, { text: 'APPROVED', color: '#00aa00', x: 10, y: 10, width: 120, height: 40 });
+    addRawStampAnnot(after, 0, {
+      NM: PDFString.of('approved-stamp'),
+      Rect: [10, 10, 130, 50],
+      PdfSealStamp: pdfSealMarker(after, { kind: 'Text', text: 'APPROVED', color: '#00aa00' }),
+    });
     const afterBytes = await after.toBytes();
 
     const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
@@ -616,27 +677,34 @@ describe('PdfRevisionTool: stamp annotations', () => {
   it('reports a removed stamp', async () => {
     const before = await PdfSignatureTool.create();
     before.addPage();
-    const stamp = await before.addTextStamp(0, { text: 'DRAFT' });
+    addRawStampAnnot(before, 0, { NM: PDFString.of('draft-stamp') });
     const beforeBytes = await before.toBytes();
 
-    const after = await PdfSignatureTool.fromBytes(beforeBytes);
-    after.removeStamp(stamp.id);
+    // An independent, stamp-less document stands in for "this revision no
+    // longer has it" -- diffStamps() compares listStamps() id sets, which
+    // doesn't require the two snapshots to share any other object.
+    const after = await PdfSignatureTool.create();
+    after.addPage();
     const afterBytes = await after.toBytes();
 
     const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
     expect(diff.stampChanges.removed).toHaveLength(1);
-    expect(diff.stampChanges.added).toEqual([]);
+    expect(diff.stampChanges.removed[0].id).toBe('draft-stamp');
     expect(diff.checklist.stampsChangedCount).toBe(1);
   });
 
   it('reports a moved stamp as modified, tracking its rect', async () => {
     const before = await PdfSignatureTool.create();
     before.addPage();
-    const stamp = await before.addTextStamp(0, { text: 'PAID', x: 10, y: 10, width: 100, height: 40 });
+    addRawStampAnnot(before, 0, {
+      NM: PDFString.of('paid-stamp'),
+      PdfSealStamp: pdfSealMarker(before, { kind: 'Text', text: 'PAID' }),
+    });
     const beforeBytes = await before.toBytes();
 
     const after = await PdfSignatureTool.fromBytes(beforeBytes);
-    await after.setStampRect(stamp.id, { x: 200 });
+    const found = findStampDictById(after, 'paid-stamp');
+    found.dict.set(PDFName.of('Rect'), after.pdfDoc.context.obj([200, 10, 300, 50]));
     const afterBytes = await after.toBytes();
 
     const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
@@ -649,11 +717,17 @@ describe('PdfRevisionTool: stamp annotations', () => {
   it('reports a retexted stamp as modified with a text change', async () => {
     const before = await PdfSignatureTool.create();
     before.addPage();
-    const stamp = await before.addTextStamp(0, { text: 'DRAFT', color: '#111111' });
+    addRawStampAnnot(before, 0, {
+      NM: PDFString.of('draft-stamp'),
+      PdfSealStamp: pdfSealMarker(before, { kind: 'Text', text: 'DRAFT', color: '#111111' }),
+    });
     const beforeBytes = await before.toBytes();
 
     const after = await PdfSignatureTool.fromBytes(beforeBytes);
-    await after.setStampText(stamp.id, 'FINAL', '#ff0000');
+    const found = findStampDictById(after, 'draft-stamp');
+    const marker = found.dict.lookupMaybe(PDFName.of('PdfSealStamp'), PDFDict);
+    marker.set(PDFName.of('Text'), PDFString.of('FINAL'));
+    marker.set(PDFName.of('Color'), after.pdfDoc.context.obj(hexToRgb01('#ff0000')));
     const afterBytes = await after.toBytes();
 
     const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
@@ -668,7 +742,7 @@ describe('PdfRevisionTool: stamp annotations', () => {
   it('reports stampCount in summarizeIndependentSnapshots', async () => {
     const tool = await PdfSignatureTool.create();
     tool.addPage();
-    await tool.addTextStamp(0, { text: 'CONFIDENTIAL' });
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('confidential-stamp') });
     const bytes = await tool.toBytes();
 
     const [summary] = await PdfRevisionTool.summarizeIndependentSnapshots([bytes]);
@@ -682,7 +756,14 @@ describe('PdfRevisionTool: stamp annotations', () => {
     const beforeBytes = await before.toBytes();
 
     const after = await PdfSignatureTool.fromBytes(beforeBytes);
-    await after.addImageStamp(0, TINY_PNG, { x: 30, y: 30, width: 60, height: 60 });
+    const image = await after.pdfDoc.embedPng(TINY_PNG);
+    const apRef = addRawStampAppearance(after, 60, 60, image.ref);
+    addRawStampAnnot(after, 0, {
+      NM: PDFString.of('image-stamp'),
+      Rect: [30, 30, 90, 90],
+      AP: { N: apRef },
+      PdfSealStamp: pdfSealMarker(after, { kind: 'Image' }),
+    });
     const afterBytes = await after.toBytes();
 
     const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
@@ -707,11 +788,24 @@ describe('PdfRevisionTool: stamp annotations', () => {
   it('consolidates a resized text stamp into exactly one modified stamp entry, with the old AP not orphaned as a separate entry', async () => {
     const before = await PdfSignatureTool.create();
     before.addPage();
-    const stamp = await before.addTextStamp(0, { text: 'PAID', width: 100, height: 40 });
+    const beforeApRef = addRawStampAppearance(before, 100, 40);
+    addRawStampAnnot(before, 0, {
+      NM: PDFString.of('paid-stamp'),
+      AP: { N: beforeApRef },
+      PdfSealStamp: pdfSealMarker(before, { kind: 'Text', text: 'PAID' }),
+    });
     const beforeBytes = await before.toBytes();
 
     const after = await PdfSignatureTool.fromBytes(beforeBytes);
-    await after.setStampRect(stamp.id, { width: 200, height: 80 });
+    const afterContext = after.pdfDoc.context;
+    const found = findStampDictById(after, 'paid-stamp');
+    const oldApRef = after._stampApRef(found.dict);
+    // Mirrors what a real resize used to do: a fresh appearance stream at
+    // the new size, with the stale one dropped rather than left orphaned.
+    const newApRef = addRawStampAppearance(after, 200, 80);
+    found.dict.set(PDFName.of('Rect'), afterContext.obj([10, 10, 210, 90]));
+    found.dict.set(PDFName.of('AP'), afterContext.obj({ N: newApRef }));
+    afterContext.delete(oldApRef);
     const afterBytes = await after.toBytes();
 
     const diff: any = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
@@ -719,16 +813,8 @@ describe('PdfRevisionTool: stamp annotations', () => {
     const stampModified = diff.objectChanges.modifiedDetails.filter((d: any) => d.category === 'Stamp');
     expect(stampModified).toHaveLength(1);
 
-    const [stampBefore] = before.listStamps();
-    const [stampAfter] = after.listStamps();
-    const oldApRef = stampBefore.objectRefs.find((ref: string) => ref !== stampBefore.ref);
-    const newApRef = stampAfter.objectRefs.find((ref: string) => ref !== stampAfter.ref);
-    expect(oldApRef).toBeTruthy();
-    expect(newApRef).toBeTruthy();
-    expect(oldApRef).not.toBe(newApRef); // resize regenerated the appearance stream under a new ref
-
     const allKeys = [...diff.objectChanges.added, ...diff.objectChanges.modified, ...diff.objectChanges.removed];
-    expect(allKeys).not.toContain(oldApRef);
-    expect(allKeys).not.toContain(newApRef);
+    expect(allKeys).not.toContain(oldApRef.toString());
+    expect(allKeys).not.toContain(newApRef.toString());
   });
 });

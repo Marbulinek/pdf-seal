@@ -11,8 +11,6 @@ import {
   buildTemplateExport,
   parseTemplateExport,
   mergeTemplateStores,
-  templateItemFromStamp,
-  TEMPLATE_STORE_VERSION,
   TemplateItem,
   TemplateStore,
 } from '../../lib/SignatureTemplates';
@@ -35,7 +33,7 @@ function item(overrides: Partial<TemplateItem> = {}): TemplateItem {
 
 describe('normalizeTemplateStore', () => {
   it('returns an empty store for anything unusable', () => {
-    const expected = { version: TEMPLATE_STORE_VERSION, templates: [] };
+    const expected = { version: 1, templates: [] };
     expect(normalizeTemplateStore(null)).toEqual(expected);
     expect(normalizeTemplateStore(undefined)).toEqual(expected);
     expect(normalizeTemplateStore('not an object')).toEqual(expected);
@@ -127,7 +125,7 @@ describe('normalizeTemplateStore', () => {
   });
 
   it('always stamps the current store version', () => {
-    expect(normalizeTemplateStore({ version: 99, templates: [] }).version).toBe(TEMPLATE_STORE_VERSION);
+    expect(normalizeTemplateStore({ version: 99, templates: [] }).version).toBe(1);
   });
 });
 
@@ -341,7 +339,7 @@ describe('buildTemplateExport', () => {
   it('stamps the app, version and export time around the templates', () => {
     const exported = buildTemplateExport(storeWith('NDA'), new Date('2026-09-01T10:00:00.000Z'));
     expect(exported.app).toBe('pdf-seal');
-    expect(exported.version).toBe(TEMPLATE_STORE_VERSION);
+    expect(exported.version).toBe(1);
     expect(exported.exportedAt).toBe('2026-09-01T10:00:00.000Z');
     expect(exported.templates.map((t) => t.name)).toEqual(['NDA']);
   });
@@ -499,193 +497,5 @@ describe('upsertTemplateItem', () => {
 
   it('tolerates a missing list', () => {
     expect(upsertTemplateItem(undefined as any, item()).items).toHaveLength(1);
-  });
-});
-
-const TINY_PNG_DATA_URL =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
-// (700000 / 4) * 3 = 525000 decoded bytes, comfortably over the 500KB cap.
-const OVERSIZED_IMAGE_DATA_URL = `data:image/png;base64,${'A'.repeat(700000)}`;
-
-function stampItem(overrides: Partial<TemplateItem> = {}): TemplateItem {
-  return {
-    id: 'stamp1',
-    name: 'APPROVED',
-    type: 'stamp',
-    stampKind: 'text',
-    text: 'APPROVED',
-    color: '#00aa00',
-    width: 160,
-    height: 50,
-    x: 10,
-    y: 20,
-    page: 0,
-    required: false,
-    multiline: false,
-    ...overrides,
-  };
-}
-
-describe('normalizeTemplateStore: stamp items', () => {
-  function storeWithItem(rawItem: any): any {
-    return { templates: [{ id: 't1', name: 'T', items: [rawItem] }] };
-  }
-
-  it('normalizes a valid text stamp item', () => {
-    const store = normalizeTemplateStore(storeWithItem(stampItem()));
-    expect(store.templates[0].items).toEqual([stampItem()]);
-  });
-
-  it('normalizes a valid image stamp item', () => {
-    const raw = stampItem({ stampKind: 'image', text: undefined, color: undefined, imageDataUrl: TINY_PNG_DATA_URL, name: 'Logo' });
-    const store = normalizeTemplateStore(storeWithItem(raw));
-    expect(store.templates[0].items).toHaveLength(1);
-    expect(store.templates[0].items[0]).toMatchObject({ stampKind: 'image', imageDataUrl: TINY_PNG_DATA_URL });
-  });
-
-  it('drops a text stamp item with no text', () => {
-    const store = normalizeTemplateStore(storeWithItem(stampItem({ text: '' })));
-    expect(store.templates[0].items).toEqual([]);
-  });
-
-  it('drops an image stamp item with no image data', () => {
-    const store = normalizeTemplateStore(storeWithItem(stampItem({ stampKind: 'image', imageDataUrl: undefined })));
-    expect(store.templates[0].items).toEqual([]);
-  });
-
-  it('drops an image stamp item whose data URL is not PNG/JPEG', () => {
-    const raw = stampItem({ stampKind: 'image', imageDataUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' });
-    const store = normalizeTemplateStore(storeWithItem(raw));
-    expect(store.templates[0].items).toEqual([]);
-  });
-
-  it('drops an image stamp item whose decoded image exceeds the size cap', () => {
-    const store = normalizeTemplateStore(storeWithItem(stampItem({ stampKind: 'image', imageDataUrl: OVERSIZED_IMAGE_DATA_URL })));
-    expect(store.templates[0].items).toEqual([]);
-  });
-
-  it('drops an invalid color rather than keeping garbage', () => {
-    const store = normalizeTemplateStore(storeWithItem(stampItem({ color: 'not-a-color' })));
-    expect(store.templates[0].items[0].color).toBeUndefined();
-  });
-
-  it('falls back to the stamp default size for a missing width/height', () => {
-    const store = normalizeTemplateStore(storeWithItem(stampItem({ width: undefined, height: undefined })));
-    expect(store.templates[0].items[0]).toMatchObject({ width: 160, height: 50 });
-  });
-});
-
-describe('templateItemFromStamp', () => {
-  it('captures a text stamp, named after its own text', () => {
-    const captured = templateItemFromStamp(
-      { id: 's1', kind: 'text', page: 1, rect: { x: 10.005, y: 20, width: 160, height: 50 }, text: 'PAID', color: '#ff0000' },
-      'itm1',
-    );
-    expect(captured).toEqual({
-      id: 'itm1',
-      name: 'PAID',
-      type: 'stamp',
-      stampKind: 'text',
-      width: 160,
-      height: 50,
-      x: 10.01,
-      y: 20,
-      page: 1,
-      required: false,
-      multiline: false,
-      text: 'PAID',
-      color: '#ff0000',
-    });
-  });
-
-  it('captures an image stamp, named after /Name or a generic fallback', () => {
-    const captured = templateItemFromStamp(
-      { id: 's1', kind: 'image', page: 0, rect: { x: 0, y: 0, width: 80, height: 80 }, imageDataUrl: TINY_PNG_DATA_URL },
-      'itm1',
-    );
-    expect(captured.name).toBe('Image Stamp');
-    expect(captured.stampKind).toBe('image');
-    expect(captured.imageDataUrl).toBe(TINY_PNG_DATA_URL);
-
-    const named = templateItemFromStamp(
-      { id: 's2', kind: 'image', page: 0, rect: { x: 0, y: 0, width: 80, height: 80 }, imageDataUrl: TINY_PNG_DATA_URL, name: 'Company Logo' },
-      'itm2',
-    );
-    expect(named.name).toBe('Company Logo');
-  });
-
-  it('throws for a text stamp with no text', () => {
-    expect(() =>
-      templateItemFromStamp({ id: 's1', kind: 'text', page: 0, rect: { x: 0, y: 0, width: 10, height: 10 } }, 'itm1'),
-    ).toThrow(/no text/);
-  });
-
-  it('throws for an image stamp with no usable image data', () => {
-    expect(() =>
-      templateItemFromStamp({ id: 's1', kind: 'image', page: 0, rect: { x: 0, y: 0, width: 10, height: 10 } }, 'itm1'),
-    ).toThrow(/no usable image data/);
-  });
-});
-
-describe('planAutoPlacement: stamp items', () => {
-  it('places a stamp item without consulting or reserving a field name', () => {
-    const plan = planAutoPlacement([stampItem(), stampItem({ id: 'stamp2' })], new Set(['APPROVED']), 1);
-    expect(plan.skipped).toEqual([]);
-    expect(plan.placements).toHaveLength(2);
-    expect(plan.placements[0]).toEqual({
-      name: 'APPROVED',
-      type: 'stamp',
-      required: false,
-      multiline: false,
-      page: 0,
-      rect: { x: 10, y: 20, width: 160, height: 50 },
-      stampKind: 'text',
-      text: 'APPROVED',
-      color: '#00aa00',
-      imageDataUrl: undefined,
-    });
-    // Both stamps keep the exact same name -- no "(2)" suffix, unlike fields.
-    expect(plan.placements[1].name).toBe('APPROVED');
-  });
-
-  it('still skips a stamp item whose page does not exist', () => {
-    const plan = planAutoPlacement([stampItem({ page: 5 })], new Set(), 1);
-    expect(plan.placements).toEqual([]);
-    expect(plan.skipped).toEqual([{ name: 'APPROVED', page: 5, reason: 'page-missing' }]);
-  });
-
-  it('carries stampKind/imageDataUrl through for an image stamp placement', () => {
-    const plan = planAutoPlacement(
-      [stampItem({ stampKind: 'image', text: undefined, color: undefined, imageDataUrl: TINY_PNG_DATA_URL })],
-      new Set(),
-      1,
-    );
-    expect(plan.placements[0]).toMatchObject({ stampKind: 'image', imageDataUrl: TINY_PNG_DATA_URL });
-  });
-});
-
-describe('template store v1 -> v2 migration', () => {
-  it('normalizes a v1 store (no stamp items) unchanged, just re-stamped to the current version', () => {
-    const v1Store = {
-      version: 1,
-      templates: [
-        { id: 't1', name: 'NDA', createdAt: 1, updatedAt: 1, items: [item({ id: 'i1', name: 'Sig' })] },
-      ],
-    };
-    const normalized = normalizeTemplateStore(v1Store);
-    expect(normalized.version).toBe(TEMPLATE_STORE_VERSION);
-    expect(normalized.templates).toEqual(v1Store.templates);
-  });
-
-  it('imports a v1 export file (no "stamp" type known to it) without error', () => {
-    const v1Export = JSON.stringify({
-      app: 'pdf-seal',
-      version: 1,
-      exportedAt: '2025-01-01T00:00:00.000Z',
-      templates: [{ id: 't1', name: 'Old Backup', items: [item({ id: 'i1', name: 'Sig' })] }],
-    });
-    const imported = parseTemplateExport(v1Export);
-    expect(imported.version).toBe(TEMPLATE_STORE_VERSION);
-    expect(imported.templates[0].items[0].type).toBe('signature');
   });
 });

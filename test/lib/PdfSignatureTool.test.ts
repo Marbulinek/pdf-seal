@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { PDFArray, PDFHexString, PDFName } from 'pdf-lib';
+import { PDFArray, PDFHexString, PDFName, PDFString } from 'pdf-lib';
 import PdfSignatureTool from '../../lib/PdfSignatureTool';
 import { buildSignedPdfFixture } from './helpers/pdfSigner';
 import { mintStandardChain } from './helpers/certificateFactory';
@@ -699,176 +699,108 @@ describe('PdfSignatureTool: signature dictionaries and certificates', () => {
   }, 40000);
 });
 
-// A minimal valid 1x1 PNG, used everywhere a real image's bytes are needed but
-// its actual pixel content is irrelevant.
-const TINY_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  'base64',
-);
+// PdfSignatureTool only detects/describes stamp annotations already present
+// in a document -- it never creates, edits or removes one -- so these tests
+// build a raw /Annot /Subtype /Stamp dict directly via pdf-lib's context,
+// the way another tool's output would look, rather than through any
+// stamp-creating helper of this tool's own.
+function addRawStampAnnot(tool: any, pageIndex: number, entries: Record<string, any> = {}) {
+  const pdfDoc = tool.pdfDoc;
+  const page = pdfDoc.getPages()[pageIndex];
+  const context = pdfDoc.context;
+  const annotDict = context.obj({
+    Type: 'Annot',
+    Subtype: 'Stamp',
+    Rect: [10, 10, 110, 60],
+    P: page.ref,
+    F: 4,
+    ...entries,
+  });
+  const annotRef = context.register(annotDict);
+  page.node.addAnnot(annotRef);
+  return { dict: annotDict, ref: annotRef };
+}
 
-describe('PdfSignatureTool: stamp annotations', () => {
-  it('adds a text stamp and an image stamp, and lists both', async () => {
+describe('PdfSignatureTool: stamp annotation detection', () => {
+  it('lists an existing stamp annotation with its rect and standard properties', async () => {
     const tool = await PdfSignatureTool.create();
     tool.addPage();
-
-    const textStamp = await tool.addTextStamp(0, {
-      text: 'APPROVED',
-      color: '#00AA00',
-      x: 20,
-      y: 30,
-      width: 150,
-      height: 50,
+    addRawStampAnnot(tool, 0, {
+      NM: PDFString.of('acrobat-stamp-1'),
+      Contents: PDFString.of('Reviewed by Acrobat'),
+      CA: 0.75,
     });
-    expect(textStamp.kind).toBe('text');
-    expect(textStamp.text).toBe('APPROVED');
-    expect(textStamp.color).toBe('#00aa00');
-    expect(textStamp.createdByPdfSeal).toBe(true);
-    expect(textStamp.id).toMatch(/^pdfseal-stamp-/);
-    expect(textStamp.rect).toMatchObject({ x: 20, y: 30, width: 150, height: 50 });
 
-    const imageStamp = await tool.addImageStamp(0, TINY_PNG, { x: 200, y: 200, width: 80, height: 80 });
-    expect(imageStamp.kind).toBe('image');
-    expect(imageStamp.createdByPdfSeal).toBe(true);
-
-    const stamps = tool.listStamps();
-    expect(stamps).toHaveLength(2);
-    expect(stamps.map((s: any) => s.id).sort()).toEqual([textStamp.id, imageStamp.id].sort());
+    const [stamp] = tool.listStamps();
+    expect(stamp.id).toBe('acrobat-stamp-1');
+    expect(stamp.page).toBe(0);
+    expect(stamp.rect).toEqual({ x: 10, y: 10, width: 100, height: 50 });
+    expect(stamp.kind).toBe('external');
+    expect(stamp.createdByPdfSeal).toBe(false);
+    expect(stamp.note).toBe('Reviewed by Acrobat');
+    expect(stamp.opacity).toBe(0.75);
+    expect(stamp.locked).toBe(false);
   });
 
-  it('round-trips text and image stamps through toBytes/fromBytes', async () => {
+  it('assigns a synthetic ref-based id to a stamp with no /NM', async () => {
     const tool = await PdfSignatureTool.create();
     tool.addPage();
-    const textStamp = await tool.addTextStamp(0, { text: 'DRAFT', width: 120, height: 40 });
-    const imageStamp = await tool.addImageStamp(0, TINY_PNG, { width: 60, height: 60 });
+    addRawStampAnnot(tool, 0);
+
+    const [stamp] = tool.listStamps();
+    expect(stamp.id).toMatch(/^ref:\d+ \d+$/);
+  });
+
+  it('reports a locked stamp (F bit 128) as locked', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0, { F: 4 | 128 });
+
+    const [stamp] = tool.listStamps();
+    expect(stamp.locked).toBe(true);
+  });
+
+  it('lists stamps on the correct page across a multi-page document', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addPage();
+    addRawStampAnnot(tool, 1, { NM: PDFString.of('page2-stamp') });
+
+    const stamps = tool.listStamps();
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].page).toBe(1);
+  });
+
+  it('survives a toBytes/fromBytes round-trip', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('roundtrip-stamp') });
 
     const bytes = await tool.toBytes();
     const reloaded = await PdfSignatureTool.fromBytes(bytes);
     const stamps = reloaded.listStamps();
-    expect(stamps).toHaveLength(2);
-
-    const reloadedText = stamps.find((s: any) => s.id === textStamp.id);
-    expect(reloadedText).toBeTruthy();
-    expect(reloadedText.kind).toBe('text');
-    expect(reloadedText.text).toBe('DRAFT');
-
-    const reloadedImage = stamps.find((s: any) => s.id === imageStamp.id);
-    expect(reloadedImage).toBeTruthy();
-    expect(reloadedImage.kind).toBe('image');
-  });
-
-  it('rejects a text stamp with empty text', async () => {
-    const tool = await PdfSignatureTool.create();
-    tool.addPage();
-    await expect(tool.addTextStamp(0, { text: '   ' })).rejects.toThrow(/text is required/);
-  });
-
-  it('rejects an image stamp built from non-PNG/JPEG bytes', async () => {
-    const tool = await PdfSignatureTool.create();
-    tool.addPage();
-    await expect(tool.addImageStamp(0, Buffer.from('not an image'))).rejects.toThrow(/PNG or JPEG/);
-  });
-
-  it('assigns a ref-based id to a stamp from another tool, and a real /NM on first edit', async () => {
-    const tool = await PdfSignatureTool.create();
-    tool.addPage();
-
-    // Build a bare /Annot /Subtype /Stamp with no /NM, the way another tool might.
-    const pdfDoc = (tool as any).pdfDoc;
-    const page = pdfDoc.getPages()[0];
-    const context = pdfDoc.context;
-    const annotDict = context.obj({
-      Type: 'Annot',
-      Subtype: 'Stamp',
-      Rect: [10, 10, 110, 60],
-      P: page.ref,
-      F: 4,
-    });
-    const annotRef = context.register(annotDict);
-    page.node.addAnnot(annotRef);
-
-    const [stamp] = tool.listStamps();
-    expect(stamp.id).toMatch(/^ref:\d+ \d+$/);
-    expect(stamp.createdByPdfSeal).toBe(false);
-    expect(stamp.kind).toBe('external');
-
-    const moved = await tool.setStampRect(stamp.id, { x: 20 });
-    expect(moved.id).toBe(stamp.id);
-    expect(moved.rect).toMatchObject({ x: 20, y: 10, width: 100, height: 50 });
-
-    // Re-fetching should now find it by the same id, backed by a real /NM.
-    expect(annotDict.has(PDFName.of('NM'))).toBe(true);
-    const [refetched] = tool.listStamps();
-    expect(refetched.id).toBe(stamp.id);
-  });
-
-  it('regenerates a text stamp appearance stream to a new BBox on resize', async () => {
-    const tool = await PdfSignatureTool.create();
-    tool.addPage();
-    const stamp = await tool.addTextStamp(0, { text: 'PAID', width: 100, height: 40 });
-
-    const resized = await tool.setStampRect(stamp.id, { width: 200, height: 80 });
-    expect(resized.rect).toMatchObject({ width: 200, height: 80 });
-
-    const pdfDoc = (tool as any).pdfDoc;
-    const context = pdfDoc.context;
-    const found = (tool as any)._findStampAnnot(stamp.id);
-    const apRef = (tool as any)._stampApRef(found.dict);
-    const stream = context.lookup(apRef);
-    const bbox = stream.dict.lookup(PDFName.of('BBox'), PDFArray);
-    expect(bbox.lookup(2).asNumber()).toBe(200);
-    expect(bbox.lookup(3).asNumber()).toBe(80);
-  });
-
-  it('rejects setStampText on an image stamp', async () => {
-    const tool = await PdfSignatureTool.create();
-    tool.addPage();
-    const stamp = await tool.addImageStamp(0, TINY_PNG, {});
-    await expect(tool.setStampText(stamp.id, 'nope')).rejects.toThrow(/not a text stamp/);
-  });
-
-  it('sets opacity and note on a stamp', async () => {
-    const tool = await PdfSignatureTool.create();
-    tool.addPage();
-    const stamp = await tool.addTextStamp(0, { text: 'CONFIDENTIAL' });
-
-    const withOpacity = tool.setStampOpacity(stamp.id, 0.5);
-    expect(withOpacity.opacity).toBe(0.5);
-
-    const withNote = tool.setStampNote(stamp.id, 'internal review only');
-    expect(withNote.note).toBe('internal review only');
-
-    expect(() => tool.setStampOpacity(stamp.id, 2)).toThrow(/between 0 and 1/);
-  });
-
-  it('removes a stamp along with its appearance stream and orphaned image', async () => {
-    const tool = await PdfSignatureTool.create();
-    tool.addPage();
-    const stamp = await tool.addImageStamp(0, TINY_PNG, {});
-
-    const pdfDoc = (tool as any).pdfDoc;
-    const context = pdfDoc.context;
-    const found = (tool as any)._findStampAnnot(stamp.id);
-    const apRef = (tool as any)._stampApRef(found.dict);
-    const imgRef = (tool as any)._apImageRef(apRef);
-
-    tool.removeStamp(stamp.id);
-
-    expect(tool.listStamps()).toEqual([]);
-    expect(context.indirectObjects.has(found.ref)).toBe(false);
-    expect(context.indirectObjects.has(apRef)).toBe(false);
-    expect(context.indirectObjects.has(imgRef)).toBe(false);
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].id).toBe('roundtrip-stamp');
   });
 
   it('reports stamp and annotation counts in the metadata overview', async () => {
     const tool = await PdfSignatureTool.create();
     tool.addPage();
     tool.addSignatureField(0, 'sig1', {});
-    await tool.addTextStamp(0, { text: 'APPROVED' });
-    await tool.addImageStamp(0, TINY_PNG, {});
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('stamp-a') });
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('stamp-b'), Rect: [20, 20, 120, 70] });
 
     const overview = tool.getMetadataOverview();
     expect(overview.features.stampCount).toBe(2);
     // 1 signature widget + 2 stamps live in the page's /Annots array.
     expect(overview.features.annotationCount).toBe(3);
   });
+
+  it('returns no stamps for a document that has none', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(tool.listStamps()).toEqual([]);
+    expect(tool.getMetadataOverview().features.stampCount).toBe(0);
+  });
 });
+
