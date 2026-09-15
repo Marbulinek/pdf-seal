@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/Marbulinek/pdf-seal/compare/v1.7.0...v1.7.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* packages upgrade ([#59](https://github.com/Marbulinek/pdf-seal/issues/59)) ([b9f5aa2](https://github.com/Marbulinek/pdf-seal/commit/b9f5aa2fb13c99eadc36051f55eb3395096b9c57))
+
 # [1.7.0](https://github.com/Marbulinek/pdf-seal/compare/v1.6.2...v1.7.0) (2026-09-15)
 
 
