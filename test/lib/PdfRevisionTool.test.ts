@@ -221,6 +221,20 @@ describe('PdfRevisionTool.diffSnapshotBytes', () => {
       expect(diff.fieldChanges.removed.map((f: any) => f.name)).toEqual(['sig1']);
       const modifiedNames = diff.fieldChanges.modified.map((f: any) => f.name);
       expect(modifiedNames).toContain('name1');
+
+      const addedSig2 = diff.fieldChanges.added.find((f: any) => f.name === 'sig2');
+      expect(typeof addedSig2.page).toBe('number');
+      expect(addedSig2.rect).toMatchObject({ x: expect.any(Number), y: expect.any(Number), width: expect.any(Number), height: expect.any(Number) });
+      expect(addedSig2.raw).toBeUndefined();
+      expect(addedSig2.objectRefs).toBeUndefined();
+
+      const removedSig1 = diff.fieldChanges.removed.find((f: any) => f.name === 'sig1');
+      expect(typeof removedSig1.page).toBe('number');
+      expect(removedSig1.rect).toMatchObject({ x: expect.any(Number), y: expect.any(Number), width: expect.any(Number), height: expect.any(Number) });
+
+      const modifiedName1 = diff.fieldChanges.modified.find((f: any) => f.name === 'name1');
+      expect(typeof modifiedName1.page).toBe('number');
+      expect(modifiedName1.rect).toMatchObject({ x: expect.any(Number), y: expect.any(Number), width: expect.any(Number), height: expect.any(Number) });
     });
 
     it('reports the page count delta and metadata changes', async () => {
@@ -282,6 +296,10 @@ describe('PdfRevisionTool.diffSnapshotBytes', () => {
       const { diff } = await buildScenario();
       expect(diff.signatureChanges.added.map((s: any) => s.fieldName)).toEqual(['sig2']);
       expect(diff.signatureChanges.removed).toEqual([]);
+
+      const addedSig = diff.signatureChanges.added[0];
+      expect(typeof addedSig.page).toBe('number');
+      expect(addedSig.rect).toMatchObject({ x: expect.any(Number), y: expect.any(Number), width: expect.any(Number), height: expect.any(Number) });
     });
 
     it('rolls object-level changes up into the revision checklist', async () => {

@@ -1411,7 +1411,6 @@
     let pendingDiffLandingTab = null; // which tab to switch to once the in-flight compare finishes (set by runQuickDiff)
     let viewerDiffActive = false; // true while the main viewer shows a revision snapshot/diff instead of the live document
     let hoveredDiffObjectKey = null;
-    let hoverActivatedViewerDiff = false;
 
     // Single-revision "View" mode state -- set only while viewerDiffActive
     // shows one revision's own pages (as opposed to a visual diff or a
@@ -1780,8 +1779,21 @@
       minus: '<span class="icon icon-minus-bold" aria-hidden="true"></span>',
       edit2: '<span class="icon icon-edit2" aria-hidden="true"></span>',
       eye: '<span class="icon icon-eye" aria-hidden="true"></span>',
+      eyeOff: '<span class="icon icon-eye-off" aria-hidden="true"></span>',
       code: '<span class="icon icon-code" aria-hidden="true"></span>',
     };
+
+    // Some signature fields are authored with a near-zero /Rect (commonly
+    // 0x0, tucked into a page corner) by tools that attach a signature
+    // without a visible appearance. They're legitimate but otherwise
+    // impossible to spot on the page -- callers use this to give them a
+    // fixed-size marker/badge instead of rendering their true (invisible)
+    // footprint.
+    const INVISIBLE_FIELD_MAX_DIMENSION = 10; // PDF points
+    function isRectPracticallyInvisible(rect) {
+      if (!rect) return false;
+      return rect.width < INVISIBLE_FIELD_MAX_DIMENSION || rect.height < INVISIBLE_FIELD_MAX_DIMENSION;
+    }
 
     const canvas = document.getElementById('pdf-canvas');
     const ctx = canvas.getContext('2d');
@@ -3090,26 +3102,42 @@
       overlayLayer.querySelectorAll('.field-overlay').forEach(el => el.remove());
       activeFieldDiv = null;
       const fieldsOnThisPage = documentFields.filter(f => f.page === (pageNum - 1));
+      const invisibleFieldPins = [];
 
       fieldsOnThisPage.forEach(field => {
         if (!field.rect) return;
 
+        const isInvisible = isRectPracticallyInvisible(field.rect);
         const div = document.createElement('div');
-        div.className = `field-overlay${field.required ? ' required' : ''}${isFieldStaged(field) ? ' is-staged' : ''}`;
+        div.className = `field-overlay${field.required ? ' required' : ''}${isFieldStaged(field) ? ' is-staged' : ''}${isInvisible ? ' is-invisible-field' : ''}`;
         // Lets other sections address one overlay by name -- the Certificates
         // panel jumps here to select the field a signature belongs to.
         div.dataset.fieldName = field.name || '';
+        const invisibleSuffix = isInvisible ? ' — invisible field, no visible footprint on the page' : '';
         div.title = field.signed === true
-          ? `${field.name} — signed, so it cannot be moved or removed without breaking the signature`
-          : (field.tooltip ? `${field.name} — ${field.tooltip}` : (field.name || 'Signature field'));
+          ? `${field.name} — signed, so it cannot be moved or removed without breaking the signature${invisibleSuffix}`
+          : (field.tooltip ? `${field.name} — ${field.tooltip}${invisibleSuffix}` : `${field.name || 'Signature field'}${invisibleSuffix}`);
         div.innerHTML = field.signed === true
           ? ICONS.lock
           : (field.type === 'Signature' ? ICONS.pen : ICONS.fileText);
         applyRectToOverlay(div, field.rect);
+        if (isInvisible) {
+          const pin = document.createElement('div');
+          pin.className = 'field-invisible-pin';
+          pin.innerHTML = ICONS.eyeOff;
+          div.appendChild(pin);
+          invisibleFieldPins.push({ div, pin });
+        }
 
         const label = document.createElement('div');
         label.className = 'field-label';
         label.textContent = field.name || 'Signature field';
+        if (isInvisible) {
+          const invisibleLine = document.createElement('div');
+          invisibleLine.className = 'field-label-tooltip field-label-invisible';
+          invisibleLine.textContent = 'Invisible field — no visible footprint on the page';
+          label.appendChild(invisibleLine);
+        }
         if (field.tooltip) {
           const tooltipLine = document.createElement('div');
           tooltipLine.className = 'field-label-tooltip';
@@ -3175,7 +3203,10 @@
             }
           });
           const label = div.querySelector('.field-label');
-          if (label) label.style.display = 'block';
+          if (label) {
+            label.style.display = 'block';
+            positionFieldLabel(div, label);
+          }
         });
 
         div.addEventListener('mouseleave', () => {
@@ -3268,6 +3299,96 @@
         }
         overlayLayer.appendChild(div);
       });
+
+      if (invisibleFieldPins.length) layoutInvisibleFieldPins(invisibleFieldPins);
+    }
+
+    // Invisible-field pins are fixed-size, so a field parked hard against a
+    // page edge/corner (their most common spot) would otherwise have its pin
+    // half-clipped by the viewer's rounded, overflow:hidden frame. Nudge each
+    // pin's center back inside the visible canvas, and fan out any that land
+    // on top of each other (several invisible signatures often share the
+    // exact same corner). A thin leader line is drawn back to the field's
+    // true position whenever the pin had to move off it, so the marker still
+    // reads as "pointing at" that spot rather than "the field is right here".
+    function layoutInvisibleFieldPins(entries) {
+      const containerRect = overlayLayer.getBoundingClientRect();
+      const PIN_RADIUS = 11;
+      const EDGE_MARGIN = 4;
+      const minX = containerRect.left + PIN_RADIUS + EDGE_MARGIN;
+      const maxX = containerRect.right - PIN_RADIUS - EDGE_MARGIN;
+      const minY = containerRect.top + PIN_RADIUS + EDGE_MARGIN;
+      const maxY = containerRect.bottom - PIN_RADIUS - EDGE_MARGIN;
+      const clampX = (x) => Math.min(Math.max(x, minX), maxX);
+      const clampY = (y) => Math.min(Math.max(y, minY), maxY);
+      const SPACING = PIN_RADIUS * 2 + 4; // center-to-center gap that keeps neighboring pins from touching
+
+      const placedCenters = [];
+      entries.forEach(({ div, pin }) => {
+        const fieldRect = div.getBoundingClientRect();
+        const anchorX = fieldRect.left + fieldRect.width / 2;
+        const anchorY = fieldRect.top + fieldRect.height / 2;
+
+        // Several invisible fields often share almost the exact same corner
+        // (e.g. every invisible signature on a multi-signer document landing
+        // at 0,0), so fan collisions out *along* whichever edge the anchor
+        // is pinned against, rather than toward/away from it -- offsetting
+        // toward the edge just re-clamps back to the same spot, which is
+        // the bug a naive "try points around the anchor" approach hits here.
+        let normalX = 0, normalY = 0;
+        if (anchorX < minX) normalX = 1; else if (anchorX > maxX) normalX = -1;
+        if (anchorY < minY) normalY = 1; else if (anchorY > maxY) normalY = -1;
+        if (!normalX && !normalY) normalX = 1; // an interior point: pick an arbitrary fan axis
+        const tangentX = -normalY;
+        const tangentY = normalX;
+
+        let cx = clampX(anchorX);
+        let cy = clampY(anchorY);
+
+        let step = 0;
+        while (
+          step < 12
+          && placedCenters.some((p) => Math.hypot(p.x - cx, p.y - cy) < SPACING)
+        ) {
+          step++;
+          // 0, +1, -1, +2, -2, ... so the fan grows outward from the corner
+          // in both directions along the edge instead of just one.
+          const n = Math.ceil(step / 2) * (step % 2 === 0 ? -1 : 1);
+          cx = clampX(anchorX + tangentX * SPACING * n);
+          cy = clampY(anchorY + tangentY * SPACING * n);
+        }
+        placedCenters.push({ x: cx, y: cy });
+
+        // `div` is the pin's offsetParent, so its own position is expressed
+        // relative to div's box -- not the viewport.
+        const localX = cx - fieldRect.left;
+        const localY = cy - fieldRect.top;
+        pin.style.left = `${localX}px`;
+        pin.style.top = `${localY}px`;
+        // Read by positionInvisibleFieldLabel() so the hover label anchors
+        // to the pin's actual (possibly clamped/fanned-out) position rather
+        // than div's own near-zero box.
+        div.dataset.pinLocalX = String(localX);
+        div.dataset.pinLocalY = String(localY);
+
+        const dx = anchorX - cx;
+        const dy = anchorY - cy;
+        const dist = Math.hypot(dx, dy);
+        let leader = div.querySelector('.field-invisible-pin-leader');
+        if (dist > 3) {
+          if (!leader) {
+            leader = document.createElement('div');
+            leader.className = 'field-invisible-pin-leader';
+            div.insertBefore(leader, pin);
+          }
+          leader.style.left = `${localX}px`;
+          leader.style.top = `${localY}px`;
+          leader.style.width = `${dist}px`;
+          leader.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+        } else if (leader) {
+          leader.remove();
+        }
+      });
     }
 
     // --- The Edit sheet -------------------------------------------------
@@ -3328,7 +3449,10 @@
       activeField = field;
       activeFieldDiv = div;
       const activeLabel = div.querySelector('.field-label');
-      if (activeLabel) activeLabel.style.display = 'block';
+      if (activeLabel) {
+        activeLabel.style.display = 'block';
+        positionFieldLabel(div, activeLabel);
+      }
       populateEditPanel(field);
       openEditSheet(field);
       updateViewerControlsState();
@@ -3508,6 +3632,76 @@
       div.style.top = `${screenRect.top}px`;
       div.style.width = `${screenRect.width}px`;
       div.style.height = `${screenRect.height}px`;
+    }
+
+    // The label defaults to centered above the field. Near a page edge that
+    // pushes it past the visible canvas, so re-anchor it to whichever side
+    // (and above/below) actually has room, measured against overlay-layer's
+    // bounds rather than assumed from the field's on-page position.
+    function positionFieldLabel(div, label) {
+      // An invisible field's pin (see layoutInvisibleFieldPins) can sit
+      // anywhere inside div's box -- clamped off a page edge, fanned out
+      // from a cluster of other pins at the same corner -- so the label has
+      // to be anchored to the pin's actual position, not centered above
+      // div's own (usually near-zero, often off in a corner) box like a
+      // normal field's label is. Getting this wrong is what made the label
+      // render squarely behind the pin icon instead of above it.
+      if (div.classList.contains('is-invisible-field') && div.dataset.pinLocalX !== undefined) {
+        positionInvisibleFieldLabel(div, label);
+        return;
+      }
+
+      label.style.left = '50%';
+      label.style.right = '';
+      label.style.top = '-34px';
+      label.style.transform = 'translateX(-50%)';
+
+      const containerRect = overlayLayer.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+
+      if (labelRect.right > containerRect.right && labelRect.left - (labelRect.right - containerRect.right) >= containerRect.left) {
+        label.style.left = 'auto';
+        label.style.right = '0';
+        label.style.transform = 'none';
+      } else if (labelRect.left < containerRect.left) {
+        label.style.left = '0';
+        label.style.transform = 'none';
+      }
+
+      if (label.getBoundingClientRect().top < containerRect.top) {
+        label.style.top = 'calc(100% + 8px)';
+      }
+    }
+
+    const INVISIBLE_PIN_RADIUS = 11;
+    const INVISIBLE_PIN_LABEL_GAP = 8;
+
+    function positionInvisibleFieldLabel(div, label) {
+      const px = parseFloat(div.dataset.pinLocalX);
+      const py = parseFloat(div.dataset.pinLocalY);
+
+      label.style.right = '';
+      label.style.left = `${px}px`;
+      label.style.top = `${py - INVISIBLE_PIN_RADIUS - INVISIBLE_PIN_LABEL_GAP}px`;
+      label.style.transform = 'translate(-50%, -100%)';
+
+      const containerRect = overlayLayer.getBoundingClientRect();
+      let labelRect = label.getBoundingClientRect();
+
+      let dx = 0;
+      if (labelRect.right > containerRect.right) dx = containerRect.right - labelRect.right;
+      else if (labelRect.left < containerRect.left) dx = containerRect.left - labelRect.left;
+      if (dx) {
+        label.style.left = `${px + dx}px`;
+        labelRect = label.getBoundingClientRect();
+      }
+
+      // No room above the pin (it's clamped near the top edge) -- flip the
+      // label below it instead, keeping the same horizontal anchor.
+      if (labelRect.top < containerRect.top) {
+        label.style.top = `${py + INVISIBLE_PIN_RADIUS + INVISIBLE_PIN_LABEL_GAP}px`;
+        label.style.transform = 'translate(-50%, 0%)';
+      }
     }
 
     function setAddSigActionsVisible(visible) {
@@ -5974,6 +6168,13 @@
         renderRevisionViewPage(revisionViewPageNum - 1);
         return;
       }
+      if (viewerDiffActive) {
+        if (diffCurrentPage <= 1) return;
+        diffCurrentPage -= 1;
+        clearActiveDiffObjectSelection();
+        renderCurrentDiffTabView();
+        return;
+      }
       if (pageNum <= 1 || !pdfDoc) return;
       pageNum--;
       renderPage(pageNum);
@@ -5983,6 +6184,14 @@
       if (revisionViewDoc) {
         if (revisionViewPageNum >= revisionViewDoc.numPages) return;
         renderRevisionViewPage(revisionViewPageNum + 1);
+        return;
+      }
+      if (viewerDiffActive) {
+        const maxPages = Math.max(diffDocA ? diffDocA.numPages : 0, diffDocB ? diffDocB.numPages : 0);
+        if (diffCurrentPage >= maxPages) return;
+        diffCurrentPage += 1;
+        clearActiveDiffObjectSelection();
+        renderCurrentDiffTabView();
         return;
       }
       if (pageNum >= pdfDoc.numPages || !pdfDoc) return;
@@ -6111,8 +6320,8 @@
         return;
       }
       if (viewerDiffActive) {
-        if (currentDiffActiveTab === 'visual') renderVisualDiffView();
-        else replayDiffObjectPreview();
+        if (lastDiffObjectPreview) replayDiffObjectPreview();
+        else renderCurrentDiffTabView();
         return;
       }
       if (pdfDoc) renderPage(pageNum);
@@ -7910,18 +8119,27 @@ async function loadRevisionsIfNeeded() {
       revisionSummaryCacheSessionId = requestedSessionId;
     }
 
-    // Just build the list from what's already known locally -- index and
+    // Build the list from what's already known locally first -- index and
     // byte size cost nothing to read from IndexedDB (getAllKeys, no bytes
-    // pulled in). The heavier per-revision summary (parses the PDF
-    // server-side for metadata/fields/signatures/change counts) is only
-    // fetched lazily, per revision, when its card is expanded -- see
-    // loadRevisionSummary(). Without this, opening the panel on a document
-    // with N revisions uploaded and parsed all N of them up front even
-    // though the user typically only ever looks at one or two.
+    // pulled in) -- so the panel paints instantly. The heavier per-revision
+    // summary (parses the PDF server-side for metadata/fields/signatures/
+    // change counts) is then fetched in the background for every revision
+    // (see loadAllRevisionSummaries() below) so signed status shows up
+    // front without expanding each card; expanding a card just displays
+    // what's already cached instead of firing its own request.
     revisionsData = indices.map((index) => revisionSummaryCache.get(index) || { index, loaded: false });
     revisionsData.forEach((rev, i) => { rev.isFinal = i === revisionsData.length - 1; });
     revisionsLoadedForFile = cacheKey;
     renderRevisionsTimeline(revisionsData);
+
+    // Whether a revision is signed is important enough that it shouldn't
+    // require expanding every card to find out -- fetch full summaries for
+    // whichever revisions aren't cached yet in the background, then
+    // re-render once they land so the "Signed" tag shows up front. This
+    // does mean every revision gets parsed on open rather than only the
+    // ones a user expands, but that's the trade-off for surfacing signed
+    // status immediately.
+    loadAllRevisionSummaries(requestedSessionId, revisionsData).catch(() => {});
   } catch (err) {
     if (requestedSessionId !== documentSessionId) return;
     revisionsData = null;
@@ -7975,6 +8193,47 @@ async function loadRevisionSummary(index) {
     revisionSummaryCache.set(index, result);
   }
   return result;
+}
+
+// Background counterpart to loadRevisionSummary(): fetches full summaries
+// for every not-yet-loaded revision in one batched request (the /api/revisions
+// route already accepts multiple files), so signed status can be shown on
+// every card without the user having to expand each one first. Mutates the
+// entries in `revisions` in place and re-renders once, rather than one
+// render per revision.
+async function loadAllRevisionSummaries(requestedSessionId, revisions) {
+  const pending = revisions.filter((rev) => !rev.loaded);
+  if (!pending.length) return;
+
+  const records = await Promise.all(pending.map((rev) => getRevisionRecord(requestedSessionId, rev.index)));
+  if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
+
+  const formData = new FormData();
+  pending.forEach((rev, i) => {
+    const record = records[i];
+    if (record) formData.append('pdfDocument', revisionToBlob(record), `revision-${rev.index}.pdf`);
+  });
+  if (![...formData.keys()].length) return;
+
+  const res = await fetch('/api/revisions', { method: 'POST', body: formData });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data) return;
+  if (requestedSessionId !== documentSessionId) return;
+
+  const rawRevisions = Array.isArray(data.revisions) ? data.revisions : [];
+  let rawI = 0;
+  pending.forEach((rev, i) => {
+    if (!records[i]) return; // record vanished locally between listing and fetch; leave unloaded
+    const raw = rawRevisions[rawI++] || {};
+    const { index: _ignoredIndex, isFinal: _ignoredIsFinal, ...summary } = raw;
+    const result = { ...summary, index: rev.index, loaded: true };
+    if (revisionSummaryCacheSessionId === requestedSessionId) {
+      revisionSummaryCache.set(rev.index, result);
+    }
+    Object.assign(rev, result);
+  });
+
+  if (revisionsData === revisions) renderRevisionsTimeline(revisions);
 }
 
 function renderRevisionsTimeline(revisions) {
@@ -8309,8 +8568,10 @@ async function resumeRevisionsView() {
   if (!currentDiffResultData) return;
   if (state.sheetOpen) openRevisionsCompareSheet();
   diffCurrentPage = state.page;
-  // renderVisualDiffView() re-acquires the snapshots exitDiffViewMode() released.
-  if (state.tab === 'visual') await renderVisualDiffView();
+  // renderCurrentDiffTabView() re-acquires the snapshots exitDiffViewMode()
+  // released. Every tab renders the diff into the viewer, so this always
+  // applies, not just 'visual'.
+  await renderCurrentDiffTabView();
 }
 
 document.getElementById('btnRevisionsCompareSheetClose')?.addEventListener('click', closeRevisionsCompareSheet);
@@ -8504,6 +8765,16 @@ function objectChipsHtml(label, entries, cls, revisionIndex) {
           const pageLabel = Number.isInteger(item.page) ? item.page + 1 : '?';
           const showLabel = item.previewMode === 'visual-page' ? `Show page ${pageLabel} changes` : `Show on page ${pageLabel}`;
 
+          // A field whose /Rect is at or near zero size (commonly placed by
+          // tools that attach a signature without a visible appearance) has
+          // nothing to actually see at "Show on page" -- flag it here too,
+          // same as the Signatures viewer and Certificates panel, so it
+          // isn't mistaken for a rendering bug.
+          const isInvisibleField = Array.isArray(item.rects) && item.rects.length > 0
+            && item.rects.every(isRectPracticallyInvisible);
+          const invisibleFieldTitle = "This field's /Rect is at or near zero size, so it has no visible footprint on the page — it's marked with a small pin at its actual position instead.";
+          const showTitle = isInvisibleField ? invisibleFieldTitle : '';
+
           // Keep the raw object reference visible alongside its human-readable
           // meaning (e.g. "6 0 R — Page 1 Content Stream") rather than
           // replacing one with the other.
@@ -8513,7 +8784,8 @@ function objectChipsHtml(label, entries, cls, revisionIndex) {
             .map((c) => CLASSIFICATION_BADGES[c])
             .filter(Boolean)
             .map((b) => `<span class="diff-object-badge ${b.cls}">${escapeHtml(b.label)}</span>`)
-            .join('');
+            .join('')
+            + (isInvisibleField ? `<span class="diff-object-badge badge-invisible" title="${escapeHtml(invisibleFieldTitle)}">${ICONS.eyeOff} Invisible field</span>` : '');
 
           const metaRows = [
             item.category ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Type</span><span class="diff-object-meta-value">${escapeHtml(item.category)}</span></span>` : '',
@@ -8539,7 +8811,7 @@ function objectChipsHtml(label, entries, cls, revisionIndex) {
             ${dictionaryChangesHtml(item.dictionaryChanges)}
             <p class="diff-object-preview-status" hidden></p>
             <div class="diff-object-actions">
-              ${canShowOnPage ? `<button type="button" class="btn btn-ghost btn-sm diff-object-action-preview" data-preview-mode="${escapeHtml(item.previewMode)}" data-preview-page="${item.page ?? ''}" data-preview-rects="${escapeHtml(rects)}">${escapeHtml(showLabel)}</button>` : ''}
+              ${canShowOnPage ? `<button type="button" class="btn btn-ghost btn-sm diff-object-action-preview" data-preview-mode="${escapeHtml(item.previewMode)}" data-preview-page="${item.page ?? ''}" data-preview-rects="${escapeHtml(rects)}"${showTitle ? ` title="${escapeHtml(showTitle)}"` : ''}>${escapeHtml(showLabel)}</button>` : ''}
               <button type="button" class="btn btn-ghost btn-sm diff-object-action-source">PDF source</button>
             </div>
           </div>`;
@@ -8560,43 +8832,92 @@ function parsePreviewRects(rawRects) {
     .filter(Boolean);
 }
 
-async function drawHoveredDiffObjectOverlay(pdfRects) {
-  if (!Array.isArray(pdfRects) || !pdfRects.length || !currentViewport) return;
-  overlayLayer.innerHTML = '';
-
-  pdfRects.forEach((pdfRect) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'diff-object-hover-overlay';
-    applyRectToOverlay(overlay, pdfRect);
-    overlayLayer.appendChild(overlay);
-  });
+// Row locate keys are namespaced ("field-added:sig2") to keep identity
+// unique across sections/sides; the banner only wants the field/signature
+// name itself. Raw-object chip keys (e.g. "6 0 R") have no colon and pass
+// through unchanged.
+function diffPreviewLabel(key) {
+  const idx = key.indexOf(':');
+  return idx === -1 ? key : key.slice(idx + 1);
 }
 
-async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects) {
-  if (!Number.isInteger(currentDiffToRevIndex) || pageIndex < 0 || !Array.isArray(pdfRects) || !pdfRects.length) return;
+async function drawHoveredDiffObjectOverlay(pdfRects) {
+  if (!Array.isArray(pdfRects) || !pdfRects.length || !currentViewport) return;
 
-  lastDiffObjectPreview = { mode: 'object', objectKey, pageIndex, pdfRects };
+  const invisiblePins = [];
+  pdfRects.forEach((pdfRect) => {
+    const overlay = document.createElement('div');
+    const isInvisible = isRectPracticallyInvisible(pdfRect);
+    overlay.className = `diff-object-hover-overlay${isInvisible ? ' is-invisible-field' : ''}`;
+    applyRectToOverlay(overlay, pdfRect);
+    if (isInvisible) {
+      const pin = document.createElement('div');
+      pin.className = 'field-invisible-pin';
+      pin.innerHTML = ICONS.eyeOff;
+      overlay.appendChild(pin);
+      invisiblePins.push({ div: overlay, pin });
+    }
+    overlayLayer.appendChild(overlay);
+  });
+  // Same edge-clamp/fan-out treatment as the Signatures viewer's pins (see
+  // layoutInvisibleFieldPins) -- a located field right at a page edge would
+  // otherwise have its marker half-clipped by the viewer's rounded frame.
+  if (invisiblePins.length) layoutInvisibleFieldPins(invisiblePins);
+  overlayLayer.querySelector('.diff-object-hover-overlay')?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+}
+
+// `side` picks which revision the object/field lives on: 'to' (default) is
+// the after side, used by both the raw-object chips and located fields/
+// signatures that still exist there; 'from' is the before side, used for a
+// removed field or signature that has no counterpart on 'to' to render.
+async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects, side = 'to') {
+  if (pageIndex < 0 || !Array.isArray(pdfRects) || !pdfRects.length) return;
+  const revIndex = side === 'from' ? currentDiffFromRevIndex : currentDiffToRevIndex;
+  if (!Number.isInteger(revIndex)) return;
+
+  lastDiffObjectPreview = { mode: 'object', objectKey, pageIndex, pdfRects, side };
   const previewedObjectKey = objectKey;
   hoveredDiffObjectKey = previewedObjectKey;
-  hoverActivatedViewerDiff = !viewerDiffActive;
 
   visualDiffGeneration++;
-  if (!diffDocB) {
-    diffDocB = await fetchRevisionPdfDoc(currentDiffToRevIndex);
-    resetVisualDiffPixelCache();
+  try {
+    await ensureDiffDocs();
+  } catch (_e) {
+    // One side may still have failed to load; fall through and let the
+    // doc == null check below bail out.
   }
-  const doc = diffDocB;
   if (hoveredDiffObjectKey !== previewedObjectKey) return;
 
   enterDiffViewMode();
-  const page = await doc.getPage(pageIndex + 1);
-  const viewport = page.getViewport({ scale: currentScale });
-  currentViewport = viewport;
-  overlayLayer.innerHTML = '';
-  const rendered = await renderPageToSharedCanvas(page, viewport);
-  if (rendered === false) return;
+
+  if (side === 'from') {
+    // The "to" page no longer has this field/object, so there's nothing to
+    // overlay diff marks onto -- render the "from" page plainly instead.
+    const doc = diffDocA;
+    if (!doc) return;
+    const page = await doc.getPage(pageIndex + 1);
+    const viewport = page.getViewport({ scale: currentScale });
+    currentViewport = viewport;
+    overlayLayer.innerHTML = '';
+    const rendered = await renderPageToSharedCanvas(page, viewport);
+    if (rendered === false) return;
+    if (hoveredDiffObjectKey !== previewedObjectKey) return;
+    // A plain page isn't the diff-marks view, so the "many markers" throttle
+    // doesn't apply -- the located box should keep animating regardless.
+    overlayLayer.classList.remove('has-many-diff-markers');
+    setDiffBannerText(`Previewing ${diffPreviewLabel(previewedObjectKey)} on Revision ${currentDiffFromRevIndex} — page ${pageIndex + 1}`);
+    await drawHoveredDiffObjectOverlay(pdfRects);
+    return;
+  }
+
+  // side === 'to': on the Visual tab, draw the located box on top of the
+  // color-coded diff marks; on Overview/Details (which show the page
+  // plainly -- color marks are a Visual-tab-only affordance) it's drawn on
+  // the plain page instead.
+  diffCurrentPage = pageIndex + 1;
+  await renderCurrentDiffTabView();
   if (hoveredDiffObjectKey !== previewedObjectKey) return;
-  setDiffBannerText(`Previewing ${previewedObjectKey} on Revision ${currentDiffToRevIndex} — page ${pageIndex + 1}`);
+  setDiffBannerText(`Previewing ${diffPreviewLabel(previewedObjectKey)} on Revision ${currentDiffToRevIndex} — page ${pageIndex + 1}`);
   await drawHoveredDiffObjectOverlay(pdfRects);
 }
 
@@ -8604,7 +8925,6 @@ async function renderHoveredDiffVisualPagePreview(objectKey, pageIndex) {
   if (!Number.isInteger(currentDiffToRevIndex) || !Number.isInteger(currentDiffFromRevIndex) || pageIndex < 0) return null;
   lastDiffObjectPreview = { mode: 'visual-page', objectKey, pageIndex, pdfRects: null };
   hoveredDiffObjectKey = objectKey;
-  hoverActivatedViewerDiff = !viewerDiffActive;
 
   visualDiffGeneration++;
   await ensureDiffDocs();
@@ -8636,27 +8956,24 @@ function replayDiffObjectPreview() {
     renderHoveredDiffVisualPagePreview(preview.objectKey, preview.pageIndex).catch(() => {});
     return;
   }
-  renderHoveredDiffObjectPreview(preview.objectKey, preview.pageIndex, preview.pdfRects).catch(() => {});
+  renderHoveredDiffObjectPreview(preview.objectKey, preview.pageIndex, preview.pdfRects, preview.side).catch(() => {});
 }
 
 function clearActiveDiffObjectSelection() {
   hoveredDiffObjectKey = null;
-  hoverActivatedViewerDiff = false;
   lastDiffObjectPreview = null;
   const container = document.getElementById('revisionsDiffResults');
   container?.querySelectorAll('.diff-object-chip.is-hovered').forEach((chip) => chip.classList.remove('is-hovered'));
+  container?.querySelectorAll('.diff-row.is-hovered').forEach((row) => row.classList.remove('is-hovered'));
   overlayLayer.innerHTML = '';
 }
 
+// Every tab now keeps the diff in the viewer, so clearing a located preview
+// just re-renders the plain diff for the current page rather than exiting
+// diff mode.
 function clearHoveredDiffObjectPreview() {
   clearActiveDiffObjectSelection();
-  if (currentDiffActiveTab === 'visual') {
-    renderVisualDiffView();
-    return;
-  }
-  if (hoverActivatedViewerDiff) {
-    exitDiffViewMode();
-  }
+  renderCurrentDiffTabView();
 }
 
 function setChipPreviewStatus(chip, text) {
@@ -8724,6 +9041,47 @@ function attachDiffObjectPreviewHandlers(container) {
   });
 }
 
+// Makes a field/signature Details row (marked is-locatable by
+// diffRowLocateAttrs) clickable/keyboard-activatable to jump the viewer to
+// that field's page and draw a marching-ants box over it, mirroring the raw
+// object chips' toggle behavior: a second activation clears the preview.
+function attachDiffRowLocateHandlers(container) {
+  const activate = (row) => {
+    const pageIndex = Number.parseInt(row.getAttribute('data-locate-page') || '', 10);
+    const pdfRects = parsePreviewRects(row.getAttribute('data-locate-rect') || '');
+    const side = row.getAttribute('data-locate-side') || 'to';
+    const key = row.getAttribute('data-locate-key') || '';
+    if (!Number.isInteger(pageIndex) || !pdfRects.length) return;
+
+    const isCurrentlyActive = row.classList.contains('is-hovered') && hoveredDiffObjectKey === key;
+    container.querySelectorAll('.diff-row.is-hovered').forEach((el) => el.classList.remove('is-hovered'));
+    container.querySelectorAll('.diff-object-chip.is-hovered').forEach((el) => {
+      el.classList.remove('is-hovered');
+      setChipPreviewStatus(el, null);
+    });
+
+    if (isCurrentlyActive) {
+      clearHoveredDiffObjectPreview();
+      return;
+    }
+
+    row.classList.add('is-hovered');
+    overlayLayer.innerHTML = ''; // clear stale overlay before the async render begins
+    renderHoveredDiffObjectPreview(key, pageIndex, pdfRects, side).catch(() => {
+      row.classList.remove('is-hovered');
+    });
+  };
+
+  container.querySelectorAll('.diff-row.is-locatable').forEach((row) => {
+    row.addEventListener('click', () => activate(row));
+    row.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      activate(row);
+    });
+  });
+}
+
 // ---------------------------------------------------------------
 // Raw PDF object inspector -- the destination every Details-tab chip's
 // "PDF source" button opens. Whatever the object is (locatable on a page or
@@ -8784,8 +9142,13 @@ function openRawObjectModal(item, revisionIndex) {
     .map((b) => `<span class="diff-object-badge ${b.cls}">${escapeHtml(b.label)}</span>`)
     .join('');
   const categoryBadge = item.category ? `<span class="diff-object-badge">${escapeHtml(item.category)}</span>` : '';
+  const isInvisibleField = Array.isArray(item.rects) && item.rects.length > 0
+    && item.rects.every(isRectPracticallyInvisible);
+  const invisibleBadge = isInvisibleField
+    ? `<span class="diff-object-badge badge-invisible" title="This field's /Rect is at or near zero size, so it has no visible footprint on the page.">${ICONS.eyeOff} Invisible field</span>`
+    : '';
   const badgesEl = document.getElementById('rawObjectModalBadges');
-  if (badgesEl) badgesEl.innerHTML = categoryBadge + badges;
+  if (badgesEl) badgesEl.innerHTML = categoryBadge + badges + invisibleBadge;
 
   const whereEl = document.getElementById('rawObjectModalWhere');
   if (whereEl) whereEl.innerHTML = whereItIsHtml(item);
@@ -9070,24 +9433,38 @@ function attachRawObjectFilterHandlers(container) {
 }
 
 // The Details tab: the change lists themselves.
+// Attributes that make a Details-tab row clickable to locate the underlying
+// field/signature on the page it lives on. Rows without integer page + rect
+// geometry stay inert (no class, no attributes).
+function diffRowLocateAttrs(page, rect, side, key) {
+  if (!Number.isInteger(page) || !rect) return { cls: '', attrs: '' };
+  const rectStr = `${rect.x},${rect.y},${rect.width},${rect.height}`;
+  return {
+    cls: ' is-locatable',
+    attrs: ` tabindex="0" role="button" data-locate-page="${page}" data-locate-rect="${escapeHtml(rectStr)}" data-locate-side="${side}" data-locate-key="${escapeHtml(key)}"`,
+  };
+}
+
 function renderDiffDetails(diff, fromRev, toRev) {
   const container = document.getElementById('revisionsDiffResults');
 
   const metadataHtml = diffRowsHtml(ICONS.info, 'Metadata', diff.metadataChanges, metadataChangeRow, 'metadata');
 
   const fieldRows = [
-    ...diff.fieldChanges.added.map(
-      (f) => `<li class="diff-row"><span class="diff-row-badge badge-added">added</span><span class="diff-row-key">${escapeHtml(f.name)}</span><span class="diff-row-values">${escapeHtml(f.type || '')}</span></li>`,
-    ),
-    ...diff.fieldChanges.removed.map(
-      (f) => `<li class="diff-row"><span class="diff-row-badge badge-removed">removed</span><span class="diff-row-key">${escapeHtml(f.name)}</span><span class="diff-row-values">${escapeHtml(f.type || '')}</span></li>`,
-    ),
-    ...diff.fieldChanges.modified.map(
-      (f) =>
-        `<li class="diff-row"><span class="diff-row-badge badge-modified">changed</span><span class="diff-row-key">${escapeHtml(f.name)}</span><span class="diff-row-values">${f.changes
-          .map((c) => `${escapeHtml(c.key)}: <del>${escapeHtml(String(c.before))}</del> → <ins>${escapeHtml(String(c.after))}</ins>`)
-          .join('; ')}</span></li>`,
-    ),
+    ...diff.fieldChanges.added.map((f) => {
+      const { cls, attrs } = diffRowLocateAttrs(f.page, f.rect, 'to', `field-added:${f.name}`);
+      return `<li class="diff-row${cls}"${attrs}><span class="diff-row-badge badge-added">added</span><span class="diff-row-key">${escapeHtml(f.name)}</span><span class="diff-row-values">${escapeHtml(f.type || '')}</span></li>`;
+    }),
+    ...diff.fieldChanges.removed.map((f) => {
+      const { cls, attrs } = diffRowLocateAttrs(f.page, f.rect, 'from', `field-removed:${f.name}`);
+      return `<li class="diff-row${cls}"${attrs}><span class="diff-row-badge badge-removed">removed</span><span class="diff-row-key">${escapeHtml(f.name)}</span><span class="diff-row-values">${escapeHtml(f.type || '')}</span></li>`;
+    }),
+    ...diff.fieldChanges.modified.map((f) => {
+      const { cls, attrs } = diffRowLocateAttrs(f.page, f.rect, 'to', `field-modified:${f.name}`);
+      return `<li class="diff-row${cls}"${attrs}><span class="diff-row-badge badge-modified">changed</span><span class="diff-row-key">${escapeHtml(f.name)}</span><span class="diff-row-values">${f.changes
+        .map((c) => `${escapeHtml(c.key)}: <del>${escapeHtml(String(c.before))}</del> → <ins>${escapeHtml(String(c.after))}</ins>`)
+        .join('; ')}</span></li>`;
+    }),
   ];
   const fieldsTitleHtml = sectionTitleHtml(ICONS.pen, 'Signature fields');
   const fieldsHtml = fieldRows.length
@@ -9095,16 +9472,16 @@ function renderDiffDetails(diff, fromRev, toRev) {
     : `<div class="diff-section" data-diff-section="fields"><h4 class="diff-section-title">${fieldsTitleHtml}</h4><p class="diff-empty-note">No changes.</p></div>`;
 
   const sigRows = [
-    ...diff.signatureChanges.added.map(
-      (s) =>
-        `<li class="diff-row"><span class="diff-row-badge badge-added">signed</span><span class="diff-row-key">${escapeHtml(s.fieldName)}</span><span class="diff-row-values">${escapeHtml(
-          [s.name, s.reason, s.signingTime].filter(Boolean).join(' · ') || 'Signature applied',
-        )}</span></li>`,
-    ),
-    ...diff.signatureChanges.removed.map(
-      (s) =>
-        `<li class="diff-row"><span class="diff-row-badge badge-removed">removed</span><span class="diff-row-key">${escapeHtml(s.fieldName)}</span><span class="diff-row-values">Signature no longer present</span></li>`,
-    ),
+    ...diff.signatureChanges.added.map((s) => {
+      const { cls, attrs } = diffRowLocateAttrs(s.page, s.rect, 'to', `sig-added:${s.fieldName}`);
+      return `<li class="diff-row${cls}"${attrs}><span class="diff-row-badge badge-added">signed</span><span class="diff-row-key">${escapeHtml(s.fieldName)}</span><span class="diff-row-values">${escapeHtml(
+        [s.name, s.reason, s.signingTime].filter(Boolean).join(' · ') || 'Signature applied',
+      )}</span></li>`;
+    }),
+    ...diff.signatureChanges.removed.map((s) => {
+      const { cls, attrs } = diffRowLocateAttrs(s.page, s.rect, 'from', `sig-removed:${s.fieldName}`);
+      return `<li class="diff-row${cls}"${attrs}><span class="diff-row-badge badge-removed">removed</span><span class="diff-row-key">${escapeHtml(s.fieldName)}</span><span class="diff-row-values">Signature no longer present</span></li>`;
+    }),
   ];
   const signaturesTitleHtml = sectionTitleHtml(ICONS.lock, 'Signature');
   const signaturesHtml = sigRows.length
@@ -9136,6 +9513,7 @@ function renderDiffDetails(diff, fromRev, toRev) {
   container.innerHTML = metadataHtml + fieldsHtml + signaturesHtml + objectsHtml;
   document.getElementById('revisionsDiffEmpty').hidden = true;
   attachDiffObjectPreviewHandlers(container);
+  attachDiffRowLocateHandlers(container);
   // A new comparison starts filters fresh -- the previous pair's search term
   // or category toggles carrying over into a different diff would just be
   // confusing.
@@ -9224,11 +9602,11 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
       document.getElementById(id).hidden = tab !== currentDiffActiveTab;
     });
 
-    // Warm the snapshots the Visual tab renders from, in the background.
+    // Warm the snapshots the diff view renders from, in the background.
     try {
       await ensureDiffDocs();
       if (requestedSessionId !== documentSessionId) return;
-      if (currentDiffActiveTab === 'visual') renderVisualDiffView();
+      renderCurrentDiffTabView();
     } catch (_e) {
       if (requestedSessionId !== documentSessionId) return;
       if (diffDocA) diffDocA.destroy();
@@ -9349,11 +9727,12 @@ function switchDiffTab(targetTab) {
     if (panel) panel.hidden = tab !== targetTab;
   });
 
-  if (targetTab === 'visual') {
-    renderVisualDiffView(); // renders into the main viewer; calls enterDiffViewMode() itself
-  } else if (viewerDiffActive) {
-    exitDiffViewMode();
-  }
+  // Every tab shows the selected pair's diff in the main viewer, so the
+  // context of "what am I comparing" never disappears on tab switch --
+  // renderCurrentDiffTabView() calls enterDiffViewMode() itself. Only Visual
+  // draws the color-coded diff marks; Overview/Details get the plain page.
+  clearActiveDiffObjectSelection();
+  renderCurrentDiffTabView();
 }
 
 document.getElementById('revisionsViewTabs').addEventListener('click', (e) => {
@@ -9456,6 +9835,8 @@ async function renderVisualDiffView() {
   // the visual diff was opened, even though the canvas itself is moving.
   document.getElementById('pageNum').textContent = diffCurrentPage;
   document.getElementById('pageCount').textContent = maxPages || 1;
+  document.getElementById('btnPrev').disabled = diffCurrentPage <= 1;
+  document.getElementById('btnNext').disabled = diffCurrentPage >= maxPages;
 
   setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — page ${diffCurrentPage} / ${maxPages}`);
 
@@ -9468,6 +9849,64 @@ async function renderVisualDiffView() {
     if (err && err.name === 'RenderingCancelledException') return;
     setDiffBannerText(`Visual diff error: ${err.message}`);
   }
+}
+
+// Overview/Details keep the diff in the viewer too, but the color-coded
+// highlighter/outline marks are a Visual-tab-only affordance -- these tabs
+// just show the target revision's page plainly (a located field/signature
+// row can still draw its own marching-ants box over this).
+async function renderDiffPlainView() {
+  const generation = ++visualDiffGeneration;
+  enterDiffViewMode();
+
+  const fromLabel = currentDiffFromRevIndex ?? '?';
+  const toLabel = currentDiffToRevIndex ?? '?';
+
+  if (!diffDocA && !diffDocB) {
+    setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — loading snapshot…`);
+    try {
+      await ensureDiffDocs();
+    } catch (_e) {
+      setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — snapshot unavailable.`);
+      return;
+    }
+    if (generation !== visualDiffGeneration) return;
+    if (!diffDocA && !diffDocB) return;
+  }
+
+  const maxPages = Math.max(diffDocA ? diffDocA.numPages : 0, diffDocB ? diffDocB.numPages : 0);
+  if (diffCurrentPage > maxPages) diffCurrentPage = maxPages;
+  if (diffCurrentPage < 1) diffCurrentPage = 1;
+
+  // Prefer the "to" revision's page -- if it doesn't have this page (fewer
+  // pages than "from"), fall back to "from" rather than showing nothing.
+  const doc = (diffDocB && diffCurrentPage <= diffDocB.numPages) ? diffDocB : diffDocA;
+  if (!doc || diffCurrentPage > doc.numPages) {
+    setDiffBannerText('Page not available in either revision.');
+    return;
+  }
+
+  const page = await doc.getPage(diffCurrentPage);
+  if (generation !== visualDiffGeneration) return;
+  const viewport = page.getViewport({ scale: currentScale });
+  currentViewport = viewport;
+  overlayLayer.innerHTML = '';
+  overlayLayer.classList.remove('has-many-diff-markers');
+  const rendered = await renderPageToSharedCanvas(page, viewport);
+  if (rendered === false || generation !== visualDiffGeneration) return;
+
+  document.getElementById('pageNum').textContent = diffCurrentPage;
+  document.getElementById('pageCount').textContent = maxPages || 1;
+  document.getElementById('btnPrev').disabled = diffCurrentPage <= 1;
+  document.getElementById('btnNext').disabled = diffCurrentPage >= maxPages;
+
+  setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — page ${diffCurrentPage} / ${maxPages}`);
+}
+
+// Dispatches to whichever render matches the active tab -- Visual gets the
+// color-coded diff marks, Overview/Details get the plain page.
+function renderCurrentDiffTabView() {
+  return currentDiffActiveTab === 'visual' ? renderVisualDiffView() : renderDiffPlainView();
 }
 
 // Renders directly onto the main viewer's shared `canvas`/`ctx`/`overlayLayer`
@@ -10577,14 +11016,26 @@ function renderCertificateSignatureList(report) {
       : [];
     const totalChecks = sig.checks.length + chainChecks.length + chainCertChecks.length;
 
+    // The field itself (rect/page) lives in documentFields, not the
+    // certificate report -- cross-reference it just to flag when its /Rect
+    // is at or near zero size, which otherwise makes it impossible to spot
+    // on the page (see .field-invisible-pin in the Signatures viewer).
+    const fieldOnDoc = documentFields.find((f) => f.name === sig.fieldName);
+    const isInvisibleField = Boolean(fieldOnDoc) && isRectPracticallyInvisible(fieldOnDoc.rect);
+
     return `
       <article class="cert-signature-card" data-cert-signature-card="${escapeHtml(sig.fieldName)}" style="--i:${i}">
         <div class="cert-signature-head">
           <span class="icon icon-lock" aria-hidden="true"></span>
           <span class="cert-signature-title">Signature ${i + 1}</span>
+          ${isInvisibleField ? `<span class="cert-invisible-badge" title="This field's /Rect is at or near zero size, so it has no visible footprint on the page.">${ICONS.eyeOff} Invisible field</span>` : ''}
           ${certBadge(sig.status)}
         </div>
         <p class="cert-signature-meta">${meta.join(' &middot; ')}</p>
+        ${isInvisibleField ? `
+        <button type="button" class="btn btn-ghost btn-small cert-locate-btn" data-cert-action="show-field" data-cert-signature-field="${escapeHtml(sig.fieldName)}">
+          ${ICONS.eyeOff} Locate on page
+        </button>` : ''}
         ${renderCertByteMap(sig)}
         ${renderCertificateChain(report, chain, sig)}
         ${renderValidityTimeline(report, chain, sig)}
@@ -11232,6 +11683,28 @@ function showSignatureFieldOnDocument(fieldName) {
   }
 }
 
+/** Certificates tree -> just point at the field in the viewer, staying on
+ * Certificates -- unlike showSignatureFieldOnDocument, this never switches
+ * section or opens the Edit sheet. */
+function flashSignatureFieldOnDocument(fieldName) {
+  const field = documentFields.find((f) => f.name === fieldName);
+  if (!field) {
+    showNotification(`This signature's field (${fieldName}) is not on the document.`, 'info');
+    return;
+  }
+
+  const goToField = () => {
+    flashElement(document.querySelector(`.field-overlay[data-field-name="${CSS.escape(fieldName)}"]`));
+  };
+
+  if (typeof field.page === 'number' && field.page + 1 !== pageNum) {
+    pageNum = field.page + 1;
+    Promise.resolve(renderPage(pageNum)).then(goToField).catch(() => {});
+  } else {
+    goToField();
+  }
+}
+
 /* ---------- Event wiring ---------- */
 
 document.getElementById('sectionCertificates')?.addEventListener('click', (e) => {
@@ -11246,7 +11719,7 @@ document.getElementById('sectionCertificates')?.addEventListener('click', (e) =>
     if (certId) openCertificateSheet(certId, tab);
   } else if (action === 'show-field') {
     const fieldName = target.closest('[data-cert-signature-field]')?.getAttribute('data-cert-signature-field');
-    if (fieldName) showSignatureFieldOnDocument(fieldName);
+    if (fieldName) flashSignatureFieldOnDocument(fieldName);
   } else if (action === 'copy-cert-summary' && certificatesData) {
     copyCertificateText(buildCertificateSummaryMarkdown(certificatesData), 'Summary');
   } else if (action === 'copy-cert-json' && certificatesData) {

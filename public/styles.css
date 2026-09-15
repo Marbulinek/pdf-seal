@@ -81,6 +81,7 @@
 .icon-arrow-right { -webkit-mask-image: url(/assets/images/icons/arrow-right.svg); mask-image: url(/assets/images/icons/arrow-right.svg); }
 .icon-list { -webkit-mask-image: url(/assets/images/icons/list.svg); mask-image: url(/assets/images/icons/list.svg); }
 .icon-eye { -webkit-mask-image: url(/assets/images/icons/eye.svg); mask-image: url(/assets/images/icons/eye.svg); }
+.icon-eye-off { -webkit-mask-image: url(/assets/images/icons/eye-off.svg); mask-image: url(/assets/images/icons/eye-off.svg); }
 .icon-repeat { -webkit-mask-image: url(/assets/images/icons/repeat.svg); mask-image: url(/assets/images/icons/repeat.svg); }
 .icon-undo { -webkit-mask-image: url(/assets/images/icons/undo.svg); mask-image: url(/assets/images/icons/undo.svg); }
 .icon-redo { -webkit-mask-image: url(/assets/images/icons/redo.svg); mask-image: url(/assets/images/icons/redo.svg); }
@@ -1668,6 +1669,80 @@ canvas { display: block; }
 .field-overlay.required.active {
   border-color: var(--coral); background: rgba(249, 115, 22, 0.28); box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.18);
 }
+
+/* Jumped to from the Certificates tree -- pulse the rectangle in place
+   instead of selecting it (selection is Signatures-section-only). */
+@keyframes fieldOverlayFlash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(69, 123, 157, 0); }
+  20%, 60% { box-shadow: 0 0 0 6px rgba(69, 123, 157, 0.35); }
+}
+.field-overlay.is-flashed { z-index: 10; animation: fieldOverlayFlash 1.4s ease-out; }
+
+/* Invisible signature field: its /Rect is at or near zero size (commonly
+   placed by external tools that attach a signature without a visible
+   appearance) and often tucked into a page corner, so the real overlay box
+   is too small to ever notice. A fixed-size pin sits centered on that same
+   spot instead, always on (not just on hover/select like a normal field's
+   border) so the page doesn't just look empty where it actually has a
+   signature field. It's a real child element (not just decoration) so
+   hovering/clicking the pin still hits the parent overlay's handlers. */
+.field-invisible-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: 2px solid #fff;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  z-index: 4;
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(233, 162, 59, 0.3), 0 2px 5px rgba(30, 33, 51, 0.3);
+  animation: invisibleFieldPulse 2s ease-in-out infinite;
+}
+/* layoutInvisibleFieldPins() overwrites left/top above with inline px values
+   (higher specificity than the percentage default) to keep the pin fully
+   inside the visible canvas and fan out ones that would otherwise land on
+   top of each other. This thin pointer back to the field's true (tiny)
+   position is drawn only when the pin had to move off of it to do that. */
+.field-invisible-pin-leader {
+  position: absolute;
+  height: 2px;
+  background: rgba(233, 162, 59, 0.6);
+  transform-origin: 0 50%;
+  pointer-events: none;
+  z-index: 3;
+}
+.field-overlay.required .field-invisible-pin-leader { background: rgba(230, 57, 70, 0.6); }
+.field-overlay.required .field-invisible-pin {
+  background: var(--coral);
+  animation-name: invisibleFieldPulseRequired;
+}
+.field-overlay.active .field-invisible-pin,
+.field-overlay:hover .field-invisible-pin {
+  animation-play-state: paused;
+  box-shadow: 0 0 0 5px rgba(233, 162, 59, 0.22);
+}
+.field-overlay.required.active .field-invisible-pin,
+.field-overlay.required:hover .field-invisible-pin {
+  box-shadow: 0 0 0 5px rgba(230, 57, 70, 0.22);
+}
+@keyframes invisibleFieldPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(233, 162, 59, 0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(233, 162, 59, 0.08); }
+}
+@keyframes invisibleFieldPulseRequired {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(230, 57, 70, 0.08); }
+}
+.field-label-invisible { font-weight: 700; color: var(--amber); opacity: 1; }
+.field-overlay.required .field-label-invisible { color: #ffcfa3; }
 
 /* Field overlays are only meant to be manipulated from the Signatures
    section -- elsewhere (MetaData, Revisions, ...) pointer-events stay on
@@ -3289,6 +3364,44 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 .diff-row-values del { color: var(--coral-dark); text-decoration: line-through; opacity: 0.8; }
 .diff-row-values ins { color: var(--ocean-dark); text-decoration: none; font-weight: 700; }
 
+.diff-row.is-locatable {
+  cursor: pointer;
+  position: relative;
+  padding-right: 30px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.diff-row.is-locatable::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 13px;
+  height: 13px;
+  transform: translateY(-50%);
+  background: var(--ocean-dark);
+  -webkit-mask-image: url(/assets/images/icons/eye.svg);
+  mask-image: url(/assets/images/icons/eye.svg);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  opacity: 0.45;
+}
+.diff-row.is-locatable:hover {
+  background: var(--cream);
+}
+.diff-row.is-locatable:focus-visible {
+  outline: 2px solid var(--ocean);
+  outline-offset: 2px;
+}
+.diff-row.is-locatable.is-hovered {
+  background: var(--cream);
+  box-shadow: 0 0 0 3px rgba(69, 123, 157, 0.14);
+}
+.diff-row.is-locatable.is-hovered::after {
+  opacity: 0.9;
+}
+
 .diff-object-chips { display: flex; flex-direction: column; gap: 8px; }
 .diff-object-chip {
   padding: 8px 10px;
@@ -3366,6 +3479,7 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 .diff-object-badge.badge-content { background: rgba(16, 185, 129, 0.15); color: var(--ocean-dark); }
 .diff-object-badge.badge-visual { background: rgba(16, 185, 129, 0.22); color: var(--ocean-dark); }
 .diff-object-badge.badge-signing { background: rgba(249, 115, 22, 0.14); color: var(--coral-dark); }
+.diff-object-badge.badge-invisible { background: rgba(233, 162, 59, 0.18); color: var(--amber-dark); display: inline-flex; align-items: center; gap: 3px; }
 
 .diff-object-subsection { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--ice); }
 .diff-object-subsection-title {
@@ -4489,6 +4603,17 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 }
 .cert-signature-meta strong { color: var(--navy); font-weight: 600; }
 
+/* Flags a signature whose field has an (at or near) zero-size /Rect --
+   it exists on the document but there's nothing to see, so the badge and
+   the "Locate on page" button below are the only way to find it. */
+.cert-invisible-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(233, 162, 59, 0.16); color: var(--amber-dark);
+  font-size: 0.68rem; font-weight: 700;
+}
+.cert-locate-btn { margin: -6px 0 12px; }
+
 .cert-bytemap { margin: 10px 0 14px; display: flex; flex-direction: column; gap: 7px; }
 .cert-bytemap-row { display: flex; align-items: center; gap: 9px; }
 .cert-bytemap-label { flex: 0 0 auto; width: 84px; font-size: 0.68rem; font-weight: 600; color: var(--ocean-dark); }
@@ -4570,7 +4695,7 @@ button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-o
 .cert-node-text { flex: 1; min-width: 0; }
 .cert-node-name {
   font-size: 0.83rem; font-weight: 700; color: var(--navy);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  white-space: normal; overflow-wrap: break-word; word-break: break-word;
 }
 .cert-node-role { font-size: 0.7rem; font-weight: 600; color: var(--ocean-dark); }
 .cert-node-detail { margin-top: 2px; font-size: 0.7rem; color: var(--ocean-dark); }
