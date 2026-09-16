@@ -318,6 +318,92 @@ describe('PdfRevisionTool.diffSnapshotBytes', () => {
     });
   });
 
+  it('counts a text edit as a "content" change when it rewrites the same stream ref in place (byte length unchanged)', async () => {
+    const before = await PdfSignatureTool.create();
+    before.addPage();
+    const pdfDocBefore: any = (before as any).pdfDoc;
+    const contextBefore = pdfDocBefore.context;
+    const pageBefore = pdfDocBefore.getPages()[0];
+    const beforeStreamRef = contextBefore.register(contextBefore.stream('/F1 12 Tf 20 30 Td (Hello) Tj\n', {}));
+    pageBefore.node.set(PDFName.of('Contents'), beforeStreamRef);
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    const pdfDocAfter: any = (after as any).pdfDoc;
+    const contextAfter = pdfDocAfter.context;
+    const pageAfter = pdfDocAfter.getPages()[0];
+    const existingContentsRef = pageAfter.node.get(PDFName.of('Contents'));
+    // Same ref, same byte length ("Hello" and "World" are both 5 chars) --
+    // the dict-level view of this stream (Length/@rawByteLength) is
+    // identical before and after, so only a content hash catches this.
+    contextAfter.assign(existingContentsRef, contextAfter.stream('/F1 12 Tf 20 30 Td (World) Tj\n', {}));
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+
+    const contentDetail = diff.objectChanges.modifiedDetails.find((d: any) => d.category === 'Page Content');
+    expect(contentDetail).toBeTruthy();
+    expect(contentDetail.streamDiff.available).toBe(true);
+    expect(contentDetail.streamDiff.contentUnchanged).toBe(false);
+
+    // The Overview tab's text-changed count is derived from these
+    // categories -- it must reflect the same-length content swap, not just
+    // the Visual tab (which locates the change independently, via a
+    // whole-page pixel diff of the rendered PDF).
+    expect(diff.checklist.textUnchanged).toBe(false);
+    expect(diff.checklist.textChangedCount).toBeGreaterThan(0);
+  });
+
+  it('classifies a replaced content-stream object as "content" even when the old object was removed by the revision', async () => {
+    const before = await PdfSignatureTool.create();
+    // Force the AcroForm object into existence up front, at the same ref
+    // number in both snapshots -- otherwise `diffSnapshotBytes()`'s own
+    // `listFields()` calls below lazily create it later, at a *different*
+    // ref number in each snapshot (since "before" and "after" consume a
+    // different number of refs before that point), which would coincidentally
+    // collide with the new content-stream ref and produce an unrelated
+    // "modified" entry that has nothing to do with what this test checks.
+    (before as any).pdfDoc.getForm();
+    before.addPage();
+    const pdfDocBefore: any = (before as any).pdfDoc;
+    const contextBefore = pdfDocBefore.context;
+    const pageBefore = pdfDocBefore.getPages()[0];
+    const beforeStreamRef = contextBefore.register(contextBefore.stream('/F1 12 Tf 20 30 Td (Hello) Tj\n', {}));
+    pageBefore.node.set(PDFName.of('Contents'), beforeStreamRef);
+    const beforeBytes = await before.toBytes();
+
+    const after = await PdfSignatureTool.fromBytes(beforeBytes);
+    (after as any).pdfDoc.getForm();
+    const pdfDocAfter: any = (after as any).pdfDoc;
+    const contextAfter = pdfDocAfter.context;
+    const pageAfter = pdfDocAfter.getPages()[0];
+    const existingContentsRef = pageAfter.node.get(PDFName.of('Contents'));
+    // Point the page at a brand-new content-stream object and delete the
+    // old one outright, so the diff sees an added object (the new stream)
+    // and a genuinely removed one (the old stream) rather than a modified
+    // ref -- e.g. what a text-edit tool does when it regenerates the
+    // stream from scratch instead of rewriting it in place.
+    const newStreamRef = contextAfter.register(contextAfter.stream('/F1 12 Tf 20 30 Td (Hello World) Tj\n', {}));
+    pageAfter.node.set(PDFName.of('Contents'), newStreamRef);
+    contextAfter.delete(existingContentsRef);
+    const afterBytes = await after.toBytes();
+
+    const diff = await PdfRevisionTool.diffSnapshotBytes(beforeBytes, afterBytes);
+
+    // Both the new (added) and old (removed) content-stream objects must be
+    // classified as "content", not fall through to "other" -- the removed
+    // one no longer appears in the "to" snapshot's page/content-stream
+    // index, so classifying it needs the "from" snapshot's own index.
+    expect(diff.objectChanges.removed).toHaveLength(1);
+    const removedKey = diff.objectChanges.removed[0];
+    const addedKey = diff.objectChanges.added.find((k: string) => diff.objectChanges.categories[k] === 'content');
+    expect(addedKey).toBeTruthy();
+    expect(diff.objectChanges.categories[removedKey]).toBe('content');
+
+    expect(diff.checklist.textUnchanged).toBe(false);
+    expect(diff.checklist.textChangedCount).toBeGreaterThan(0);
+  });
+
   it('reports a clean checklist and passing integrity check when nothing changed', async () => {
     const tool = await PdfSignatureTool.create();
     tool.addPage();
