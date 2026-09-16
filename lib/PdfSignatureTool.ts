@@ -2,6 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import {
   PDFDocument,
   PDFName,
@@ -108,7 +109,18 @@ function pdfValueToPlain(value: any, depth: number = 0): any {
     }
     try {
       const bytes = typeof value.getContents === 'function' ? value.getContents() : null;
-      if (bytes) out['@rawByteLength'] = bytes.length;
+      if (bytes) {
+        out['@rawByteLength'] = bytes.length;
+        // A revision that rewrites a stream's content without changing its
+        // byte length (e.g. a text edit where the replacement string is the
+        // same length) would otherwise look identical at the dict level --
+        // this diff walk never inspects decoded content -- and silently
+        // vanish from every raw-object-diff-derived view (the Overview
+        // checklist's text-changed count, the Details tab's object list),
+        // even though a pixel-level view like the Visual tab's page render
+        // still shows the change.
+        out['@rawContentHash'] = createHash('sha256').update(bytes).digest('hex');
+      }
     } catch (_e) {
       // Some stream subclasses (e.g. still-encoded ones) may not expose raw
       // bytes cheaply -- that's fine, the dict entries are the useful part.

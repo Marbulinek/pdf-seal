@@ -1308,19 +1308,27 @@ function diffRawObjects(dumpA: any, dumpB: any, toolA: any = null, toolB: any = 
   const contentStreamPages = buildContentStreamPageIndex(dumpB, pageRefs);
   const acroFormRef = findAcroFormRef(dumpB) || findAcroFormRef(dumpA);
 
-  const categories: Record<string, ObjectCategory> = {};
-  for (const key of [...addedKeys, ...removedKeys, ...modifiedKeys]) {
-    categories[key] = classifyObjectKey(key, dumpA, dumpB, pageRefs, contentStreamPages, acroFormRef);
-  }
-
-  const integrityIssues = findDanglingReferences([...addedKeys, ...modifiedKeys], dumpB);
-
   // Removed objects only exist in the "from" snapshot, so their page/
-  // rect/field lookups need to run against dumpA's own indices rather
-  // than dumpB's (which no longer contains them).
+  // rect/field lookups (and classification) need to run against dumpA's
+  // own indices rather than dumpB's (which no longer contains them) --
+  // otherwise a replaced content stream's old object (e.g. a text edit
+  // that swapped in a brand-new stream object) falls through to "other"
+  // instead of "content", and the change silently drops out of every
+  // category-based count (like the Overview tab's text-changed count)
+  // even though the Visual tab still locates and highlights it fine.
   const pageRefsA = buildPageRefIndex(dumpA);
   const annotationPagesA = buildAnnotationPageIndex(dumpA, pageRefsA);
   const contentStreamPagesA = buildContentStreamPageIndex(dumpA, pageRefsA);
+
+  const categories: Record<string, ObjectCategory> = {};
+  for (const key of [...addedKeys, ...modifiedKeys]) {
+    categories[key] = classifyObjectKey(key, dumpA, dumpB, pageRefs, contentStreamPages, acroFormRef);
+  }
+  for (const key of removedKeys) {
+    categories[key] = classifyObjectKey(key, dumpA, dumpB, pageRefsA, contentStreamPagesA, acroFormRef);
+  }
+
+  const integrityIssues = findDanglingReferences([...addedKeys, ...modifiedKeys], dumpB);
 
   const withCategory = (preview: RawObjectPreview): RawObjectPreview => ({
     ...preview,
