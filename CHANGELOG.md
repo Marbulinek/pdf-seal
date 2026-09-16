@@ -1,3 +1,10 @@
+## [1.7.2](https://github.com/Marbulinek/pdf-seal/compare/v1.7.1...v1.7.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* fixed when revision does not count text changes ([#60](https://github.com/Marbulinek/pdf-seal/issues/60)) ([7b04837](https://github.com/Marbulinek/pdf-seal/commit/7b04837a4b2606e16f85f9178578fee62b9dd65c))
+
 ## [1.7.1](https://github.com/Marbulinek/pdf-seal/compare/v1.7.0...v1.7.1) (2026-09-15)
 
 
