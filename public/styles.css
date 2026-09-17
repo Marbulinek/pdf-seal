@@ -2296,6 +2296,20 @@ mark.meta-highlight {
 .meta-card .field-details-table th { width: 42%; }
 .meta-card-mono .field-details-table td { font-size: 0.72rem; }
 
+.meta-inline-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin-left: 6px;
+  color: var(--ocean);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.meta-inline-link:hover { color: var(--ocean-dark); }
+
 .meta-badge {
   display: inline-flex;
   align-items: center;
@@ -3047,21 +3061,21 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   position: relative;
 }
 .revisions-timeline[hidden] { display: none; }
 /* A short connector segment in each gap, aligned under the index badge
-   (16px card padding + 12px badge radius = 28px), gives the list a
+   (14px card padding + 10px badge radius = 24px), gives the list a
    timeline feel without any absolute-positioned overlay tracking card
    height across collapsed/expanded state. */
 .revision-card:not(:last-child)::after {
   content: '';
   position: absolute;
-  left: 28px;
-  bottom: -14px;
+  left: 24px;
+  bottom: -10px;
   width: 2px;
-  height: 14px;
+  height: 10px;
   background: var(--ice);
 }
 
@@ -3069,7 +3083,7 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   position: relative;
   border: 1px solid var(--ice);
   border-radius: var(--radius-m);
-  padding: 14px 16px;
+  padding: 10px 14px;
   background: var(--cream);
   box-shadow: 0 2px 8px rgba(30, 33, 51, 0.07);
   min-width: 0;
@@ -3080,10 +3094,8 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 
 .revision-card-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 10px;
+  flex-direction: column;
+  gap: 5px;
   margin-bottom: 0;
   width: 100%;
   border: 0;
@@ -3093,61 +3105,113 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   cursor: pointer;
   color: inherit;
 }
-.revision-card-head-actions {
+.revision-card-head-top {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
 }
 .revision-expand-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 1px solid var(--ice);
   border-radius: 999px;
   background: #fff;
   color: var(--navy);
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   line-height: 1;
+  flex-shrink: 0;
 }
 .revision-card-title {
   font-weight: 700;
-  font-size: 0.92rem;
+  font-size: 0.86rem;
   color: var(--navy);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
 }
 .revision-index-badge {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: 50%;
+  width: 20px; height: 20px; border-radius: 50%;
   background: var(--ice); color: var(--navy);
-  font-weight: 700; font-size: 0.72rem; flex-shrink: 0;
+  font-weight: 700; font-size: 0.66rem; flex-shrink: 0;
 }
 .revision-card:last-child .revision-index-badge { background: var(--ocean); color: #ffffff; }
 
-.revision-row-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.revision-row-sub { font-size: 0.72rem; color: var(--ocean-dark); margin: -2px 0 6px; }
+.revision-row-tags { display: flex; flex-wrap: wrap; gap: 3px; }
+.revision-row-sub { font-size: 0.7rem; color: var(--ocean-dark); margin: -2px 0 4px; }
 
 .revision-tag {
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 3px 8px;
+  letter-spacing: 0.02em;
+  padding: 2px 6px;
   border-radius: 999px;
   border: 1px solid var(--ice);
   background: #fff;
   color: var(--navy);
+  line-height: 1.3;
 }
 .revision-tag.tag-original { background: var(--ice); }
 .revision-tag.tag-current { background: var(--ocean); color: #fff; border-color: var(--ice); }
 .revision-tag.tag-signed { background: var(--coral); color: #fff; border-color: var(--coral-dark); }
+.revision-tag.tag-imported { background: #fff; color: var(--ocean-dark); border-color: var(--ice); }
+.revision-tag.tag-incremental { background: var(--success); color: #fff; border-color: var(--success-dark); }
+.revision-tag.tag-rewrite { background: var(--ice); color: var(--navy); }
+.revision-tag.tag-warning { background: var(--amber); color: #fff; border-color: var(--amber-dark); }
+
+/* A labelled break wherever the timeline switches between runs of appended
+   incremental saves and runs of full rewrites -- the rule is drawn with
+   pseudo-elements either side of the label so it fills whatever width is
+   left over. */
+.revision-group-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+}
+.revision-group-divider::before,
+.revision-group-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ice);
+}
+.revision-group-divider-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ocean-dark);
+}
+/* Echoes the green tag-incremental badge on the cards below. */
+.revision-group-divider.is-incremental .revision-group-divider-label { color: var(--success-dark); }
+/* The last card of a group has a divider, not another card, beneath it --
+   drop the connector stub so it doesn't point into the rule. */
+.revision-card.is-group-end::after { content: none; }
+
+.revisions-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ocean-dark);
+  cursor: pointer;
+}
+/* Load-bearing, same as .panel-loading[hidden]: the display above would
+   otherwise beat the hidden attribute. */
+.revisions-filter-toggle[hidden] { display: none; }
+.revisions-filter-note { margin-top: -6px; }
 
 .revision-card-body {
   display: flex;
@@ -4541,19 +4605,24 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 .cert-trustsim-detail { margin: 0 0 6px; font-size: 0.79rem; color: var(--navy); }
 
 /* ---------- Validity timeline ---------- */
-.cert-timeline { margin-top: 12px; overflow-x: auto; }
-.cert-timeline-scroll { min-width: 360px; display: flex; flex-direction: column; gap: 6px; position: relative; padding-top: 4px; }
+.cert-timeline { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--ice); }
+.cert-timeline-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.cert-timeline-title { margin: 0; font-size: 0.8rem; font-weight: 700; color: var(--navy); }
+.cert-timeline-expand { padding: 3px 10px; font-size: 0.72rem; }
+.cert-timeline-scroll-wrap { overflow-x: auto; }
+.cert-timeline-scroll { min-width: 380px; display: flex; flex-direction: column; gap: 8px; position: relative; padding-top: 4px; }
 .cert-timeline-row { display: flex; align-items: center; gap: 8px; font-size: 0.68rem; }
 .cert-timeline-row-label { flex: 0 0 120px; color: var(--ocean-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cert-timeline-track { position: relative; flex: 1 1 auto; height: 14px; background: var(--cream); border-radius: 999px; }
-.cert-timeline-bar { position: absolute; top: 0; bottom: 0; border-radius: 999px; }
+.cert-timeline-track { position: relative; flex: 1 1 auto; height: 15px; background: var(--cream); border-radius: 999px; }
+.cert-timeline-bar { position: absolute; top: 0; bottom: 0; border-radius: 999px; transition: filter 0.15s ease; }
+.cert-timeline-bar:hover { filter: brightness(1.1); }
 .cert-timeline-bar.is-pass    { background: var(--success); }
 .cert-timeline-bar.is-warn    { background: var(--amber); }
 .cert-timeline-bar.is-fail    { background: var(--coral); }
 .cert-timeline-bar.is-unknown { background: var(--ocean); opacity: 0.5; }
 .cert-timeline-marker-row { opacity: 0.9; }
 .cert-timeline-marker {
-  position: absolute; top: -2px; width: 2px; height: 18px;
+  position: absolute; top: -2px; width: 2px; height: 19px;
   transform: translateX(-1px);
 }
 .cert-timeline-marker.is-claimed   { background: var(--ocean); }
@@ -4564,8 +4633,8 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
   background: inherit;
 }
 /* Positioned to start exactly where .cert-timeline-track starts (past the
-   fixed-width row-label column + gap), so the "now" guide only ever crosses
-   the graph itself and never runs through the row labels. */
+   fixed-width row-label column + gap), so the "now" guide and axis ticks
+   only ever cross the graph itself and never run through the row labels. */
 .cert-timeline-now-overlay {
   position: absolute; top: 0; bottom: 0;
   left: calc(120px + 8px); right: 0;
@@ -4579,6 +4648,34 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
   position: absolute; top: -14px; left: 0; transform: translateX(-50%);
   font-size: 0.6rem; font-weight: 700; color: var(--coral-dark); white-space: nowrap;
 }
+.cert-timeline-axis { position: relative; height: 15px; margin-top: 2px; margin-left: calc(120px + 8px); }
+.cert-timeline-tick { position: absolute; top: 0; font-size: 0.62rem; color: var(--stone); white-space: nowrap; }
+.cert-timeline-tick-start  { transform: translateX(0); }
+.cert-timeline-tick-center { transform: translateX(-50%); }
+.cert-timeline-tick-end    { transform: translateX(-100%); }
+.cert-timeline-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--ice); }
+.cert-timeline-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 0.68rem; color: var(--stone); white-space: nowrap; }
+.cert-timeline-legend-swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.cert-timeline-legend-swatch.is-pass    { background: var(--success); }
+.cert-timeline-legend-swatch.is-warn    { background: var(--amber); }
+.cert-timeline-legend-swatch.is-fail    { background: var(--coral); }
+.cert-timeline-legend-swatch.is-unknown { background: var(--ocean); opacity: 0.5; }
+.cert-timeline-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.cert-timeline-legend-dot.is-claimed   { background: var(--ocean); }
+.cert-timeline-legend-dot.is-timestamp { background: var(--navy); }
+.cert-timeline-legend-dot.is-now       { background: var(--coral); }
+
+/* The same chart, shown large in #certificateTimelineSheet. */
+.cert-timeline-large { margin-top: 0; padding-top: 0; border-top: none; }
+.cert-timeline-large .cert-timeline-scroll { min-width: 480px; gap: 14px; }
+.cert-timeline-large .cert-timeline-row { font-size: 0.82rem; gap: 12px; }
+.cert-timeline-large .cert-timeline-row-label { flex-basis: 180px; font-size: 0.78rem; font-weight: 600; }
+.cert-timeline-large .cert-timeline-track { height: 24px; }
+.cert-timeline-large .cert-timeline-marker { height: 28px; }
+.cert-timeline-large .cert-timeline-now-overlay,
+.cert-timeline-large .cert-timeline-axis { left: 0; margin-left: calc(180px + 12px); }
+.cert-timeline-large .cert-timeline-tick { font-size: 0.7rem; }
+.cert-timeline-large .cert-timeline-legend-item { font-size: 0.76rem; }
 
 /* ---------- Signature cards ---------- */
 .cert-signature-list, .cert-card-list { display: flex; flex-direction: column; gap: 14px; }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="PDF Seal is a free, open-source PDF workspace. Manage signature fields, inspect document metadata, browse and compare revision history, and share PDFs securely — all in your browser, with nothing stored on a server.">
+  <meta name="description" content="PDF Seal is a free, open-source PDF workspace. Manage signature fields, inspect document metadata, browse and compare version history, and share PDFs securely — all in your browser, with nothing stored on a server.">
   <meta name="author" content="Lukas Caniga <lukas.caniga@gmail.com>">
   <title>PDF Seal :: Workspace</title>
   <link rel="icon" type="image/png" href="/assets/favicon.png">
@@ -152,7 +152,7 @@
             </button>
             <button type="button" class="section-nav-btn" id="navBtnRevisions" data-section="revisions">
               <span class="section-nav-icon" aria-hidden="true"><span class="icon icon-clock"></span></span>
-              <span class="section-nav-label">Revisions</span>
+              <span class="section-nav-label">Versions</span>
             </button>
             <button type="button" class="section-nav-btn" id="navBtnCertificates" data-section="certificates">
               <span class="section-nav-icon" aria-hidden="true"><span class="icon icon-shield"></span></span>
@@ -239,7 +239,7 @@
       <div class="modal-tabs" role="tablist">
         <button type="button" class="modal-tab is-active" id="settingsTabBtnGeneral" role="tab" aria-selected="true" aria-controls="settingsTabPanelGeneral">General</button>
         <button type="button" class="modal-tab" id="settingsTabBtnSignatures" role="tab" aria-selected="false" aria-controls="settingsTabPanelSignatures">Signatures</button>
-        <button type="button" class="modal-tab" id="settingsTabBtnRevisions" role="tab" aria-selected="false" aria-controls="settingsTabPanelRevisions">Revisions</button>
+        <button type="button" class="modal-tab" id="settingsTabBtnRevisions" role="tab" aria-selected="false" aria-controls="settingsTabPanelRevisions">Versions</button>
         <button type="button" class="modal-tab" id="settingsTabBtnCertificates" role="tab" aria-selected="false" aria-controls="settingsTabPanelCertificates">Certificates</button>
       </div>
 
@@ -250,7 +250,7 @@
             <input type="checkbox" id="settingsShowRawData">
             <span>Show advanced PDF raw data</span>
           </div>
-          <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Revisions — each marked with a "Raw" badge, and opened automatically.</p>
+          <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Versions — each marked with a "Raw" badge, and opened automatically.</p>
         </label>
       </div>
 
@@ -285,9 +285,9 @@
         <label class="checkbox-group checkbox-group-block" for="settingsIncludeRevisionHistory">
           <div class="checkbox-group-main">
             <input type="checkbox" id="settingsIncludeRevisionHistory">
-            <span>Include revisions when exporting / sharing document</span>
+            <span>Include versions when exporting / sharing document</span>
           </div>
-          <p class="modal-hint settings-hint">Bundles your document's revision history into exported and shared files. Takes a bit longer to prepare, since every past revision is included.</p>
+          <p class="modal-hint settings-hint">Bundles your document's version history into exported and shared files. Takes a bit longer to prepare, since every past version is included.</p>
         </label>
       </div>
 
@@ -345,7 +345,7 @@
         <details class="help-topic">
           <summary><span class="help-topic-title">Getting started</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="intro">Show me</button></summary>
           <div class="help-topic-body">
-            <p>Upload a PDF (drag &amp; drop, the Upload button, or Base64), then use the page/zoom/pan controls and the section tabs — MetaData, Signatures, Revisions, Certificates — to move between features.</p>
+            <p>Upload a PDF (drag &amp; drop, the Upload button, or Base64), then use the page/zoom/pan controls and the section tabs — MetaData, Signatures, Versions, Certificates — to move between features.</p>
           </div>
         </details>
         <details class="help-topic">
@@ -363,13 +363,13 @@
         <details class="help-topic">
           <summary><span class="help-topic-title">Metadata &amp; raw PDF data</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="metadata">Show me</button></summary>
           <div class="help-topic-body">
-            <p>The MetaData section shows and edits the document's title, author, and other Info-dictionary fields. Turn on "Show advanced PDF raw data" in Settings to see the underlying raw PDF objects behind fields, revisions, and metadata.</p>
+            <p>The MetaData section shows and edits the document's title, author, and other Info-dictionary fields. Turn on "Show advanced PDF raw data" in Settings to see the underlying raw PDF objects behind fields, versions, and metadata.</p>
           </div>
         </details>
         <details class="help-topic">
-          <summary><span class="help-topic-title">Revisions &amp; compare</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="revisions">Show me</button></summary>
+          <summary><span class="help-topic-title">Versions &amp; compare</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="revisions">Show me</button></summary>
           <div class="help-topic-body">
-            <p>Every save is tracked as a revision, stored locally in your browser. Pick two revisions to compare: an overview of what changed, a detailed field-by-field breakdown, and a visual diff highlighting the changed regions on the page.</p>
+            <p>Every save is tracked as a version, stored locally in your browser, and badged by how it was produced — an incremental update (appended, earlier signatures stay intact) or a full rewrite. Pick two versions to compare: an overview of what changed, a detailed field-by-field breakdown, and a visual diff highlighting the changed regions on the page.</p>
           </div>
         </details>
         <details class="help-topic">
@@ -388,13 +388,13 @@
         <details class="help-topic">
           <summary><span class="help-topic-title">Settings</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="settings">Show me</button></summary>
           <div class="help-topic-body">
-            <p>Settings turns optional panels on and off — signature templates, raw PDF data, revision bundling on export, and the certificate scratchpad/trust simulation/modification tools — and holds the template backup/restore buttons.</p>
+            <p>Settings turns optional panels on and off — signature templates, raw PDF data, version bundling on export, and the certificate scratchpad/trust simulation/modification tools — and holds the template backup/restore buttons.</p>
           </div>
         </details>
         <details class="help-topic">
           <summary><span class="help-topic-title">Privacy</span></summary>
           <div class="help-topic-body">
-            <p>Field edits, metadata changes, and revision history live in this browser (IndexedDB/localStorage) until you export or apply changes, which sends the current document to the server to be modified and immediately deleted afterward. Peer-to-peer shares never touch the server except to exchange connection info — the PDF itself travels encrypted, browser to browser.</p>
+            <p>Field edits, metadata changes, and version history live in this browser (IndexedDB/localStorage) until you export or apply changes, which sends the current document to the server to be modified and immediately deleted afterward. Peer-to-peer shares never touch the server except to exchange connection info — the PDF itself travels encrypted, browser to browser.</p>
           </div>
         </details>
         <details class="help-topic">
@@ -414,7 +414,7 @@
         <h3 id="demoReplaceModalTitle">Replace the open document?</h3>
         <button type="button" class="modal-close" id="closeDemoReplaceModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
-      <p class="modal-hint">Loading the sample document replaces the PDF you have open now, and clears its revision history from this browser (revision history lives only locally, never on the server).</p>
+      <p class="modal-hint">Loading the sample document replaces the PDF you have open now, and clears its version history from this browser (version history lives only locally, never on the server).</p>
       <p class="modal-hint" id="demoReplaceUnappliedNote" hidden>You also have unapplied field changes on the current document — those will be lost too.</p>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelDemoReplaceBtn">Cancel</button>
@@ -436,7 +436,7 @@
         <input type="text" class="modal-text-input" id="saveAsFileName" spellcheck="false" autocomplete="off">
         <span class="save-as-ext">.pdf</span>
       </div>
-      <p class="modal-hint settings-hint settings-hint-flush" id="saveAsHistoryHint">Whether revision history is bundled into this export is controlled by "Include revisions when exporting / sharing document" in Settings.</p>
+      <p class="modal-hint settings-hint settings-hint-flush" id="saveAsHistoryHint">Whether version history is bundled into this export is controlled by "Include versions when exporting / sharing document" in Settings.</p>
       <div class="modal-status" id="saveAsModalStatus"></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelSaveAsBtn">Cancel</button>
@@ -612,7 +612,7 @@
       </div>
       <div class="viewer-controls">
         <div class="viewer-diff-banner" id="viewerDiffBanner" hidden>
-          <span id="viewerDiffBannerText">Comparing revisions</span>
+          <span id="viewerDiffBannerText">Comparing versions</span>
           <button type="button" class="btn btn-ghost" id="btnExitDiffView"><span class="icon icon-close" aria-hidden="true"></span> Back to document</button>
         </div>
         <!-- One row, not three: the document name shares the strip with the page
@@ -855,29 +855,34 @@
 
           <section class="panel revisions-list-panel" id="revisionsListPanel">
             <div class="panel-overlay" id="revisionsListPanelOverlay">
-              <div class="panel-overlay-text">Upload a document first to see revision history</div>
+              <div class="panel-overlay-text">Upload a document first to see version history</div>
             </div>
-            <h3><span class="panel-dot dot-ocean"></span>Revision History</h3>
-            <p class="revisions-hint">Every incremental save baked into this PDF's own file structure, oldest first — useful for seeing exactly what changed before or after it was modified.</p>
+            <h3><span class="panel-dot dot-ocean"></span>Version History</h3>
+            <p class="revisions-hint">Every saved version of this document in this browser, oldest first. <em>Incremental update</em> means the save was appended to the file (earlier signatures stay intact); <em>Full rewrite</em> means the file was regenerated.</p>
+
+            <label class="revisions-filter-toggle" id="revisionsFilterToggleLabel" hidden>
+              <input type="checkbox" id="chkOnlyIncrementalVersions"> Show only incremental updates
+            </label>
 
             <div class="revisions-empty" id="revisionsEmptyState">
-              <p>Upload a PDF using the <strong>Upload</strong> button above to see its revision history.</p>
+              <p>Upload a PDF using the <strong>Upload</strong> button above to see its version history.</p>
             </div>
             <div class="revisions-loading" id="revisionsLoadingState" hidden>
-              <span class="spinner" aria-hidden="true"></span> Reading revision history…
+              <span class="spinner" aria-hidden="true"></span> Reading version history…
             </div>
             <div class="revisions-empty" id="revisionsErrorState" hidden></div>
+            <p class="revisions-hint revisions-filter-note" id="revisionsFilterNote" hidden>No incremental updates — every save rewrote the file.</p>
             <ul class="revisions-timeline" id="revisionsTimeline" hidden></ul>
           </section>
 
           <section class="panel revisions-diff-panel" id="revisionsDiffPanel">
             <div class="panel-overlay" id="revisionsDiffPanelOverlay">
-              <div class="panel-overlay-text">Upload a document first to compare revisions</div>
+              <div class="panel-overlay-text">Upload a document first to compare versions</div>
             </div>
-            <h3><span class="panel-dot dot-coral"></span>Compare Revisions</h3>
-            <p class="revisions-hint">Pick any two revisions and see exactly what changed between them — an overview of what moved, the details behind it, and the changed passages marked on the page itself.</p>
+            <h3><span class="panel-dot dot-coral"></span>Compare Versions</h3>
+            <p class="revisions-hint">Pick any two versions and see exactly what changed between them — an overview of what moved, the details behind it, and the changed passages marked on the page itself.</p>
 
-            <button type="button" class="btn btn-primary btn-block" id="btnOpenCompare" hidden><span class="icon icon-layers" aria-hidden="true"></span> Compare revisions…</button>
+            <button type="button" class="btn btn-primary btn-block" id="btnOpenCompare" hidden><span class="icon icon-layers" aria-hidden="true"></span> Compare versions…</button>
           </section>
 
         </section>
@@ -1043,7 +1048,7 @@
         <div class="edit-sheet-header">
           <span class="edit-sheet-grabber" aria-hidden="true"></span>
           <span class="panel-dot dot-coral"></span>
-          <h3 id="revisionsCompareSheetTitle">Compare Revisions</h3>
+          <h3 id="revisionsCompareSheetTitle">Compare Versions</h3>
           <span class="edit-sheet-subject" id="revisionsCompareSheetSubject"></span>
           <button type="button" class="modal-close" id="btnRevisionsCompareSheetClose" aria-label="Close comparison"><span class="icon icon-close" aria-hidden="true"></span></button>
         </div>
@@ -1072,7 +1077,7 @@
           </div>
 
           <div class="revisions-diff-empty" id="revisionsDiffEmpty">
-            <p>Pick two revisions above and hit Compare to see what changed between them.</p>
+            <p>Pick two versions above and hit Compare to see what changed between them.</p>
           </div>
           <div class="revisions-diff-loading" id="revisionsDiffLoading" hidden>
             <span class="spinner" aria-hidden="true"></span> Computing diff…
@@ -1166,6 +1171,23 @@
           <button type="button" class="btn btn-ghost" id="btnCertificateModifyCancel">Cancel</button>
           <button type="button" class="btn btn-danger" id="btnCertificateModifyApply" disabled>Apply change</button>
         </div>
+      </aside>
+
+      <div class="edit-sheet-scrim" id="certificateTimelineSheetScrim"></div>
+
+      <!-- The validity timeline gets its own sheet so it can be shown large
+           enough to read comfortably -- the inline card version stays a
+           compact preview. -->
+      <aside class="edit-sheet" id="certificateTimelineSheet" tabindex="-1" aria-hidden="true" aria-labelledby="certificateTimelineSheetTitle">
+        <div class="edit-sheet-header">
+          <span class="edit-sheet-grabber" aria-hidden="true"></span>
+          <span class="panel-dot dot-ocean"></span>
+          <h3 id="certificateTimelineSheetTitle">Validity timeline</h3>
+          <span class="edit-sheet-subject" id="certificateTimelineSheetSubject"></span>
+          <button type="button" class="modal-close" id="btnCertificateTimelineSheetClose" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+        </div>
+
+        <div class="edit-sheet-body" id="certificateTimelineBody"></div>
       </aside>
 
       <input type="file" id="certificateFileInput" accept=".cer,.crt,.der,.pem,.p7b,application/x-x509-ca-cert,application/x-pem-file" hidden>
@@ -1289,7 +1311,7 @@
         <div class="footer-brand-row">
           <img class="footer-logo" src="/assets/logo_app.png" alt="PDF Seal">
         </div>
-        <p class="footer-tagline">Manage signature fields, inspect metadata, and compare revision history — entirely in your browser, nothing is stored on a server.</p>
+        <p class="footer-tagline">Manage signature fields, inspect metadata, and compare version history — entirely in your browser, nothing is stored on a server.</p>
       </div>
 
       <div class="footer-col">
@@ -1385,6 +1407,12 @@
     let revisionsLoadedForFile = null; // "<documentSessionId>:<revisionCount>" revisionsData corresponds to (cache-invalidation key)
     let revisionsLoading = false;
     let revisionsReloadPending = false; // another load was requested while one was already in flight -- rerun once it settles
+    // "Show only incremental updates" toggle for the Versions timeline -- persisted
+    // across sessions since it's a viewing preference, not document state.
+    let onlyIncrementalVersionsFilter = false;
+    try {
+      onlyIncrementalVersionsFilter = localStorage.getItem('pdfseal-only-incremental-versions') === '1';
+    } catch { /* localStorage unavailable (private mode, storage blocked) -- default to off */ }
     // Per-revision summary cache, keyed by revision index, for revisionSummaryCacheSessionId.
     // summarizeSnapshot() (server-side) computes each revision's summary purely from that
     // revision's own bytes -- nothing about it depends on any other revision -- so once a
@@ -1544,7 +1572,106 @@
       return revisionDbPromise;
     }
 
-    async function putRevision(sessionId, index, source) {
+    // ---------------------------------------------------------------
+    // Version classification (pure) -- same logic as lib/VersionHistory.ts.
+    // Keep the two in sync by hand; see that file for the full rationale.
+    // ---------------------------------------------------------------
+    function versionBytesEqual(a, b) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+
+    function classifySave(prevBytes, currBytes) {
+      if (!prevBytes) return 'initial';
+      if (versionBytesEqual(prevBytes, currBytes)) return 'identical';
+      if (currBytes.length > prevBytes.length) {
+        let isPrefix = true;
+        for (let i = 0; i < prevBytes.length; i++) {
+          if (prevBytes[i] !== currBytes[i]) { isPrefix = false; break; }
+        }
+        if (isPrefix) return 'incremental';
+      }
+      return 'rewrite';
+    }
+
+    const VERSION_SAVE_KIND_BADGE = {
+      incremental: { label: 'Incremental update', tone: 'positive' },
+      rewrite: { label: 'Full rewrite', tone: 'neutral' },
+    };
+
+    function versionBadges(entry, prevEntry, isLast) {
+      const badges = [];
+      if (entry.index === 1 && entry.source === 'upload') badges.push({ label: 'Original', tone: 'neutral' });
+      if (entry.source === 'imported') badges.push({ label: 'Imported', tone: 'neutral' });
+
+      const kindBadge = entry.saveKind && entry.saveKind !== 'identical' ? VERSION_SAVE_KIND_BADGE[entry.saveKind] : null;
+      if (kindBadge) badges.push(kindBadge);
+
+      if (isLast) badges.push({ label: 'Current', tone: 'info' });
+      if (Array.isArray(entry.signatures) && entry.signatures.length > 0) badges.push({ label: 'Signed', tone: 'positive' });
+
+      if (entry.saveKind === 'rewrite' && prevEntry && Array.isArray(prevEntry.signatures) && prevEntry.signatures.length > 0) {
+        badges.push({ label: 'Earlier signatures may not verify', tone: 'warning' });
+      }
+      return badges;
+    }
+
+    function filterVersions(entries, onlyIncremental) {
+      if (!onlyIncremental) return entries;
+      if (!Array.isArray(entries)) return entries;
+      return entries.filter((entry) => entry.index === 1 || entry.saveKind === 'incremental');
+    }
+
+    // 'initial' groups with 'rewrite' (the first save is a whole file too, so
+    // version 1 shouldn't open a group version 2 immediately closes), while
+    // 'identical' saves and entries stored before saveKind existed inherit
+    // whatever group is already open instead of manufacturing a divider.
+    function versionGroupKindOf(entry) {
+      if (entry.saveKind === 'incremental') return 'incremental';
+      if (entry.saveKind === 'rewrite' || entry.saveKind === 'initial') return 'full';
+      return null;
+    }
+
+    function versionGroupLabel(kind, runLength) {
+      const base = kind === 'incremental' ? VERSION_SAVE_KIND_BADGE.incremental.label : VERSION_SAVE_KIND_BADGE.rewrite.label;
+      return runLength > 1 ? `${base}s` : base;
+    }
+
+    // One divider per boundary between runs of like saves, so the timeline
+    // reads as groups instead of a flat run of cards. Positions index into
+    // `entries` as passed -- render a filtered list, pass that same list.
+    function versionGroupDividers(entries) {
+      if (!Array.isArray(entries)) return [];
+
+      const dividers = [];
+      let openKind = null;
+      let pending = -1; // index of the divider whose runLength is still being counted
+
+      for (let i = 0; i < entries.length; i++) {
+        const kind = versionGroupKindOf(entries[i]);
+
+        if (kind && openKind && kind !== openKind) {
+          dividers.push({ position: i, kind, label: '', runLength: 0 });
+          pending = dividers.length - 1;
+          openKind = kind;
+        } else if (kind && !openKind) {
+          openKind = kind;
+        }
+
+        if (pending >= 0) dividers[pending].runLength++;
+      }
+
+      for (const divider of dividers) {
+        divider.label = versionGroupLabel(divider.kind, divider.runLength);
+      }
+
+      return dividers;
+    }
+
+    async function putRevision(sessionId, index, source, meta = {}) {
       // Stored as an ArrayBuffer rather than the Blob/File itself -- Safari
       // (particularly in Private Browsing) is known to fail to structured-clone
       // Blob values into IndexedDB, which silently drops the write. A plain
@@ -1556,7 +1683,9 @@
         // savedAt backs sweepStaleRevisionSessions() below -- a session with
         // no writes for a long time is one whose tab was closed (or crashed)
         // without ever getting a chance to clean up after itself.
-        tx.objectStore(REVISION_STORE_NAME).put({ sessionId, index, buffer, savedAt: Date.now() });
+        tx.objectStore(REVISION_STORE_NAME).put({
+          sessionId, index, buffer, savedAt: Date.now(), source: meta.source, saveKind: meta.saveKind,
+        });
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error || new Error('Could not store the revision locally.'));
       });
@@ -1601,6 +1730,31 @@
         const req = tx.objectStore(REVISION_STORE_NAME).index('bySession').getAllKeys(IDBKeyRange.only(sessionId));
         req.onsuccess = () => resolve((req.result || []).map((key) => key[1]).sort((a, b) => a - b));
         req.onerror = () => reject(req.error || new Error('Could not read local revisions.'));
+      });
+    }
+
+    // Sibling of listRevisionIndicesForSession that also pulls each entry's
+    // `source`/`saveKind` (for badging) via a cursor, still without loading
+    // any of the full PDF buffers.
+    async function listRevisionMetaForSession(sessionId) {
+      if (!sessionId) return [];
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
+        const idx = tx.objectStore(REVISION_STORE_NAME).index('bySession');
+        const cursorReq = idx.openCursor(IDBKeyRange.only(sessionId));
+        const result = [];
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (cursor) {
+            const { index, source, saveKind } = cursor.value;
+            result.push({ index, source, saveKind });
+            cursor.continue();
+          } else {
+            resolve(result.sort((a, b) => a.index - b.index));
+          }
+        };
+        cursorReq.onerror = () => reject(cursorReq.error || new Error('Could not read local revisions.'));
       });
     }
 
@@ -1703,6 +1857,30 @@
     // info.Custom -- so the chain can be unpacked without any server round trip.
     // Only understands this app's own bundle format, not a native incremental-update
     // chain from another tool (that fallback requires the server-side parser below).
+    // Shared by both hydrate functions below: stores an ordered list of full
+    // PDF byte buffers (oldest first, the currently-loaded file last) as
+    // contiguous local versions, classifying each against the previous one
+    // *actually kept* and skipping any that are byte-identical to it. All but
+    // the last are tagged 'imported' (they came from the file's own embedded
+    // history, not an edit made in this browser); the last keeps its real
+    // classification but is tagged 'upload' since it's the file the user just
+    // opened. Returns the number of versions actually stored.
+    async function storeHydratedVersionChain(sessionId, buffersInOrder) {
+      let prevBytes = null;
+      let storedIndex = 0;
+      for (let i = 0; i < buffersInOrder.length; i++) {
+        const currBytes = buffersInOrder[i];
+        const saveKind = classifySave(prevBytes, currBytes);
+        if (saveKind === 'identical') continue;
+        storedIndex += 1;
+        const isFinal = i === buffersInOrder.length - 1;
+        const blob = new Blob([currBytes], { type: 'application/pdf' });
+        await putRevision(sessionId, storedIndex, blob, { source: isFinal ? 'upload' : 'imported', saveKind });
+        prevBytes = currBytes;
+      }
+      return storedIndex;
+    }
+
     async function hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId) {
       const meta = await pdfJsDoc.getMetadata().catch(() => null);
       const custom = meta && meta.info && meta.info.Custom;
@@ -1721,18 +1899,14 @@
       if (sessionId !== documentSessionId) return; // a newer upload superseded this one
 
       const sorted = chain.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
-      for (let i = 0; i < sorted.length - 1; i++) {
-        const bytes = base64ToBytes(sorted[i].bytes);
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        await putRevision(sessionId, i + 1, blob);
-      }
+      const buffers = sorted.slice(0, -1).map((entry) => base64ToBytes(entry.bytes));
+      buffers.push(new Uint8Array(await file.arrayBuffer()));
       if (sessionId !== documentSessionId) return;
-      await putRevision(sessionId, sorted.length, file);
-      documentRevisionCount = sorted.length;
+      documentRevisionCount = await storeHydratedVersionChain(sessionId, buffers);
     }
 
     // Unpacks a PDF's embedded revision chain (see /api/revisions/embedded)
-    // into local IndexedDB revisions 1..N-1, leaving revision N -- the
+    // into local IndexedDB versions 1..N-1, leaving version N -- the
     // already-stored current file -- untouched. Does nothing for a file with
     // no embedded chain (i.e. one revision or fewer reported).
     async function hydrateEmbeddedRevisions(file, sessionId) {
@@ -1746,14 +1920,10 @@
       if (sessionId !== documentSessionId) return; // a newer upload superseded this one
 
       const sorted = chain.slice().sort((a, b) => a.index - b.index);
-      for (let i = 0; i < sorted.length - 1; i++) {
-        const bytes = base64ToBytes(sorted[i].bytes);
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        await putRevision(sessionId, i + 1, blob);
-      }
+      const buffers = sorted.slice(0, -1).map((entry) => base64ToBytes(entry.bytes));
+      buffers.push(new Uint8Array(await file.arrayBuffer()));
       if (sessionId !== documentSessionId) return;
-      await putRevision(sessionId, sorted.length, file);
-      documentRevisionCount = sorted.length;
+      documentRevisionCount = await storeHydratedVersionChain(sessionId, buffers);
     }
 
     // ---------------------------------------------------------------
@@ -2007,8 +2177,8 @@
         if (nextSettings.includeRevisionHistoryByDefault !== previousSettings.includeRevisionHistoryByDefault) {
           showNotification(
             nextSettings.includeRevisionHistoryByDefault
-              ? 'Revision history will be included in exports.'
-              : 'Revision history will be excluded from exports.',
+              ? 'Version history will be included in exports.'
+              : 'Version history will be excluded from exports.',
             'info',
             8000,
           ).classList.add('notification-subtle');
@@ -2304,7 +2474,7 @@
           document.body.dataset.activeSection = target;
           if (target !== 'signatures' && activeField) deselectActiveField();
           if (target !== 'revisions') suspendRevisionsView();
-          if (target !== 'certificates') { closeCertificateSheet(); closeCertificateModifySheet(); }
+          if (target !== 'certificates') { closeCertificateSheet(); closeCertificateModifySheet(); closeCertificateTimelineSheet(); }
           if (target === 'metadata') loadMetadataIfNeeded();
           if (target === 'revisions') {
             loadRevisionsIfNeeded();
@@ -2326,6 +2496,18 @@
         document.getElementById('sectionNav')?.classList.remove('is-open');
         document.getElementById('sectionNavToggle')?.setAttribute('aria-expanded', 'false');
       }
+    });
+
+    // Delegated so cross-reference links work regardless of which panel's
+    // dynamically-rendered innerHTML they were injected into (e.g. the
+    // Metadata "Incremental updates" row's "View in Versions" link) --
+    // simplest way to jump straight to a section tab from anywhere.
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('[data-goto-section]');
+      if (!link) return;
+      const section = link.getAttribute('data-goto-section');
+      const navBtn = document.getElementById(`navBtn${section.charAt(0).toUpperCase()}${section.slice(1)}`);
+      navBtn?.click();
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -2760,15 +2942,25 @@
       // puts the old document itself right back on screen.
       let previousSessionIdToClear = null;
       if (isEdit && documentSessionId) {
-        documentRevisionCount += 1;
-        pendingRevisionCleanup = { type: 'index', sessionId: documentSessionId, index: documentRevisionCount };
-        await putRevision(documentSessionId, documentRevisionCount, file).catch(() => {});
+        const prevRecord = await getRevisionRecord(documentSessionId, documentRevisionCount).catch(() => null);
+        const prevBytes = prevRecord ? new Uint8Array(prevRecord.buffer) : null;
+        const currBytes = new Uint8Array(await file.arrayBuffer());
+        const saveKind = classifySave(prevBytes, currBytes);
+        if (saveKind === 'identical') {
+          // Nothing effective changed (e.g. the edit round-tripped back to
+          // the same bytes) -- don't grow the version history over it.
+          pendingRevisionCleanup = null;
+        } else {
+          documentRevisionCount += 1;
+          pendingRevisionCleanup = { type: 'index', sessionId: documentSessionId, index: documentRevisionCount };
+          await putRevision(documentSessionId, documentRevisionCount, file, { source: 'edit', saveKind }).catch(() => {});
+        }
       } else {
         previousSessionIdToClear = documentSessionId;
         documentSessionId = createSessionId();
         documentRevisionCount = 1;
         pendingRevisionCleanup = { type: 'session', sessionId: documentSessionId };
-        await putRevision(documentSessionId, 1, file).catch(() => {});
+        await putRevision(documentSessionId, 1, file, { source: 'upload', saveKind: 'initial' }).catch(() => {});
         // A file exported earlier with "Include revision history" carries
         // its full prior history baked into its own Info dict -- unpack it
         // into local revisions 1..N-1 (the just-stored single revision above
@@ -3406,6 +3598,7 @@
       // Only one sheet slides over the column at a time -- they occupy the
       // same space, so whichever opens last has to take the others down.
       closeCertificateSheet();
+      if (typeof closeCertificateTimelineSheet === 'function') closeCertificateTimelineSheet();
       editSheet.classList.add('is-open');
       editSheet.setAttribute('aria-hidden', 'false');
       editSheetScrim?.classList.add('is-open');
@@ -6851,6 +7044,27 @@ function renderDocumentInfoCard(info) {
   return metaCard('Document Information', metaKvTable(rows), null, 'icon-file-text');
 }
 
+// This count comes from scanning the current file's own raw bytes for
+// genuine `startxref ... %%EOF` revision boundaries (see server.ts's
+// /api/metadata route and PdfRevisionTool.findRevisionBoundaries) -- it's
+// independent of this browser's locally-stored Versions history, though for
+// a file that was incrementally saved before being uploaded, the two
+// usually line up (each boundary gets imported as its own "Incremental
+// update" version -- see hydrateEmbeddedRevisions). The link is just a
+// cross-reference to help make that connection, not a claim the counts are
+// always identical.
+function incrementalUpdatesCell(count) {
+  if (count === null || count === undefined) return null;
+  const countHtml = escapeHtml(String(count));
+  // A single boundary just means "this file has one complete xref table" --
+  // the normal, unremarkable case for any freshly-saved PDF -- not an actual
+  // appended update. Only >1 (matching the same threshold the embedded-chain
+  // fallback in server.ts uses) means there's genuine incremental history to
+  // look at, so the link only shows up when it would actually lead somewhere.
+  if (!count || count <= 1) return countHtml;
+  return `${countHtml} <button type="button" class="meta-inline-link" data-goto-section="revisions" title="Open the Versions panel to see these as saved versions">View in Versions</button>`;
+}
+
 function renderFeaturesCard(features) {
   if (!features) return '';
   const rows = [
@@ -6865,7 +7079,7 @@ function renderFeaturesCard(features) {
     { label: 'JavaScript', value: true, html: yesNoBadge(features.javascript), keep: true },
     { label: 'Attachments', value: features.attachmentCount, keep: true },
     { label: 'XMP metadata', value: true, html: yesNoBadge(features.xmpMetadata), keep: true },
-    { label: 'Incremental updates', value: features.incrementalUpdates ?? '—', keep: true },
+    { label: 'Incremental updates', value: features.incrementalUpdates ?? '—', keep: true, html: incrementalUpdatesCell(features.incrementalUpdates) },
     { label: 'Signatures', value: features.signatureCount, keep: true },
   ];
   return metaCard('Document Features', metaKvTable(rows), null, 'icon-layers');
@@ -8049,7 +8263,7 @@ function formatByteDelta(n) {
 }
 
 function revisionLabel(rev) {
-  return `Revision ${rev.index}`;
+  return `Version ${rev.index}`;
 }
 
 // The picker now lives inside the compare sheet, so the column needs its own
@@ -8109,11 +8323,11 @@ async function loadRevisionsIfNeeded() {
   loadingState.hidden = false;
 
   try {
-    const indices = await listRevisionIndicesForSession(requestedSessionId);
+    const metas = await listRevisionMetaForSession(requestedSessionId);
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
-    if (!indices.length) {
+    if (!metas.length) {
       throw new Error(
-        'No local revision snapshots found for this document. This browser (or a private/incognito window) may be blocking local storage, which revision history relies on.',
+        'No local version snapshots found for this document. This browser (or a private/incognito window) may be blocking local storage, which version history relies on.',
       );
     }
 
@@ -8122,15 +8336,20 @@ async function loadRevisionsIfNeeded() {
       revisionSummaryCacheSessionId = requestedSessionId;
     }
 
-    // Build the list from what's already known locally first -- index and
-    // byte size cost nothing to read from IndexedDB (getAllKeys, no bytes
-    // pulled in) -- so the panel paints instantly. The heavier per-revision
-    // summary (parses the PDF server-side for metadata/fields/signatures/
-    // change counts) is then fetched in the background for every revision
-    // (see loadAllRevisionSummaries() below) so signed status shows up
-    // front without expanding each card; expanding a card just displays
-    // what's already cached instead of firing its own request.
-    revisionsData = indices.map((index) => revisionSummaryCache.get(index) || { index, loaded: false });
+    // Build the list from what's already known locally first -- index,
+    // source and saveKind cost nothing to read from IndexedDB (a cursor over
+    // small fields, no PDF bytes pulled in) -- so the panel paints instantly.
+    // The heavier per-revision summary (parses the PDF server-side for
+    // metadata/fields/signatures/change counts) is then fetched in the
+    // background for every revision (see loadAllRevisionSummaries() below)
+    // so signed status shows up front without expanding each card;
+    // expanding a card just displays what's already cached instead of
+    // firing its own request.
+    revisionsData = metas.map(({ index, source, saveKind }) => ({
+      ...(revisionSummaryCache.get(index) || { index, loaded: false }),
+      source,
+      saveKind,
+    }));
     revisionsData.forEach((rev, i) => { rev.isFinal = i === revisionsData.length - 1; });
     revisionsLoadedForFile = cacheKey;
     renderRevisionsTimeline(revisionsData);
@@ -8239,21 +8458,70 @@ async function loadAllRevisionSummaries(requestedSessionId, revisions) {
   if (revisionsData === revisions) renderRevisionsTimeline(revisions);
 }
 
+const TAG_LABEL_CLASS = {
+  'Original': 'tag-original',
+  'Imported': 'tag-imported',
+  'Incremental update': 'tag-incremental',
+  'Full rewrite': 'tag-rewrite',
+  'Current': 'tag-current',
+  'Signed': 'tag-signed',
+  'Earlier signatures may not verify': 'tag-warning',
+};
+
+// Shown as a tooltip (title attribute) on each badge -- the labels alone
+// ("Full rewrite", "Imported"...) aren't self-explanatory to someone who
+// hasn't read the panel hint above the timeline.
+const TAG_LABEL_DESCRIPTION = {
+  'Original': 'The very first upload of this document.',
+  'Imported': "Unpacked from this file's own embedded version history, not created in this browser.",
+  'Incremental update': "This save was appended to the previous version's bytes -- earlier signatures stay intact.",
+  'Full rewrite': 'This save regenerated the whole PDF from scratch, rather than appending to the previous version.',
+  'Current': 'The version currently open in the viewer.',
+  'Signed': 'This version contains at least one digital signature.',
+  'Earlier signatures may not verify': 'This save fully rewrote a version that had a signature on it -- that earlier signature may no longer validate against these bytes.',
+};
+
 function renderRevisionsTimeline(revisions) {
   const timeline = document.getElementById('revisionsTimeline');
   const emptyState = document.getElementById('revisionsEmptyState');
   const errorState = document.getElementById('revisionsErrorState');
+  const filterNote = document.getElementById('revisionsFilterNote');
+  const filterToggleLabel = document.getElementById('revisionsFilterToggleLabel');
 
   emptyState.hidden = true;
   errorState.hidden = true;
 
-  timeline.innerHTML = revisions
-    .map((rev) => {
-      const tags = [];
-      if (rev.index === 1) tags.push('<span class="revision-tag tag-original">Original</span>');
-      if (rev.isFinal) tags.push('<span class="revision-tag tag-current">Current</span>');
+  // The filter only means anything when there's a genuine mix of incremental
+  // and non-incremental saves to split apart -- with only one group present
+  // (e.g. every save happened to be a full rewrite, or every save happened
+  // to be incremental), toggling it can't change what's shown, so there's
+  // nothing to offer the control for.
+  const hasIncremental = revisions.some((rev) => rev.saveKind === 'incremental');
+  const hasNonIncremental = revisions.some((rev) => rev.index !== 1 && rev.saveKind !== 'incremental');
+  const filterIsMeaningful = hasIncremental && hasNonIncremental;
+  if (filterToggleLabel) filterToggleLabel.hidden = !filterIsMeaningful;
+
+  const displayRevisions = filterIsMeaningful ? filterVersions(revisions, onlyIncrementalVersionsFilter) : revisions;
+  if (filterNote) {
+    filterNote.hidden = !(filterIsMeaningful && onlyIncrementalVersionsFilter && displayRevisions.length <= 1);
+  }
+
+  // Dividers are computed over the *displayed* list so their positions line up
+  // with the cards actually rendered below (with the incremental-only filter
+  // on, the hidden rewrites aren't there to be grouped).
+  const groupDividers = new Map(versionGroupDividers(displayRevisions).map((divider) => [divider.position, divider]));
+
+  timeline.innerHTML = displayRevisions
+    .map((rev, displayIndex) => {
+      const prevEntry = revisions[revisions.indexOf(rev) - 1];
+      // The "vs previous" action compares against whatever is immediately
+      // before this card in the *displayed* (possibly filtered) list, not
+      // necessarily rev.index - 1 -- with the incremental-only filter on,
+      // that earlier version may not be shown at all.
+      const prevDisplayed = displayRevisions[displayIndex - 1];
+      const badges = versionBadges(rev, prevEntry, !!rev.isFinal);
+      const tags = badges.map((badge) => `<span class="revision-tag ${TAG_LABEL_CLASS[badge.label] || 'tag-original'}" title="${escapeHtml(TAG_LABEL_DESCRIPTION[badge.label] || '')}">${escapeHtml(badge.label)}</span>`);
       const isSigned = !!(rev.signatures && rev.signatures.length);
-      if (isSigned) tags.push('<span class="revision-tag tag-signed">Signed</span>');
 
       let sigCell = '';
       if (isSigned) {
@@ -8302,23 +8570,32 @@ function renderRevisionsTimeline(revisions) {
 
       const isExpanded = expandedRevisionIndices.has(rev.index);
 
+      const divider = groupDividers.get(displayIndex);
+      const dividerHtml = divider
+        ? `<li class="revision-group-divider is-${divider.kind}"><span class="revision-group-divider-label">${escapeHtml(divider.label)}</span></li>`
+        : '';
+      // The connector stub below a card would otherwise point straight into
+      // the divider that follows it.
+      const isGroupEnd = groupDividers.has(displayIndex + 1);
+
       return `
-        <li class="revision-card ${isExpanded ? 'is-expanded' : 'is-collapsed'}${rev.parseError ? ' has-error' : ''}${isSigned ? ' is-signed' : ''}">
+        ${dividerHtml}
+        <li class="revision-card ${isExpanded ? 'is-expanded' : 'is-collapsed'}${rev.parseError ? ' has-error' : ''}${isSigned ? ' is-signed' : ''}${isGroupEnd ? ' is-group-end' : ''}">
           <button type="button" class="revision-card-head" data-rev-toggle="${rev.index}" aria-label="Toggle revision details" aria-expanded="${isExpanded}">
-            <div class="revision-card-title">
-              <span class="revision-index-badge" title="Revision ${rev.index}">${rev.index}</span>
-              <span>${escapeHtml(revisionLabel(rev))}</span>
-            </div>
-            <div class="revision-card-head-actions">
-              <span class="revision-row-tags">${tags.join(' ')}</span>
+            <div class="revision-card-head-top">
+              <div class="revision-card-title">
+                <span class="revision-index-badge" title="Version ${rev.index}">${rev.index}</span>
+                <span>${escapeHtml(revisionLabel(rev))}</span>
+              </div>
               <span class="revision-expand-btn" aria-hidden="true">${isExpanded ? ICONS.chevronDown : ICONS.chevronRight}</span>
             </div>
+            ${tags.length ? `<div class="revision-row-tags">${tags.join(' ')}</div>` : ''}
           </button>
           <div class="revision-card-body">
             ${bodyInnerHtml}
             <div class="revision-card-actions">
               <button type="button" class="btn revision-action-btn" title="View this revision in the document viewer" data-rev-action="view" data-rev-index="${rev.index}">View</button>
-              ${rev.index > 1 ? `<button type="button" class="btn revision-action-btn" title="Visually compare this revision against the one right before it" data-rev-action="diff-prev" data-rev-index="${rev.index}">${ICONS.repeat} vs previous</button>` : ''}
+              ${prevDisplayed ? `<button type="button" class="btn revision-action-btn" title="Visually compare this revision against the one right before it" data-rev-action="diff-prev" data-rev-index="${rev.index}" data-rev-prev-index="${prevDisplayed.index}">${ICONS.repeat} vs previous</button>` : ''}
               <span class="revision-action-divider" aria-hidden="true"></span>
               <button type="button" class="icon-btn revision-action-btn" title="Download this revision as a standalone PDF" data-rev-action="download" data-rev-index="${rev.index}">${ICONS.download}</button>
             </div>
@@ -8378,15 +8655,24 @@ function renderRevisionsTimeline(revisions) {
           btn.classList.add('is-active');
         }
       }
+      if (action === 'diff-prev') {
+        const prevIndex = parseInt(btn.getAttribute('data-rev-prev-index'), 10);
+        runQuickDiff(Number.isInteger(prevIndex) ? prevIndex : revIndex - 1, revIndex, 'visual');
+        return;
+      }
       handleRevisionRowAction(action, revIndex);
     });
   });
 
-  renderCompareSelectors(revisions);
-  setCompareControlsAvailable(revisions.length >= 2);
-  if (revisions.length < 2) {
-    document.getElementById('revisionsDiffEmpty').textContent =
-      'This PDF only has one revision (no incremental updates were found), so there is nothing to compare yet.';
+  // Compare Versions only ever offers the currently displayed (possibly
+  // incremental-only-filtered) versions -- comparing against one hidden by
+  // the filter would be confusing since it isn't visible in the list above.
+  renderCompareSelectors(displayRevisions);
+  setCompareControlsAvailable(displayRevisions.length >= 2);
+  if (displayRevisions.length < 2) {
+    document.getElementById('revisionsDiffEmpty').textContent = onlyIncrementalVersionsFilter
+      ? 'Not enough incremental updates to compare with this filter on. Turn it off to compare against a full rewrite.'
+      : 'This PDF only has one revision (no incremental updates were found), so there is nothing to compare yet.';
   }
 }
 
@@ -8404,10 +8690,6 @@ async function handleRevisionRowAction(action, revIndex) {
   }
   if (action === 'download') {
     await downloadRevisionFile(revIndex);
-    return;
-  }
-  if (action === 'diff-prev') {
-    await runQuickDiff(revIndex - 1, revIndex, 'visual');
   }
 }
 
@@ -8422,6 +8704,11 @@ async function runQuickDiff(fromIndex, toIndex, landOnTab) {
   const fromSelect = document.getElementById('revisionFromSelect');
   const toSelect = document.getElementById('revisionToSelect');
   if (!fromSelect || !toSelect) return;
+  // Rebuild both option lists around this exact pair first -- a prior manual
+  // selection may have narrowed one select such that fromIndex/toIndex here
+  // no longer appear in it, which would otherwise leave .value unset.
+  fromSelect.innerHTML = optionsHtmlFor(compareSelectorRevisions.filter((rev) => rev.index < toIndex));
+  toSelect.innerHTML = optionsHtmlFor(compareSelectorRevisions.filter((rev) => rev.index > fromIndex));
   fromSelect.value = String(fromIndex);
   toSelect.value = String(toIndex);
   pendingDiffLandingTab = landOnTab || 'overview';
@@ -8471,13 +8758,13 @@ async function renderRevisionViewPage(num) {
   document.getElementById('pageCount').textContent = revisionViewDoc.numPages;
   document.getElementById('btnPrev').disabled = clamped <= 1;
   document.getElementById('btnNext').disabled = clamped >= revisionViewDoc.numPages;
-  setDiffBannerText(`Viewing Revision ${revisionViewIndex} snapshot (read-only) — page ${clamped} / ${revisionViewDoc.numPages}`);
+  setDiffBannerText(`Viewing Version ${revisionViewIndex} snapshot (read-only) — page ${clamped} / ${revisionViewDoc.numPages}`);
 }
 
 async function downloadRevisionFile(revIndex) {
   try {
     const rev = await getRevision(documentSessionId, revIndex);
-    if (!rev) throw new Error(`Revision ${revIndex} is not available locally.`);
+    if (!rev) throw new Error(`Version ${revIndex} is not available locally.`);
     const url = URL.createObjectURL(revisionToBlob(rev));
     const a = document.createElement('a');
     a.href = url;
@@ -8492,19 +8779,61 @@ async function downloadRevisionFile(revIndex) {
   }
 }
 
+// The two selects stay mutually constrained to a valid, non-degenerate pair
+// (From always strictly earlier than To) rather than just being validated on
+// Compare -- so there's no way to pick "version 3 vs version 3" or "version 3
+// vs version 2" in the first place. compareSelectorRevisions holds the full
+// version list the two change listeners below (registered once, since the
+// <select> elements themselves are never recreated) filter against.
+let compareSelectorRevisions = [];
+
+function optionsHtmlFor(list) {
+  return list.map((rev) => `<option value="${rev.index}">${escapeHtml(revisionLabel(rev))}</option>`).join('');
+}
+
 function renderCompareSelectors(revisions) {
+  compareSelectorRevisions = Array.isArray(revisions) ? revisions : [];
   const fromSelect = document.getElementById('revisionFromSelect');
   const toSelect = document.getElementById('revisionToSelect');
-  const optionsHtml = revisions
-    .map((rev) => `<option value="${rev.index}">${escapeHtml(revisionLabel(rev))}</option>`)
-    .join('');
-  fromSelect.innerHTML = optionsHtml;
-  toSelect.innerHTML = optionsHtml;
-  if (revisions.length >= 2) {
-    fromSelect.value = String(revisions[0].index);
-    toSelect.value = String(revisions[revisions.length - 1].index);
+  if (!fromSelect || !toSelect || compareSelectorRevisions.length < 2) {
+    if (fromSelect) fromSelect.innerHTML = optionsHtmlFor(compareSelectorRevisions);
+    if (toSelect) toSelect.innerHTML = optionsHtmlFor(compareSelectorRevisions);
+    return;
   }
+
+  const fromIndex = compareSelectorRevisions[0].index;
+  const toIndex = compareSelectorRevisions[compareSelectorRevisions.length - 1].index;
+  // From excludes the last version (nothing comes after it to compare
+  // forward to); To excludes the first (nothing comes before it).
+  fromSelect.innerHTML = optionsHtmlFor(compareSelectorRevisions.filter((rev) => rev.index < toIndex));
+  toSelect.innerHTML = optionsHtmlFor(compareSelectorRevisions.filter((rev) => rev.index > fromIndex));
+  fromSelect.value = String(fromIndex);
+  toSelect.value = String(toIndex);
 }
+
+document.getElementById('revisionFromSelect')?.addEventListener('change', (e) => {
+  const fromIndex = parseInt(e.target.value, 10);
+  const toSelect = document.getElementById('revisionToSelect');
+  if (!toSelect || !Number.isInteger(fromIndex)) return;
+  const currentTo = parseInt(toSelect.value, 10);
+  const validToOptions = compareSelectorRevisions.filter((rev) => rev.index > fromIndex);
+  toSelect.innerHTML = optionsHtmlFor(validToOptions);
+  toSelect.value = validToOptions.some((rev) => rev.index === currentTo)
+    ? String(currentTo)
+    : String(validToOptions[0]?.index ?? '');
+});
+
+document.getElementById('revisionToSelect')?.addEventListener('change', (e) => {
+  const toIndex = parseInt(e.target.value, 10);
+  const fromSelect = document.getElementById('revisionFromSelect');
+  if (!fromSelect || !Number.isInteger(toIndex)) return;
+  const currentFrom = parseInt(fromSelect.value, 10);
+  const validFromOptions = compareSelectorRevisions.filter((rev) => rev.index < toIndex);
+  fromSelect.innerHTML = optionsHtmlFor(validFromOptions);
+  fromSelect.value = validFromOptions.some((rev) => rev.index === currentFrom)
+    ? String(currentFrom)
+    : String(validFromOptions[validFromOptions.length - 1]?.index ?? '');
+});
 
 // The revision diff results only have anything to say once a Compare has
 // run, so -- same idiom as #editSheet for field editing -- they slide in
@@ -8580,6 +8909,18 @@ async function resumeRevisionsView() {
 
 document.getElementById('btnRevisionsCompareSheetClose')?.addEventListener('click', closeRevisionsCompareSheet);
 document.getElementById('revisionsCompareSheetScrim')?.addEventListener('click', closeRevisionsCompareSheet);
+
+const chkOnlyIncrementalVersions = document.getElementById('chkOnlyIncrementalVersions');
+if (chkOnlyIncrementalVersions) {
+  chkOnlyIncrementalVersions.checked = onlyIncrementalVersionsFilter;
+  chkOnlyIncrementalVersions.addEventListener('change', () => {
+    onlyIncrementalVersionsFilter = chkOnlyIncrementalVersions.checked;
+    try {
+      localStorage.setItem('pdfseal-only-incremental-versions', onlyIncrementalVersionsFilter ? '1' : '0');
+    } catch { /* best-effort persistence only */ }
+    if (revisionsData) renderRevisionsTimeline(revisionsData);
+  });
+}
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !isRevisionsCompareSheetOpen()) return;
   if (document.querySelector('.modal-backdrop.is-open')) return;
@@ -8623,7 +8964,7 @@ function resetRevisionsDiffState() {
   document.getElementById('visualDiffLegend').innerHTML = '';
   renderCompareVerdict(null);
   const diffEmpty = document.getElementById('revisionsDiffEmpty');
-  diffEmpty.innerHTML = '<p>Pick two revisions above and hit Compare to see what changed between them.</p>';
+  diffEmpty.innerHTML = '<p>Pick two versions above and hit Compare to see what changed between them.</p>';
   diffEmpty.hidden = false;
   document.getElementById('revisionFromSelect').innerHTML = '';
   document.getElementById('revisionToSelect').innerHTML = '';
@@ -8793,7 +9134,7 @@ function objectChipsHtml(label, entries, cls, revisionIndex) {
 
           const metaRows = [
             item.category ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Type</span><span class="diff-object-meta-value">${escapeHtml(item.category)}</span></span>` : '',
-            Number.isInteger(revisionIndex) ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Revision</span><span class="diff-object-meta-value">${revisionIndex}</span></span>` : '',
+            Number.isInteger(revisionIndex) ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Version</span><span class="diff-object-meta-value">${revisionIndex}</span></span>` : '',
             Number.isInteger(item.page) ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Page</span><span class="diff-object-meta-value">${item.page + 1}</span></span>` : '',
             item.fieldName ? `<span class="diff-object-meta-row"><span class="diff-object-meta-label">Field</span><span class="diff-object-meta-value">${escapeHtml(item.fieldName)}</span></span>` : '',
           ].join('');
@@ -8909,7 +9250,7 @@ async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects, si
     // A plain page isn't the diff-marks view, so the "many markers" throttle
     // doesn't apply -- the located box should keep animating regardless.
     overlayLayer.classList.remove('has-many-diff-markers');
-    setDiffBannerText(`Previewing ${diffPreviewLabel(previewedObjectKey)} on Revision ${currentDiffFromRevIndex} — page ${pageIndex + 1}`);
+    setDiffBannerText(`Previewing ${diffPreviewLabel(previewedObjectKey)} on Version ${currentDiffFromRevIndex} — page ${pageIndex + 1}`);
     await drawHoveredDiffObjectOverlay(pdfRects);
     return;
   }
@@ -8921,7 +9262,7 @@ async function renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects, si
   diffCurrentPage = pageIndex + 1;
   await renderCurrentDiffTabView();
   if (hoveredDiffObjectKey !== previewedObjectKey) return;
-  setDiffBannerText(`Previewing ${diffPreviewLabel(previewedObjectKey)} on Revision ${currentDiffToRevIndex} — page ${pageIndex + 1}`);
+  setDiffBannerText(`Previewing ${diffPreviewLabel(previewedObjectKey)} on Version ${currentDiffToRevIndex} — page ${pageIndex + 1}`);
   await drawHoveredDiffObjectOverlay(pdfRects);
 }
 
@@ -9835,11 +10176,11 @@ async function renderVisualDiffView() {
   if (!diffDocA && !diffDocB) {
     // exitDiffViewMode() releases both snapshots (they're two of the largest
     // things this page holds), so coming back to this tab re-acquires them.
-    setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — loading snapshots…`);
+    setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — loading snapshots…`);
     try {
       await ensureDiffDocs();
     } catch (_e) {
-      setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — snapshots unavailable.`);
+      setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — snapshots unavailable.`);
       return;
     }
     if (generation !== visualDiffGeneration) return;
@@ -9867,7 +10208,7 @@ async function renderVisualDiffView() {
   document.getElementById('btnPrev').disabled = diffCurrentPage <= 1;
   document.getElementById('btnNext').disabled = diffCurrentPage >= maxPages;
 
-  setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — page ${diffCurrentPage} / ${maxPages}`);
+  setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — page ${diffCurrentPage} / ${maxPages}`);
 
   try {
     if (usesPen) await renderVisualDiffHighlights(diffCurrentPage);
@@ -9892,11 +10233,11 @@ async function renderDiffPlainView() {
   const toLabel = currentDiffToRevIndex ?? '?';
 
   if (!diffDocA && !diffDocB) {
-    setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — loading snapshot…`);
+    setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — loading snapshot…`);
     try {
       await ensureDiffDocs();
     } catch (_e) {
-      setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — snapshot unavailable.`);
+      setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — snapshot unavailable.`);
       return;
     }
     if (generation !== visualDiffGeneration) return;
@@ -9911,7 +10252,7 @@ async function renderDiffPlainView() {
   // pages than "from"), fall back to "from" rather than showing nothing.
   const doc = (diffDocB && diffCurrentPage <= diffDocB.numPages) ? diffDocB : diffDocA;
   if (!doc || diffCurrentPage > doc.numPages) {
-    setDiffBannerText('Page not available in either revision.');
+    setDiffBannerText('Page not available in either version.');
     return;
   }
 
@@ -9929,7 +10270,7 @@ async function renderDiffPlainView() {
   document.getElementById('btnPrev').disabled = diffCurrentPage <= 1;
   document.getElementById('btnNext').disabled = diffCurrentPage >= maxPages;
 
-  setDiffBannerText(`Comparing Revision ${fromLabel} → ${toLabel} — page ${diffCurrentPage} / ${maxPages}`);
+  setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — page ${diffCurrentPage} / ${maxPages}`);
 }
 
 // Dispatches to whichever render matches the active tab -- Visual gets the
@@ -10106,7 +10447,7 @@ async function prepareVisualDiff(pageNum) {
   const targetPage = pageB || pageA;
 
   if (!targetPage) {
-    setDiffBannerText('Page not available in either revision.');
+    setDiffBannerText('Page not available in either version.');
     return null;
   }
 
@@ -10306,7 +10647,7 @@ async function renderVisualDiffHighlights(pageNum) {
     if (generation !== visualDiffGeneration) return;
     inkStrokes([{ left: 0, top: 0, right: width, bottom: height }]);
     const missingFrom = pageB ? currentDiffFromRevIndex : currentDiffToRevIndex;
-    renderVisualDiffLegend(1, `This page does not exist in Revision ${missingFrom ?? '?'}`);
+    renderVisualDiffLegend(1, `This page does not exist in Version ${missingFrom ?? '?'}`);
     return;
   }
 
@@ -10391,6 +10732,7 @@ function resetCertificatesState() {
   renderTrustSimulationPanel();
   closeCertificateSheet();
   closeCertificateModifySheet();
+  closeCertificateTimelineSheet();
 }
 
 // The standalone scratchpad (paste/drop a certificate with no PDF involved)
@@ -10940,8 +11282,12 @@ function renderCertByteMap(sig) {
  * server-side; the timeline only makes the relationship between these times
  * visible instead of requiring four separate check rows to be mentally
  * aligned.
+ *
+ * Rendered twice: a compact preview inline in the signature card (with an
+ * "Expand" button), and the same chart at full size in #certificateTimelineSheet
+ * (`opts.large`) for anyone who wants to actually read the dates.
  */
-function renderValidityTimeline(report, chain, signature) {
+function renderValidityTimeline(report, chain, signature, opts = {}) {
   const certs = (chain?.certificateIds || []).map(certById).filter(Boolean);
   if (!certs.length) return '';
 
@@ -10977,7 +11323,7 @@ function renderValidityTimeline(report, chain, signature) {
     const width = Math.max(pct(to) - left, 0.5);
     return `
       <div class="cert-timeline-row">
-        <span class="cert-timeline-row-label">${escapeHtml(certDisplayName(cert))}</span>
+        <span class="cert-timeline-row-label" title="${escapeHtml(certDisplayName(cert))}">${escapeHtml(certDisplayName(cert))}</span>
         <div class="cert-timeline-track">
           <span class="cert-timeline-bar is-${escapeHtml(status)}" style="left:${left}%;width:${width}%"
             title="${escapeHtml(certDisplayName(cert))}: ${escapeHtml(certFormatDate(cert.validFrom) ?? '?')} – ${escapeHtml(certFormatDate(cert.validTo) ?? '?')}"></span>
@@ -11005,18 +11351,54 @@ function renderValidityTimeline(report, chain, signature) {
         `${certFormatDate(timestampTime)} — from the timestamp token itself; not verified by pdf-seal, but independent of the signer's own claim`)
     : '';
 
+  const axisTicks = [domainStart, domainStart + domainSpan / 2, domainEnd].map((ms, i) => {
+    const align = i === 0 ? 'start' : i === 2 ? 'end' : 'center';
+    return `<span class="cert-timeline-tick cert-timeline-tick-${align}" style="left:${pct(ms).toFixed(2)}%">${escapeHtml(certFormatDate(new Date(ms).toISOString()) ?? '')}</span>`;
+  }).join('');
+
+  const legendSwatch = (cls, label) =>
+    `<span class="cert-timeline-legend-item"><span class="cert-timeline-legend-swatch is-${cls}"></span>${escapeHtml(label)}</span>`;
+  const legendDot = (cls, label) =>
+    `<span class="cert-timeline-legend-item"><span class="cert-timeline-legend-dot is-${cls}"></span>${escapeHtml(label)}</span>`;
+  const legend = `
+    <div class="cert-timeline-legend">
+      ${legendSwatch('pass', 'Certificate valid')}
+      ${legendSwatch('warn', 'Expiring soon')}
+      ${legendSwatch('fail', 'Expired / not yet valid')}
+      ${legendSwatch('unknown', 'Unknown')}
+      ${claimedTime ? legendDot('claimed', 'Signed (claimed)') : ''}
+      ${timestampTime ? legendDot('timestamp', 'Timestamped') : ''}
+      ${legendDot('now', 'Now')}
+    </div>`;
+
+  // The sheet's own header already carries the "Validity timeline" title, so
+  // the inline preview is the only place that needs a heading + expand button.
+  const head = opts.large ? '' : `
+    <div class="cert-timeline-head">
+      <p class="cert-timeline-title">Validity timeline</p>
+      <button type="button" class="btn btn-ghost btn-small cert-timeline-expand"
+        data-cert-action="expand-timeline" data-cert-signature-field="${escapeHtml(signature.fieldName)}">
+        Expand ${ICONS.chevronRight}
+      </button>
+    </div>`;
+
   return `
-    <div class="cert-timeline">
-      <div class="cert-timeline-scroll">
-        ${rows}
-        ${claimedMarker}
-        ${timestampMarker}
-        <div class="cert-timeline-now-overlay">
-          <div class="cert-timeline-now" style="left:${pct(now.getTime())}%" title="Now: ${escapeHtml(certFormatDate(now.toISOString()))}">
-            <span class="cert-timeline-now-label">Now</span>
+    <div class="cert-timeline${opts.large ? ' cert-timeline-large' : ''}">
+      ${head}
+      <div class="cert-timeline-scroll-wrap">
+        <div class="cert-timeline-scroll">
+          ${rows}
+          ${claimedMarker}
+          ${timestampMarker}
+          <div class="cert-timeline-now-overlay">
+            <div class="cert-timeline-now" style="left:${pct(now.getTime()).toFixed(2)}%" title="Now: ${escapeHtml(certFormatDate(now.toISOString()))}">
+              <span class="cert-timeline-now-label">Now</span>
+            </div>
           </div>
+          <div class="cert-timeline-axis">${axisTicks}</div>
         </div>
       </div>
+      ${legend}
     </div>`;
 }
 
@@ -11391,6 +11773,7 @@ function openCertificateSheet(certId, tab) {
   // Only one sheet slides over the column at a time; they occupy the same space.
   if (typeof closeEditSheet === 'function') deselectActiveField();
   if (typeof closeRevisionsCompareSheet === 'function') closeRevisionsCompareSheet();
+  closeCertificateTimelineSheet();
 
   activeCertificateId = certId;
   activeCertificateTab = tab || 'overview';
@@ -11749,6 +12132,9 @@ document.getElementById('sectionCertificates')?.addEventListener('click', (e) =>
   } else if (action === 'show-field') {
     const fieldName = target.closest('[data-cert-signature-field]')?.getAttribute('data-cert-signature-field');
     if (fieldName) flashSignatureFieldOnDocument(fieldName);
+  } else if (action === 'expand-timeline') {
+    const fieldName = target.getAttribute('data-cert-signature-field');
+    if (fieldName) openCertificateTimelineSheet(fieldName);
   } else if (action === 'copy-cert-summary' && certificatesData) {
     copyCertificateText(buildCertificateSummaryMarkdown(certificatesData), 'Summary');
   } else if (action === 'copy-cert-json' && certificatesData) {
@@ -11933,6 +12319,7 @@ function openCertificateModifySheet(op, fieldName) {
   if (!sig || !spec || !certificateModifySheet) return;
 
   closeCertificateSheet();
+  closeCertificateTimelineSheet();
   if (typeof deselectActiveField === 'function') deselectActiveField();
 
   pendingCertificateModification = {
@@ -11958,9 +12345,54 @@ function closeCertificateModifySheet() {
   certificateModifySheet.classList.remove('is-open');
   certificateModifySheet.setAttribute('aria-hidden', 'true');
   certificateModifyScrim?.classList.remove('is-open');
-  if (!isEditSheetOpen() && !isCertificateSheetOpen()) document.body.classList.remove('edit-sheet-open');
+  if (!isEditSheetOpen() && !isCertificateSheetOpen() && !isCertificateTimelineSheetOpen()) document.body.classList.remove('edit-sheet-open');
   pendingCertificateModification = null;
 }
+
+const certificateTimelineSheet = document.getElementById('certificateTimelineSheet');
+const certificateTimelineScrim = document.getElementById('certificateTimelineSheetScrim');
+
+function isCertificateTimelineSheetOpen() {
+  return Boolean(certificateTimelineSheet?.classList.contains('is-open'));
+}
+
+/** The same chart shown inline in the signature card, just big enough to read. */
+function openCertificateTimelineSheet(fieldName) {
+  const sig = certificatesData?.signatures.find((s) => s.fieldName === fieldName);
+  const chain = sig ? certificatesData.chains.find((c) => c.id === sig.chainId) : null;
+  if (!sig || !certificateTimelineSheet) return;
+
+  closeCertificateSheet();
+  closeCertificateModifySheet();
+
+  document.getElementById('certificateTimelineSheetSubject').textContent = `Field: ${sig.fieldName}`;
+  document.getElementById('certificateTimelineBody').innerHTML =
+    renderValidityTimeline(certificatesData, chain, sig, { large: true });
+
+  certificateTimelineSheet.classList.add('is-open');
+  certificateTimelineSheet.setAttribute('aria-hidden', 'false');
+  certificateTimelineScrim?.classList.add('is-open');
+  document.body.classList.add('edit-sheet-open');
+  certificateTimelineSheet.focus({ preventScroll: true });
+}
+
+function closeCertificateTimelineSheet() {
+  if (!certificateTimelineSheet) return;
+  certificateTimelineSheet.classList.remove('is-open');
+  certificateTimelineSheet.setAttribute('aria-hidden', 'true');
+  certificateTimelineScrim?.classList.remove('is-open');
+  if (!isEditSheetOpen() && !isCertificateSheetOpen() && !isCertificateModifySheetOpen()) document.body.classList.remove('edit-sheet-open');
+}
+
+document.getElementById('btnCertificateTimelineSheetClose')?.addEventListener('click', closeCertificateTimelineSheet);
+certificateTimelineScrim?.addEventListener('click', closeCertificateTimelineSheet);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !isCertificateTimelineSheetOpen()) return;
+  if (document.querySelector('.modal-backdrop.is-open')) return;
+  if (typeof tourActive !== 'undefined' && tourActive) return;
+  closeCertificateTimelineSheet();
+});
 
 /** A compact card describing one certificate, used for the before/after pair. */
 function certificateSummaryCard(cert, label) {
@@ -12466,7 +12898,7 @@ function buildTourSteps() {
     {
       id: 'intro-nav', chapter: 'intro', target: '#sectionNav', placement: 'bottom',
       title: 'Section tabs',
-      body: 'MetaData, Signatures, Revisions, and Certificates — everything below is organized under one of these four sections.',
+      body: 'MetaData, Signatures, Versions, and Certificates — everything below is organized under one of these four sections.',
       enter: async () => {},
     },
     // Chapter: signatures
@@ -12587,8 +13019,8 @@ function buildTourSteps() {
     // Chapter: revisions
     {
       id: 'rev-timeline', chapter: 'revisions', target: '#revisionsTimeline', placement: 'right',
-      title: 'Revision history',
-      body: "Every incremental save baked into this file, oldest first. This sample has three: the original terms, a clause change plus new fields, and the signed final version.",
+      title: 'Version history',
+      body: "Every saved version of this file, oldest first, badged by how it was produced. This sample has three, all imported from the file's own embedded history: the original terms, a clause change plus new fields, and the signed final version — each a full rewrite of the PDF, not an appended update.",
       enter: async () => {
         await tourGoToSection('navBtnRevisions');
         await loadRevisionsIfNeeded();
@@ -12598,8 +13030,8 @@ function buildTourSteps() {
     },
     {
       id: 'rev-compare', chapter: 'revisions', target: '#revisionsCompareSheet', placement: 'left',
-      title: 'Comparing revisions',
-      body: "Pick any two revisions and compare them. Here's revision 1 against revision 2 — the turnaround clause changed, and four fields were added.",
+      title: 'Comparing versions',
+      body: "Pick any two versions and compare them. Here's version 1 against version 2 — the turnaround clause changed, and four fields were added.",
       enter: async () => {
         currentDiffResultData = null;
         runQuickDiff(1, 2, 'overview');
@@ -12665,7 +13097,7 @@ function buildTourSteps() {
     {
       id: 'settings-general', chapter: 'settings', target: '#settingsTabPanelGeneral', placement: 'left',
       title: 'Settings: General',
-      body: 'These toggles turn optional panels on and off for real (unlike this tour\'s temporary previews) — nothing here takes effect until you hit Save. "Show advanced PDF raw data" exposes raw PDF objects wherever they\'re relevant: Metadata, Signatures, and Revisions.',
+      body: 'These toggles turn optional panels on and off for real (unlike this tour\'s temporary previews) — nothing here takes effect until you hit Save. "Show advanced PDF raw data" exposes raw PDF objects wherever they\'re relevant: Metadata, Signatures, and Versions.',
       enter: async () => {
         closeCertificateSheet();
         openSettingsModal('general');
@@ -12683,8 +13115,8 @@ function buildTourSteps() {
     },
     {
       id: 'settings-revisions', chapter: 'settings', target: '#settingsTabPanelRevisions', placement: 'left',
-      title: 'Settings: Revisions',
-      body: '"Include revisions when exporting / sharing document" bundles your locally-stored revision history into the file whenever you download or share it.',
+      title: 'Settings: Versions',
+      body: '"Include versions when exporting / sharing document" bundles your locally-stored version history into the file whenever you download or share it.',
       enter: async () => {
         document.getElementById('settingsTabBtnRevisions')?.click();
         tourToggleCheckbox('settingsIncludeRevisionHistory', true);
@@ -12819,6 +13251,7 @@ function exitTour() {
   exitDiffViewMode();
   closeRevisionsCompareSheet();
   closeCertificateSheet();
+  closeCertificateTimelineSheet();
   closeEditSheet();
   closeSettingsModal();
   deselectActiveField();
