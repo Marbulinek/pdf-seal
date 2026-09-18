@@ -3017,6 +3017,20 @@
       // session) as a permanent orphan, since nothing else ever references
       // it again once the in-memory state rolls back.
       let pendingRevisionCleanup = null;
+      // Initial files do not need their local snapshot before pdf.js can show
+      // the first page. Keep the write in flight and join it only after the
+      // visible document is ready, so IndexedDB throughput is off the critical
+      // upload path.
+      let initialRevisionWrite = null;
+      const cleanupPendingRevision = () => {
+        if (pendingRevisionCleanup?.type !== 'session') return;
+        const cleanup = () => clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
+        // A clear issued before IndexedDB finishes its put could let the put
+        // land afterwards and leave an orphaned snapshot. Chain the cleanup
+        // behind the write whenever this initial load is abandoned.
+        if (initialRevisionWrite) initialRevisionWrite.then(cleanup);
+        else cleanup();
+      };
       // The old session isn't dropped until this new load actually
       // succeeds below -- clearing it up front would permanently lose the
       // previous document's history the moment a *replacement* upload
@@ -3042,13 +3056,13 @@
         documentSessionId = createSessionId();
         documentRevisionCount = 1;
         pendingRevisionCleanup = { type: 'session', sessionId: documentSessionId };
-        await putRevision(documentSessionId, 1, file, { source: 'upload', saveKind: 'initial' }).catch(() => {});
+        initialRevisionWrite = putRevision(documentSessionId, 1, file, { source: 'upload', saveKind: 'initial' }).catch(() => {});
       }
 
       // The async IndexedDB work above may have yielded to a newer selection.
       // Do not reset or render the new document from this stale invocation.
       if (!isCurrentLoad()) {
-        if (pendingRevisionCleanup?.type === 'session') clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
+        cleanupPendingRevision();
         return;
       }
 
@@ -3056,7 +3070,7 @@
       revisionsLoadedForFile = null;
       revisionsLoading = false;
       resetRevisionsDiffState();
-      if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+      if (!initialRevisionWrite && document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
         loadRevisionsIfNeeded();
       }
 
@@ -3110,11 +3124,15 @@
 
         // 2. Render PDF
         const arrayBuffer = await arrayBufferPromise;
-        if (!isCurrentLoad()) return;
+        if (!isCurrentLoad()) {
+          cleanupPendingRevision();
+          return;
+        }
         setLoadingProgress(65);
         const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
         if (!isCurrentLoad()) {
           nextPdfDoc.destroy();
+          cleanupPendingRevision();
           return;
         }
         setLoadingProgress(80);
@@ -3164,6 +3182,17 @@
           if (currentViewport) drawFieldOverlays(currentViewport);
         }
 
+        // Make sure the initial snapshot exists before importing a bundled
+        // chain on top of it or refreshing the Revisions panel. This wait is
+        // deliberately after the first visible page and field overlays.
+        if (initialRevisionWrite) {
+          await initialRevisionWrite;
+          if (!isCurrentLoad()) return;
+          if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+            loadRevisionsIfNeeded();
+          }
+        }
+
         // A fresh upload may carry the app's own revision chain. It is useful
         // only to the Revisions section, so keep it off the critical preview
         // path. Edits already belong to an existing local session and do not
@@ -3190,6 +3219,7 @@
           activeDocumentFieldsRequest = null;
         }
         hideDocumentLoadingOverlay();
+        if (initialRevisionWrite) await initialRevisionWrite;
         if (pendingRevisionCleanup) {
           if (pendingRevisionCleanup.type === 'session') {
             clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
