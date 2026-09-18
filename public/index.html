@@ -1399,6 +1399,11 @@
     let currentViewport = null; // viewport of the currently rendered page
     let isPanning = false;
     let panDrag = null;
+    // A new file selection supersedes every outstanding parse/upload for the
+    // previous one. This prevents an older, slower request from spending more
+    // CPU or applying its result over the newer document.
+    let documentLoadGeneration = 0;
+    let activeDocumentFieldsRequest = null;
 
     // Revisions tool state
     let documentSessionId = null;    // groups this document's revision snapshots in IndexedDB (see revisionStore below)
@@ -2897,8 +2902,9 @@
       const formData = new FormData();
       formData.append('pdfDocument', file);
       formData.append('fieldsOnly', 'true');
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
+      let xhr = null;
+      const promise = new Promise((resolve, reject) => {
+        xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/info');
         xhr.responseType = 'json';
         xhr.upload.onprogress = (e) => {
@@ -2909,8 +2915,15 @@
           else reject(new Error(`Failed to read document (status ${xhr.status}).`));
         };
         xhr.onerror = () => reject(new Error('Network error while reading document.'));
+        xhr.onabort = () => reject(new DOMException('Document loading was superseded.', 'AbortError'));
         xhr.send(formData);
       });
+      return {
+        promise,
+        abort: () => {
+          if (xhr && xhr.readyState !== XMLHttpRequest.DONE) xhr.abort();
+        },
+      };
     }
 
     // Embedded revision chains can be large and require another full-file
@@ -2947,6 +2960,10 @@
     }
 
     async function processNewFile(file, options = {}) {
+      const loadGeneration = ++documentLoadGeneration;
+      const isCurrentLoad = () => loadGeneration === documentLoadGeneration;
+      activeDocumentFieldsRequest?.abort();
+      activeDocumentFieldsRequest = null;
       const preservePage = Boolean(options.preservePage);
       const skipServerInfo = Boolean(options.skipServerInfo);
       const transferredFields = Array.isArray(options.transferredFields) ? options.transferredFields : [];
@@ -2980,6 +2997,14 @@
         userHasManuallyZoomed = false;
         document.querySelector('.viewer-column .viewer-scroll').classList.remove('is-zoomed');
       }
+
+      // Show immediate feedback before the first asynchronous step. Storing a
+      // full revision in IndexedDB can take noticeable time for large PDFs;
+      // previously the loading overlay was mounted only after that work had
+      // finished, making the upload action look unresponsive.
+      document.getElementById('emptyStateViewer').style.display = 'none';
+      document.getElementById('pdfContainer').style.display = 'inline-block';
+      showDocumentLoadingOverlay();
 
       // Track this file as a local revision snapshot. An edit (isEdit)
       // appends to the current session; anything else (a fresh upload,
@@ -3018,14 +3043,13 @@
         documentRevisionCount = 1;
         pendingRevisionCleanup = { type: 'session', sessionId: documentSessionId };
         await putRevision(documentSessionId, 1, file, { source: 'upload', saveKind: 'initial' }).catch(() => {});
-        // A file exported earlier with "Include revision history" carries
-        // its full prior history baked into its own Info dict -- unpack it
-        // into local revisions 1..N-1 (the just-stored single revision above
-        // stays as N) so the panel shows the file's actual history instead
-        // of treating it as a single fresh document. No-ops for a lean file.
-        if (!skipServerInfo) {
-          await hydrateEmbeddedRevisions(file, documentSessionId).catch(() => {});
-        }
+      }
+
+      // The async IndexedDB work above may have yielded to a newer selection.
+      // Do not reset or render the new document from this stale invocation.
+      if (!isCurrentLoad()) {
+        if (pendingRevisionCleanup?.type === 'session') clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
+        return;
       }
 
       revisionsData = null;
@@ -3051,15 +3075,6 @@
         updatePendingChangesUi();
       }
 
-      // Toggle Viewer Visibility
-      document.getElementById('emptyStateViewer').style.display = 'none';
-      document.getElementById('pdfContainer').style.display = 'inline-block';
-      // The new document isn't actually ready to paint yet (server round trip,
-      // then pdf.js parsing/rendering below) -- show a growing progress
-      // overlay in its place instead of leaving the container flash stale/
-      // empty content while that work runs.
-      showDocumentLoadingOverlay();
-
       try {
         // Start the independent browser and server work together. The previous
         // flow waited for the complete server-side field scan before even
@@ -3070,14 +3085,18 @@
           setDocumentLoadingProgress(progressHighWaterMark);
         };
         let fieldsRequestError = null;
-        const fieldsPromise = skipServerInfo
+        const fieldsRequest = skipServerInfo
           ? null
-          : loadDocumentFields(file, setLoadingProgress).catch((error) => {
+          : loadDocumentFields(file, setLoadingProgress);
+        activeDocumentFieldsRequest = fieldsRequest;
+        const fieldsPromise = fieldsRequest
+          ? fieldsRequest.promise.catch((error) => {
             // Keep the rejection observed even if pdf.js fails first; the
             // original error still reaches the normal rollback path below.
             fieldsRequestError = error;
             return null;
-          });
+          })
+          : null;
         const arrayBufferPromise = file.arrayBuffer();
 
         // A received P2P file must not be sent back to the server merely to
@@ -3091,8 +3110,13 @@
 
         // 2. Render PDF
         const arrayBuffer = await arrayBufferPromise;
+        if (!isCurrentLoad()) return;
         setLoadingProgress(65);
         const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
+        if (!isCurrentLoad()) {
+          nextPdfDoc.destroy();
+          return;
+        }
         setLoadingProgress(80);
 
         // Release the previous document's worker + internal caches now that the
@@ -3130,6 +3154,8 @@
         // scan. Once it returns, lay the real field overlays over the page.
         if (!skipServerInfo) {
           const data = await fieldsPromise;
+          if (!isCurrentLoad()) return;
+          if (activeDocumentFieldsRequest === fieldsRequest) activeDocumentFieldsRequest = null;
           if (fieldsRequestError) throw fieldsRequestError;
           documentFields = data.fields || [];
           documentFields.forEach((f) => { f.__baselineName = f.name; });
@@ -3158,6 +3184,11 @@
         }
 
       } catch (err) {
+        if (!isCurrentLoad()) return;
+        if (activeDocumentFieldsRequest) {
+          activeDocumentFieldsRequest.abort();
+          activeDocumentFieldsRequest = null;
+        }
         hideDocumentLoadingOverlay();
         if (pendingRevisionCleanup) {
           if (pendingRevisionCleanup.type === 'session') {
@@ -3343,7 +3374,10 @@
     }
 
     function drawFieldOverlays(viewport) {
-      overlayLayer.querySelectorAll('.field-overlay').forEach(el => el.remove());
+      // Build off-DOM, then swap the complete field layer in one operation.
+      // Rendering a page with many form fields previously caused one layout-
+      // visible insertion per field; a fragment keeps that work batched.
+      const fieldLayer = document.createDocumentFragment();
       activeFieldDiv = null;
       const fieldsOnThisPage = documentFields.filter(f => f.page === (pageNum - 1));
       const invisibleFieldPins = [];
@@ -3541,8 +3575,13 @@
           div.classList.add('active');
           activeFieldDiv = div;
         }
-        overlayLayer.appendChild(div);
+        fieldLayer.appendChild(div);
       });
+
+      // renderPage() only invokes this for the live document. Diff/revision
+      // views own the overlay layer themselves, so replacing its children here
+      // cannot remove their markers.
+      overlayLayer.replaceChildren(fieldLayer);
 
       if (invisibleFieldPins.length) layoutInvisibleFieldPins(invisibleFieldPins);
     }
