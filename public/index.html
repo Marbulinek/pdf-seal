@@ -1394,7 +1394,7 @@
     let documentRawInfo = null;    // raw/custom Info dictionary entries, from /api/info
     let documentRawObjects = null; // { trailer, objects } -- the entire raw PDF object table, from /api/info
     let documentOverview = null;   // simplified Metadata-panel overview (documentInfo/features/pages/attachments/xmp/documentIds), from /api/info
-    let documentMetaLoadedFor = null; // "<documentSessionId>:<revisionCount>" the above four fields correspond to (cache-invalidation key)
+    let documentMetaLoadedFor = null; // the File object the above four fields were loaded for (cache-invalidation key; reference equality with activeFile)
     let metadataLoading = false;
     let currentViewport = null; // viewport of the currently rendered page
     let isPanning = false;
@@ -1411,6 +1411,18 @@
     let revisionsData = null;        // one entry per local revision for documentSessionId's current revision count; each entry's full summary is loaded lazily (see loadRevisionSummary)
     let revisionsLoadedForFile = null; // "<documentSessionId>:<revisionCount>" revisionsData corresponds to (cache-invalidation key)
     let revisionsLoading = false;
+    // The current document's embedded-revision-chain hydration: a ticket
+    // {sessionId, file, promise, start()} set synchronously by
+    // scheduleEmbeddedRevisionHydration() so ensureRevisionHydration() can
+    // force it to run right away (instead of waiting for its idle callback)
+    // when something needs the local version store to be fully caught up
+    // before it runs -- see ensureRevisionHydration() below.
+    let revisionHydration = null;
+    // Guards undo/redo/certificate-modify against starting mid-load, when
+    // `pdfDoc`/`documentRevisionCount`/etc. are momentarily inconsistent --
+    // set for the duration of any processNewFile() call, regardless of
+    // whether it ultimately succeeds, fails, or is superseded.
+    let documentLoadInFlight = false;
     let revisionsReloadPending = false; // another load was requested while one was already in flight -- rerun once it settles
     // "Show only incremental updates" toggle for the Versions timeline -- persisted
     // across sessions since it's a viewing preference, not document state.
@@ -1698,6 +1710,27 @@
 
     function revisionToBlob(rev) {
       return new Blob([rev.buffer], { type: 'application/pdf' });
+    }
+
+    // Deletes every stored revision for `sessionId` above `keepIndex` --
+    // used to bring local storage back to a known-consistent state (just
+    // the current file at index 1) if hydration fails partway through.
+    async function truncateRevisionsAbove(sessionId, keepIndex) {
+      if (!sessionId) return;
+      const db = await openRevisionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
+        const idx = tx.objectStore(REVISION_STORE_NAME).index('bySession');
+        const cursorReq = idx.openCursor(IDBKeyRange.only(sessionId));
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (!cursor) return;
+          if (cursor.value.index > keepIndex) cursor.delete();
+          cursor.continue();
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('Could not truncate local revisions.'));
+      });
     }
 
     async function deleteRevision(sessionId, index) {
@@ -2935,13 +2968,32 @@
     // upload (or base64 decode for a P2P document). Do it after the first page
     // is visible, rather than making the normal open path wait for a feature
     // that is only needed in the Revisions panel.
+    // Schedules the current document's embedded-revision-chain hydration and
+    // registers it in `revisionHydration` (see its declaration above) so
+    // ensureRevisionHydration() can force it to run early. The idle-deferred
+    // callback and a direct ensureRevisionHydration() call race to invoke
+    // ticket.start() -- whichever comes first wins, the other is a no-op.
     function scheduleEmbeddedRevisionHydration(file, sessionId, pdfJsDoc, skipServerInfo) {
+      let started = false;
+      let resolveStart;
+      const startedPromise = new Promise((resolve) => { resolveStart = resolve; });
+
       const run = async () => {
         if (sessionId !== documentSessionId || activeFile !== file) return;
-        if (skipServerInfo) {
-          await hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId).catch(() => {});
-        } else {
-          await hydrateEmbeddedRevisions(file, sessionId).catch(() => {});
+        try {
+          if (skipServerInfo) {
+            await hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId);
+          } else {
+            await hydrateEmbeddedRevisions(file, sessionId);
+          }
+        } catch (_err) {
+          if (sessionId !== documentSessionId || activeFile !== file) return;
+          // A partial hydration can't be trusted -- leave local storage in a
+          // known-consistent state (just the current file, at index 1)
+          // instead of however far it got.
+          await putRevision(sessionId, 1, file, { source: 'upload', saveKind: 'initial' }).catch(() => {});
+          await truncateRevisionsAbove(sessionId, 1).catch(() => {});
+          documentRevisionCount = 1;
         }
         if (sessionId !== documentSessionId || activeFile !== file) return;
         revisionsData = null;
@@ -2951,22 +3003,54 @@
         }
       };
 
+      const ticket = {
+        sessionId,
+        file,
+        promise: startedPromise.then(run),
+        start() {
+          if (started) return;
+          started = true;
+          resolveStart();
+        },
+      };
+      revisionHydration = ticket;
+
       // Yield at least one turn so the canvas paint is not delayed by revision
       // parsing. requestIdleCallback is a further win when it is available,
       // while the timeout keeps the history ready promptly on browsers without it.
       const defer = () => {
         if (typeof window.requestIdleCallback === 'function') {
-          window.requestIdleCallback(run, { timeout: 1000 });
+          window.requestIdleCallback(() => ticket.start(), { timeout: 1000 });
         } else {
-          setTimeout(run, 0);
+          setTimeout(() => ticket.start(), 0);
         }
       };
       setTimeout(defer, 0);
     }
 
+    // Forces the current document's scheduled hydration to run right away
+    // instead of waiting for its idle callback, and waits for it to finish.
+    // A no-op if nothing is scheduled for the current document (an edit, or
+    // a document with no embedded chain that already finished). Callers that
+    // read the local version store -- Apply, certificate modify, bundling
+    // history for export/share, and the tour's Revisions step -- await this
+    // first, so none of them race an in-flight hydration and either
+    // overwrite what it's still writing or read past it incompletely.
+    async function ensureRevisionHydration() {
+      const ticket = revisionHydration;
+      if (!ticket || ticket.sessionId !== documentSessionId || ticket.file !== activeFile) return;
+      ticket.start();
+      await ticket.promise;
+    }
+
     async function processNewFile(file, options = {}) {
       const loadGeneration = ++documentLoadGeneration;
       const isCurrentLoad = () => loadGeneration === documentLoadGeneration;
+      // Set for every call regardless of outcome; cleared below only once
+      // *this* generation concludes while still current -- a superseded
+      // (stale) call leaves it alone, since the newer call already set it
+      // for itself and will clear it in its own time.
+      documentLoadInFlight = true;
       activeDocumentFieldsRequest?.abort();
       activeDocumentFieldsRequest = null;
       const preservePage = Boolean(options.preservePage);
@@ -3060,6 +3144,7 @@
         } else {
           documentRevisionCount += 1;
           pendingRevisionCleanup = { type: 'index', sessionId: documentSessionId, index: documentRevisionCount };
+          dropStaleRedoEntries(documentRevisionCount);
           await putRevision(documentSessionId, documentRevisionCount, file, { source: 'edit', saveKind }).catch(() => {});
         }
       } else {
@@ -3245,6 +3330,8 @@
           }
         }
 
+        documentLoadInFlight = false;
+
       } catch (err) {
         if (!isCurrentLoad()) {
           // A newer load superseded this one while it was failing. Whatever
@@ -3342,6 +3429,7 @@
             loadRevisionsIfNeeded();
           }
         }
+        documentLoadInFlight = false;
         showNotification('Error processing PDF: ' + err.message, 'error');
       }
     }
@@ -5744,6 +5832,32 @@
       });
     }
 
+    // A revision write landing at `fromIndex` (in the *current* session) has
+    // just replaced whatever local bytes previously lived there. Any redo
+    // entry aimed at that index or higher was captured against those old
+    // bytes -- redoing into it now would restore an in-memory document that
+    // no longer matches what's actually stored at that index, so it's
+    // dropped rather than left to silently diverge. Called unconditionally
+    // wherever such a write happens, regardless of whether the edit that
+    // triggered it ultimately succeeds -- the row itself has already
+    // changed either way.
+    function dropStaleRedoEntries(fromIndex) {
+      if (!fieldHistoryRedo.length) return;
+      const kept = [];
+      const dropped = [];
+      fieldHistoryRedo.forEach((snap) => {
+        if (snap.documentSessionId === documentSessionId && snap.documentRevisionCount >= fromIndex) {
+          dropped.push(snap);
+        } else {
+          kept.push(snap);
+        }
+      });
+      if (!dropped.length) return;
+      fieldHistoryRedo = kept;
+      cleanupEvictedSnapshots(dropped);
+      updateHistoryUi();
+    }
+
     // Pushes an already-captured snapshot (the pre-mutation state) onto the
     // undo stack, evicting the oldest entry past FIELD_HISTORY_LIMIT and
     // discarding the now-stale redo branch.
@@ -5774,8 +5888,9 @@
     function updateHistoryUi() {
       const undoBtn = document.getElementById('btnHistoryUndo');
       const redoBtn = document.getElementById('btnHistoryRedo');
-      if (undoBtn) undoBtn.disabled = historyBusy || !pdfDoc || fieldHistoryUndo.length === 0;
-      if (redoBtn) redoBtn.disabled = historyBusy || !pdfDoc || fieldHistoryRedo.length === 0;
+      const blocked = historyBusy || isDocumentUpdating || documentLoadInFlight;
+      if (undoBtn) undoBtn.disabled = blocked || !pdfDoc || fieldHistoryUndo.length === 0;
+      if (redoBtn) redoBtn.disabled = blocked || !pdfDoc || fieldHistoryRedo.length === 0;
     }
 
     // Restores every var captured by captureDocumentSnapshot(). Only re-runs
@@ -5783,7 +5898,25 @@
     // actually changed (crossing an Apply boundary) -- a plain staged-edit
     // step never touches those, so it's cheaper to just redraw the overlays.
     async function applyDocumentSnapshot(snapshot) {
-      const pdfDocChanged = pdfDoc !== snapshot.pdfDoc;
+      // Same document: only the staged-field state this undo/redo step
+      // actually changed gets restored. Session id, revision count, and the
+      // metadata/revisions caches reflect the document's current, possibly
+      // since-refreshed state (e.g. hydration completing after this snapshot
+      // was captured) -- restoring them from a stale snapshot would silently
+      // revert that background work. This is what made undoing the tour's
+      // "undo" step put the revision count back to its pre-hydration value.
+      if (snapshot.file === activeFile) {
+        pageNum = snapshot.pageNum;
+        documentFields = snapshot.documentFields;
+        fieldsBaseline = snapshot.fieldsBaseline;
+
+        deselectActiveField();
+        clearPendingField();
+        updatePendingChangesUi();
+        updateViewerControlsState();
+        if (currentViewport) drawFieldOverlays(currentViewport);
+        return;
+      }
 
       activeFile = snapshot.file;
       pdfDoc = snapshot.pdfDoc;
@@ -5804,23 +5937,18 @@
       clearPendingField();
       updatePendingChangesUi();
 
-      if (pdfDocChanged) {
-        if (viewerDiffActive) exitDiffViewMode();
-        resetRevisionsDiffState();
-        document.getElementById('pageCount').textContent = pdfDoc.numPages;
-        await renderPage(pageNum); // also updates viewer controls + field overlays
-        if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
-          loadMetadataIfNeeded();
-        } else {
-          renderMetaTree();
-          renderMetaOverview();
-        }
-        if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
-          loadRevisionsIfNeeded();
-        }
+      if (viewerDiffActive) exitDiffViewMode();
+      resetRevisionsDiffState();
+      document.getElementById('pageCount').textContent = pdfDoc.numPages;
+      await renderPage(pageNum); // also updates viewer controls + field overlays
+      if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
+        loadMetadataIfNeeded();
       } else {
-        updateViewerControlsState();
-        if (currentViewport) drawFieldOverlays(currentViewport);
+        renderMetaTree();
+        renderMetaOverview();
+      }
+      if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+        loadRevisionsIfNeeded();
       }
     }
 
@@ -5830,7 +5958,10 @@
     let historyBusy = false;
 
     async function undoFieldChange() {
-      if (historyBusy || !fieldHistoryUndo.length) return;
+      // Blocked mid-load/mid-update: pdfDoc, documentRevisionCount and the
+      // rest of the live state are momentarily inconsistent with each other
+      // then, and a snapshot swap on top of that would corrupt both.
+      if (historyBusy || !fieldHistoryUndo.length || isDocumentUpdating || documentLoadInFlight) return;
       historyBusy = true;
       updateHistoryUi();
       try {
@@ -5844,7 +5975,7 @@
     }
 
     async function redoFieldChange() {
-      if (historyBusy || !fieldHistoryRedo.length) return;
+      if (historyBusy || !fieldHistoryRedo.length || isDocumentUpdating || documentLoadInFlight) return;
       historyBusy = true;
       updateHistoryUi();
       try {
@@ -6141,6 +6272,10 @@
     async function applyPendingFieldChanges() {
       const ops = computeFieldOps();
       if (!ops.length) return true;
+      // Let any in-flight hydration finish writing before this edit reads
+      // documentRevisionCount / writes its own row -- otherwise the two can
+      // interleave and one overwrites what the other just stored.
+      await ensureRevisionHydration();
       // Captured before the request so Undo can reach back across this Apply
       // to the pre-apply file/fields -- only committed to history on success,
       // so a failed apply (which processNewFile rolls back on its own) never
@@ -6256,6 +6391,9 @@
     // history. Uses XMLHttpRequest (rather than fetch) specifically for
     // upload.onprogress, which drives the "preparing export" notification.
     async function bundleRevisionHistoryPdf(onProgress) {
+      // Without this, bundling while hydration is still writing prior
+      // versions produces an export missing whatever it hadn't stored yet.
+      await ensureRevisionHydration();
       const localRevisions = await listRevisionsForSession(documentSessionId);
       const priorRevisions = localRevisions.filter((rev) => rev.index < documentRevisionCount);
 
@@ -7065,8 +7203,12 @@ async function loadMetadataIfNeeded() {
     return;
   }
 
-  const cacheKey = `${documentSessionId}:${documentRevisionCount}`;
-  if (documentMetaLoadedFor === cacheKey) {
+  // Keyed by the File object itself, not "<sessionId>:<revisionCount>" --
+  // an undo/redo/certificate-modify sequence can leave documentRevisionCount
+  // pointing at an index that's been reused for genuinely different bytes,
+  // which a session:count key can't tell apart. Every load/edit always
+  // produces a new File instance, so reference equality is exact.
+  if (documentMetaLoadedFor === activeFile) {
     renderMetaTree();
     renderMetaOverview();
     return;
@@ -7093,7 +7235,7 @@ async function loadMetadataIfNeeded() {
     documentRawInfo = data.rawInfo || null;
     documentRawObjects = data.rawObjects || null;
     documentOverview = data.overview || null;
-    documentMetaLoadedFor = cacheKey;
+    documentMetaLoadedFor = requestedFile;
     renderMetaTree();
     renderMetaOverview();
   } catch (err) {
@@ -8250,6 +8392,10 @@ async function startSendingShare() {
   if (!activeFile || !crypto.subtle || !window.RTCPeerConnection) {
     return setShareStatus('Your browser doesn’t support secure sharing. Try Chrome, Firefox, or Edge.', 'error');
   }
+  // Let any in-flight hydration finish before anything below reads local
+  // version history (directly, or indirectly through applyPendingFieldChanges
+  // / bundleRevisionHistoryPdf, which also await it themselves).
+  await ensureRevisionHydration();
   // Staged field edits live only in `documentFields` until applied -- make
   // sure what gets shared actually includes them.
   if (computeFieldOps().length) {
@@ -11147,8 +11293,11 @@ async function loadCertificatesIfNeeded() {
     return;
   }
 
-  const cacheKey = `${documentSessionId || ''}:${documentRevisionCount}:${activeFile.name}:${activeFile.size}`;
-  if (certificatesLoadedForFile === cacheKey && certificatesData) {
+  // Reference equality with activeFile, not a session:count:name:size key --
+  // an undo/redo/certificate-modify sequence can reuse a revision index for
+  // genuinely different bytes, and two edits can coincidentally share a
+  // name+size. Every load/edit always produces a new File instance.
+  if (certificatesLoadedForFile === activeFile && certificatesData) {
     renderCertificatesPanel(certificatesData);
     return;
   }
@@ -11178,7 +11327,7 @@ async function loadCertificatesIfNeeded() {
     if (!response.ok) throw new Error(payload?.error || 'The certificates could not be read.');
 
     certificatesData = payload.report;
-    certificatesLoadedForFile = cacheKey;
+    certificatesLoadedForFile = requestedFile;
     renderCertificatesPanel(certificatesData);
   } catch (error) {
     if (requestedFile !== activeFile) return;
@@ -12739,11 +12888,23 @@ async function handleCertificateFilePicked(file) {
 
 async function confirmCertificateModification() {
   const state = pendingCertificateModification;
-  if (!state || !activeFile) return;
+  // Also blocked mid-load/mid-update, the same as undo/redo -- pdfDoc and
+  // documentRevisionCount are momentarily inconsistent then.
+  if (!state || !activeFile || isDocumentUpdating || documentLoadInFlight) return;
+
+  // Let any in-flight hydration finish writing before this edit reads
+  // documentRevisionCount / writes its own row.
+  await ensureRevisionHydration();
 
   const applyBtn = document.getElementById('btnCertificateModifyApply');
   applyBtn.disabled = true;
   const toast = showNotification('Rewriting the signature…', 'loading', 0);
+  // Captured before the request, the same pattern applyPendingFieldChanges
+  // uses for preApplySnapshot: committed to undo history only on success, so
+  // a failed modification (which processNewFile rolls back on its own)
+  // never leaves a no-op undo step, and redo never points at a version this
+  // modification's edit write is about to overwrite.
+  const preModifySnapshot = captureDocumentSnapshot();
 
   try {
     const formData = new FormData();
@@ -12772,6 +12933,7 @@ async function confirmCertificateModification() {
     // One reload path for everything: certificates, chain, validation,
     // signatures and revisions all refresh from processNewFile.
     await processNewFile(updated, { preservePage: true, isEdit: true });
+    commitFieldHistorySnapshot(preModifySnapshot);
 
     const removed = meta?.removedCertificates?.length ? ` Removed ${meta.removedCertificates.join(', ')}.` : '';
     showNotification(
@@ -13243,6 +13405,10 @@ function buildTourSteps() {
       body: "Every saved version of this file, oldest first, badged by how it was produced. This sample has three, all imported from the file's own embedded history: the original terms, a clause change plus new fields, and the signed final version — each a full rewrite of the PDF, not an appended update.",
       enter: async () => {
         await tourGoToSection('navBtnRevisions');
+        // The sample's three versions come from its embedded chain --
+        // without this, the panel can render before hydration has finished
+        // unpacking it and show just the one (current) version.
+        await ensureRevisionHydration();
         await loadRevisionsIfNeeded();
         await waitFor(() => !document.getElementById('revisionsTimeline')?.hidden);
         document.querySelector('[data-rev-toggle="3"]')?.click();
