@@ -2889,6 +2889,63 @@
       if (overlay) overlay.hidden = true;
     }
 
+    // Reading the form fields is still needed before they can be edited, but it
+    // does not need to block pdf.js from parsing and painting the first page.
+    // Keeping this as a separate promise lets the browser and server work in
+    // parallel while retaining the upload progress UI.
+    function loadDocumentFields(file, onProgress) {
+      const formData = new FormData();
+      formData.append('pdfDocument', file);
+      formData.append('fieldsOnly', 'true');
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/info');
+        xhr.responseType = 'json';
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress?.((e.loaded / e.total) * 45);
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+          else reject(new Error(`Failed to read document (status ${xhr.status}).`));
+        };
+        xhr.onerror = () => reject(new Error('Network error while reading document.'));
+        xhr.send(formData);
+      });
+    }
+
+    // Embedded revision chains can be large and require another full-file
+    // upload (or base64 decode for a P2P document). Do it after the first page
+    // is visible, rather than making the normal open path wait for a feature
+    // that is only needed in the Revisions panel.
+    function scheduleEmbeddedRevisionHydration(file, sessionId, pdfJsDoc, skipServerInfo) {
+      const run = async () => {
+        if (sessionId !== documentSessionId || activeFile !== file) return;
+        if (skipServerInfo) {
+          await hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId).catch(() => {});
+        } else {
+          await hydrateEmbeddedRevisions(file, sessionId).catch(() => {});
+        }
+        if (sessionId !== documentSessionId || activeFile !== file) return;
+        revisionsData = null;
+        revisionsLoadedForFile = null;
+        if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+          loadRevisionsIfNeeded();
+        }
+      };
+
+      // Yield at least one turn so the canvas paint is not delayed by revision
+      // parsing. requestIdleCallback is a further win when it is available,
+      // while the timeout keeps the history ready promptly on browsers without it.
+      const defer = () => {
+        if (typeof window.requestIdleCallback === 'function') {
+          window.requestIdleCallback(run, { timeout: 1000 });
+        } else {
+          setTimeout(run, 0);
+        }
+      };
+      setTimeout(defer, 0);
+    }
+
     async function processNewFile(file, options = {}) {
       const preservePage = Boolean(options.preservePage);
       const skipServerInfo = Boolean(options.skipServerInfo);
@@ -3004,42 +3061,28 @@
       showDocumentLoadingOverlay();
 
       try {
+        // Start the independent browser and server work together. The previous
+        // flow waited for the complete server-side field scan before even
+        // asking pdf.js to open the file.
+        let progressHighWaterMark = 0;
+        const setLoadingProgress = (percent) => {
+          progressHighWaterMark = Math.max(progressHighWaterMark, percent);
+          setDocumentLoadingProgress(progressHighWaterMark);
+        };
+        let fieldsRequestError = null;
+        const fieldsPromise = skipServerInfo
+          ? null
+          : loadDocumentFields(file, setLoadingProgress).catch((error) => {
+            // Keep the rejection observed even if pdf.js fails first; the
+            // original error still reaches the normal rollback path below.
+            fieldsRequestError = error;
+            return null;
+          });
+        const arrayBufferPromise = file.arrayBuffer();
+
         // A received P2P file must not be sent back to the server merely to
         // populate metadata. Local preview remains fully browser-side.
-        if (!skipServerInfo) {
-          // Only form fields are needed to render the Signatures view (the
-          // default view on every load/edit) -- the full metadata/raw-object
-          // dump is expensive to compute and is fetched separately, lazily,
-          // only if/when the MetaData section is actually opened.
-          // Uses XMLHttpRequest (rather than fetch) specifically for
-          // upload.onprogress, which drives the loading overlay's percentage.
-          const formData = new FormData();
-          formData.append('pdfDocument', file);
-          formData.append('fieldsOnly', 'true');
-          const data = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', '/api/info');
-            xhr.responseType = 'json';
-            xhr.upload.onprogress = (e) => {
-              if (!e.lengthComputable) return;
-              setDocumentLoadingProgress((e.loaded / e.total) * 45);
-            };
-            xhr.onload = () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                resolve(xhr.response);
-              } else {
-                reject(new Error(`Failed to read document (status ${xhr.status}).`));
-              }
-            };
-            xhr.onerror = () => reject(new Error('Network error while reading document.'));
-            xhr.send(formData);
-          });
-          documentFields = data.fields || [];
-          documentFields.forEach((f) => { f.__baselineName = f.name; });
-          fieldsBaseline = cloneFields(documentFields);
-          updatePendingChangesUi();
-        }
-        setDocumentLoadingProgress(50);
+        setLoadingProgress(50);
         documentMeta = null;
         documentRawInfo = null;
         documentRawObjects = null;
@@ -3047,10 +3090,10 @@
         documentMetaLoadedFor = null;
 
         // 2. Render PDF
-        const arrayBuffer = await file.arrayBuffer();
-        setDocumentLoadingProgress(65);
+        const arrayBuffer = await arrayBufferPromise;
+        setLoadingProgress(65);
         const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
-        setDocumentLoadingProgress(80);
+        setLoadingProgress(80);
 
         // Release the previous document's worker + internal caches now that the
         // new one has loaded successfully -- otherwise every reload (including
@@ -3062,18 +3105,6 @@
           pdfDoc.destroy();
         }
         pdfDoc = nextPdfDoc;
-
-        // A P2P-received file skipped hydrateEmbeddedRevisions() above (it requires
-        // a server round trip) -- recover its bundled revision history, if any, now
-        // that pdf.js has parsed the Info dict locally.
-        if (skipServerInfo) {
-          await hydrateEmbeddedRevisionsFromPdfDoc(nextPdfDoc, file, documentSessionId).catch(() => {});
-          revisionsData = null;
-          revisionsLoadedForFile = null;
-          if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
-            loadRevisionsIfNeeded();
-          }
-        }
 
         // Metadata (and any other panel keyed off `pdfDoc`) can only render
         // correctly once `pdfDoc` itself is assigned above -- doing this any
@@ -3092,8 +3123,28 @@
         pageNum = Math.min(Math.max(targetPage, 1), pdfDoc.numPages);
         updateViewerControlsState();
         await renderPage(pageNum);
-        setDocumentLoadingProgress(100);
+        setLoadingProgress(100);
         hideDocumentLoadingOverlay();
+
+        // Let the first page appear before waiting for the server-side field
+        // scan. Once it returns, lay the real field overlays over the page.
+        if (!skipServerInfo) {
+          const data = await fieldsPromise;
+          if (fieldsRequestError) throw fieldsRequestError;
+          documentFields = data.fields || [];
+          documentFields.forEach((f) => { f.__baselineName = f.name; });
+          fieldsBaseline = cloneFields(documentFields);
+          updatePendingChangesUi();
+          if (currentViewport) drawFieldOverlays(currentViewport);
+        }
+
+        // A fresh upload may carry the app's own revision chain. It is useful
+        // only to the Revisions section, so keep it off the critical preview
+        // path. Edits already belong to an existing local session and do not
+        // need this import.
+        if (!isEdit) {
+          scheduleEmbeddedRevisionHydration(file, documentSessionId, nextPdfDoc, skipServerInfo);
+        }
 
         // Only now that the replacement document has fully loaded is the
         // previous document's local history actually unreachable -- safe
