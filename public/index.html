@@ -1847,7 +1847,12 @@
     // guaranteed to finish (the page can be torn down mid-transaction) --
     // sweepStaleRevisionSessions() above is the reliable backstop for
     // whatever this doesn't catch in time.
-    window.addEventListener('pagehide', () => {
+    window.addEventListener('pagehide', (e) => {
+      // e.persisted means the page is going into the back-forward cache, not
+      // closing -- the tab (and its in-memory state) will likely come right
+      // back, so clearing local storage here would delete a session the user
+      // is about to keep working in.
+      if (e.persisted) return;
       if (documentSessionId) clearRevisionSession(documentSessionId).catch(() => {});
       // Releases any pdf.js document (and its worker) still held only by the
       // undo/redo history -- nothing left alive to reach it once this tab is
@@ -2991,6 +2996,12 @@
         documentSessionId,
         documentRevisionCount,
       } : null;
+      // The pdf.js document this load is replacing, if any. Ownership of it
+      // transfers to this function: it's kept alive (not destroyed) until the
+      // load either commits (see the commit point below) or fails, so a
+      // rollback always has an intact document to restore rather than one
+      // already torn down.
+      const outgoing = previousDocumentState?.pdfDoc ?? null;
       activeFile = file;
       if (documentChanged) resetShareForChangedDocument();
       if (documentChanged && !preservePage) {
@@ -3089,6 +3100,13 @@
         updatePendingChangesUi();
       }
 
+      // Set once the new pdf.js document has been obtained and assigned to
+      // the live `pdfDoc` variable -- distinguishes "nothing to clean up
+      // yet" from "the outgoing document has already been displaced" in the
+      // stale-return and error paths below.
+      let nextPdfDoc = null;
+      let adopted = false;
+
       try {
         // Start the independent browser and server work together. The previous
         // flow waited for the complete server-side field scan before even
@@ -3129,7 +3147,7 @@
           return;
         }
         setLoadingProgress(65);
-        const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
+        nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
         if (!isCurrentLoad()) {
           nextPdfDoc.destroy();
           cleanupPendingRevision();
@@ -3137,16 +3155,14 @@
         }
         setLoadingProgress(80);
 
-        // Release the previous document's worker + internal caches now that the
-        // new one has loaded successfully -- otherwise every reload (including
-        // the one that follows every field add/edit/remove) leaks a worker.
-        // Skipped when the outgoing pdfDoc is still held by the undo/redo
-        // history (an Apply just pushed a snapshot pointing at it) -- it gets
-        // destroyed later, once its snapshot actually falls out of history.
-        if (pdfDoc && pdfDoc !== nextPdfDoc && !isPdfDocRetainedInHistory(pdfDoc)) {
-          pdfDoc.destroy();
-        }
+        // Adopt the new document now that it has loaded successfully, but
+        // don't destroy `outgoing` yet -- if a later step in this same load
+        // fails (the server-side field scan, etc.), the rollback path below
+        // needs it intact to restore. It's released once the load reaches
+        // its commit point, further down, or by whichever cleanup path
+        // handles this load's failure/staleness.
         pdfDoc = nextPdfDoc;
+        adopted = true;
 
         // Metadata (and any other panel keyed off `pdfDoc`) can only render
         // correctly once `pdfDoc` itself is assigned above -- doing this any
@@ -3172,7 +3188,16 @@
         // scan. Once it returns, lay the real field overlays over the page.
         if (!skipServerInfo) {
           const data = await fieldsPromise;
-          if (!isCurrentLoad()) return;
+          if (!isCurrentLoad()) {
+            // Adoption already happened above, so `outgoing` is displaced
+            // and unreachable from here on -- release it now, since the
+            // commit point below (which would otherwise do it) is never
+            // reached on this stale return.
+            if (outgoing && outgoing !== nextPdfDoc && !isPdfDocRetainedInHistory(outgoing)) {
+              outgoing.destroy();
+            }
+            return;
+          }
           if (activeDocumentFieldsRequest === fieldsRequest) activeDocumentFieldsRequest = null;
           if (fieldsRequestError) throw fieldsRequestError;
           documentFields = data.fields || [];
@@ -3180,6 +3205,14 @@
           fieldsBaseline = cloneFields(documentFields);
           updatePendingChangesUi();
           if (currentViewport) drawFieldOverlays(currentViewport);
+        }
+
+        // Commit point: the new document is fully in place (rendered, fields
+        // overlaid), so the outgoing one's resources can finally be released
+        // -- unless undo/redo history still points at it, in which case it's
+        // released later, once its snapshot actually falls out of history.
+        if (outgoing && outgoing !== nextPdfDoc && !isPdfDocRetainedInHistory(outgoing)) {
+          outgoing.destroy();
         }
 
         // Make sure the initial snapshot exists before importing a bundled
@@ -3213,7 +3246,19 @@
         }
 
       } catch (err) {
-        if (!isCurrentLoad()) return;
+        if (!isCurrentLoad()) {
+          // A newer load superseded this one while it was failing. Whatever
+          // this load itself owns and nobody else will clean up must be
+          // released here instead of returning silently.
+          if (adopted) {
+            if (outgoing && outgoing !== nextPdfDoc && !isPdfDocRetainedInHistory(outgoing)) {
+              outgoing.destroy();
+            }
+          } else if (nextPdfDoc) {
+            nextPdfDoc.destroy();
+          }
+          return;
+        }
         if (activeDocumentFieldsRequest) {
           activeDocumentFieldsRequest.abort();
           activeDocumentFieldsRequest = null;
@@ -3233,6 +3278,13 @@
               revisionSummaryCache.delete(pendingRevisionCleanup.index);
             }
           }
+        }
+        // This load is being abandoned in favor of restoring the previous
+        // document (or clearing to none) -- release the document it adopted,
+        // since `outgoing` was never destroyed (the commit point above was
+        // never reached) and is about to be restored/kept intact instead.
+        if (adopted && nextPdfDoc && nextPdfDoc !== previousDocumentState?.pdfDoc) {
+          nextPdfDoc.destroy();
         }
         if (previousDocumentState) {
           // Roll back to the last valid document instead of leaving the
@@ -3393,12 +3445,14 @@
         throw err;
       } finally {
         if (currentRenderTask === renderTask) currentRenderTask = null;
+        // pdf.js holds a page's decoded images, fonts and operator list on
+        // both the main thread and the worker until it's told to let go.
+        // In `finally` so a cancelled render still releases them -- left
+        // only in the success path, paging quickly (each render cancelling
+        // the last) never reached this line and accumulated one page's
+        // worth of caches per page ever shown.
+        page.cleanup();
       }
-
-      // pdf.js holds a page's decoded images, fonts and operator list on both
-      // the main thread and the worker until it's told to let go. Without this,
-      // paging through a document accumulates every page it has ever shown.
-      page.cleanup();
 
       return true;
     }
@@ -7048,7 +7102,11 @@ async function loadMetadataIfNeeded() {
     if (overviewEl) overviewEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
     if (treeEl) treeEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
   } finally {
-    if (requestedFile === activeFile) metadataLoading = false;
+    // Always clear, even if the file changed mid-load -- gating this on
+    // `requestedFile === activeFile` left it stuck `true` forever once the
+    // file changed, permanently blocking every future metadata load (the
+    // early return above never lets a new load start).
+    metadataLoading = false;
   }
 }
 
@@ -8212,7 +8270,9 @@ async function startSendingShare() {
     const includeHistory = Boolean(loadSettings().includeRevisionHistoryByDefault);
     if (includeHistory) {
       setShareStatus('Bundling revision history…', 'waiting');
-      fileToShare = await bundleRevisionHistoryPdf('share');
+      fileToShare = await bundleRevisionHistoryPdf((loaded, total) => {
+        setShareProgress(loaded, total, 'Bundling revision history…');
+      });
       // bundleRevisionHistoryPdf leaves the progress bar reading "Done" —
       // that only reflects the bundling upload, not the share transfer
       // itself, which hasn't started. Reset it so the bar doesn't falsely
@@ -8349,6 +8409,18 @@ function exitDiffViewMode() {
   diffDocA = null;
   diffDocB = null;
   resetVisualDiffPixelCache();
+  // The pixel-diff worker (distinct from diffPdfWorker below) holds up to
+  // VISUAL_DIFF_PIXEL_CACHE_LIMIT cached RGBA pages until told otherwise --
+  // resetVisualDiffPixelCache() only clears its cache, it doesn't leave the
+  // worker thread itself. Terminate it here; getDiffWorker() spins up a
+  // fresh one on the next comparison.
+  if (diffWorker) {
+    diffWorker.terminate();
+    diffWorker = null;
+  }
+  diffWorkerPending.forEach(({ reject }) => reject(new Error('Diff view closed.')));
+  diffWorkerPending.clear();
+  diffPixelCacheKeys = [];
   // Recreate the diff worker from scratch next time -- see resetDiffPdfWorker's
   // definition for why it can't just be left running across visits.
   resetDiffPdfWorker();
@@ -8839,7 +8911,10 @@ async function viewRevisionInMainViewer(revIndex) {
   const requestedSessionId = documentSessionId; // guards against a stale response landing after a newer upload
   try {
     const doc = await fetchRevisionPdfDoc(revIndex, requestedSessionId);
-    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
+    if (requestedSessionId !== documentSessionId) {
+      doc.destroy(); // a newer upload superseded this request -- nothing else references this doc
+      return;
+    }
     if (revisionViewDoc && revisionViewDoc !== doc) revisionViewDoc.destroy();
     revisionViewDoc = doc;
     revisionViewIndex = revIndex;
@@ -10029,6 +10104,15 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
   if (subject) subject.textContent = 'Comparing…';
   openRevisionsCompareSheet();
 
+  // Compare supersedes a single-revision "View" that may still be open --
+  // release its document rather than leaving it resident until the next
+  // exitDiffViewMode().
+  if (revisionViewDoc) {
+    revisionViewDoc.destroy();
+    revisionViewDoc = null;
+    revisionViewIndex = null;
+  }
+
   // A new pair invalidates the snapshots the Visual tab renders from. Without
   // this, opening that tab while the new ones load quietly shows the previous
   // comparison instead -- the indices move first so renderVisualDiffView()
@@ -10167,10 +10251,15 @@ async function loadDiffDocs() {
   const requestedFrom = currentDiffFromRevIndex;
   const requestedTo = currentDiffToRevIndex;
 
-  const [docA, docB] = await Promise.all([
+  // allSettled rather than all: a rejection on one side must not orphan the
+  // other side's already-resolved document -- with Promise.all, that
+  // document is never captured anywhere and simply leaks.
+  const [resultA, resultB] = await Promise.allSettled([
     diffDocA || fetchRevisionPdfDoc(requestedFrom, requestedSessionId),
     diffDocB || fetchRevisionPdfDoc(requestedTo, requestedSessionId),
   ]);
+  const docA = resultA.status === 'fulfilled' ? resultA.value : null;
+  const docB = resultB.status === 'fulfilled' ? resultB.value : null;
 
   // Torn down, superseded by a newer document, or aimed at a different pair of
   // revisions while these were loading. Anything never assigned is ours to
@@ -10179,9 +10268,15 @@ async function loadDiffDocs() {
       || requestedSessionId !== documentSessionId
       || requestedFrom !== currentDiffFromRevIndex
       || requestedTo !== currentDiffToRevIndex) {
-    if (docA !== diffDocA) docA?.destroy();
-    if (docB !== diffDocB) docB?.destroy();
+    if (docA && docA !== diffDocA) docA.destroy();
+    if (docB && docB !== diffDocB) docB.destroy();
     return;
+  }
+
+  if (resultA.status === 'rejected' || resultB.status === 'rejected') {
+    if (docA && docA !== diffDocA) docA.destroy();
+    if (docB && docB !== diffDocB) docB.destroy();
+    throw resultA.status === 'rejected' ? resultA.reason : resultB.reason;
   }
 
   const changed = docA !== diffDocA || docB !== diffDocB;
@@ -10705,6 +10800,11 @@ async function drawVisualDiffBase(page, side, pageNum, scale, width, height) {
     off.height = 0;
     if (err && err.name === 'RenderingCancelledException') return false;
     throw err;
+  } finally {
+    // Release the page's cached fonts/operator list on both outcomes --
+    // otherwise every diff render (there can be many across a comparison)
+    // accumulates one page's worth of pdf.js-internal caches.
+    page.cleanup();
   }
 
   releaseVisualDiffBase();

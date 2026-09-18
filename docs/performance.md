@@ -48,27 +48,38 @@ read back afterward; nothing here is committed into `public/index.html`.
   window.__perfStats = stats;
 
   // 1. Count live pdf.js loading tasks (documents that are open right now).
-  if (window.pdfjsLib && !pdfjsLib.getDocument.__perfWrapped) {
-    const original = pdfjsLib.getDocument.bind(pdfjsLib);
-    const wrapped = (...args) => {
-      stats.loadingTasks++;
-      stats.liveLoadingTasks++;
-      const task = original(...args);
-      task.promise
-        .then((doc) => {
-          const destroy = doc.destroy.bind(doc);
-          doc.destroy = (...destroyArgs) => {
-            stats.liveLoadingTasks--;
-            return destroy(...destroyArgs);
+  // pdf.js's own namespace object exposes `getDocument` as a non-configurable
+  // getter (it's an ESM export), so `pdfjsLib.getDocument = wrapped` silently
+  // does nothing -- swap the *global binding* for a Proxy instead, which
+  // intercepts property access without touching the real object at all.
+  if (window.pdfjsLib && !window.pdfjsLib.__perfWrapped) {
+    const realLib = window.pdfjsLib;
+    const realGetDocument = realLib.getDocument.bind(realLib);
+    window.pdfjsLib = new Proxy(realLib, {
+      get(target, prop, receiver) {
+        if (prop === '__perfWrapped') return true;
+        if (prop === 'getDocument') {
+          return (...args) => {
+            stats.loadingTasks++;
+            stats.liveLoadingTasks++;
+            const task = realGetDocument(...args);
+            task.promise
+              .then((doc) => {
+                const destroy = doc.destroy.bind(doc);
+                doc.destroy = (...destroyArgs) => {
+                  stats.liveLoadingTasks--;
+                  return destroy(...destroyArgs);
+                };
+              })
+              .catch(() => {
+                stats.liveLoadingTasks--;
+              });
+            return task;
           };
-        })
-        .catch(() => {
-          stats.liveLoadingTasks--;
-        });
-      return task;
-    };
-    wrapped.__perfWrapped = true;
-    pdfjsLib.getDocument = wrapped;
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
   }
 
   // 2. Count /api/* calls and request body bytes, fetch + XHR.
