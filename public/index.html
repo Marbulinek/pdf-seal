@@ -1887,10 +1887,6 @@
       // is about to keep working in.
       if (e.persisted) return;
       if (documentSessionId) clearRevisionSession(documentSessionId).catch(() => {});
-      // Releases any pdf.js document (and its worker) still held only by the
-      // undo/redo history -- nothing left alive to reach it once this tab is
-      // gone, so there's no point letting it hang around until GC gets to it.
-      try { resetFieldHistory(); } catch { /* best-effort, same as above */ }
     });
 
     // Client-side counterpart to hydrateEmbeddedRevisions below, for a P2P-received
@@ -2851,10 +2847,14 @@
       updateHistoryUi();
     }
 
-    // `keepFieldHistory` is true for an "Apply changes" reload -- undo/redo
-    // spans that boundary (see pushFieldHistory()/applyPendingFieldChanges()),
-    // so a genuinely new document is the only case that should wipe it.
-    function resetPanelsForNewDocument(keepFieldHistory = false) {
+    // Resetting field history (undo/redo) itself is NOT done here -- a
+    // genuinely new (non-edit) upload clears it, but only once that upload
+    // actually commits (see processNewFile's commit point), so a failed
+    // replacement upload's rollback doesn't wipe out the still-valid
+    // document's undo history. An "Apply changes"/certificate-modify reload
+    // never clears it at all -- undo/redo spans that boundary (see
+    // pushFieldHistory()/applyPendingFieldChanges()).
+    function resetPanelsForNewDocument() {
       const editForm = document.getElementById('editFieldForm');
       const addForm = document.getElementById('addSigForm');
       const detailsBody = document.getElementById('fieldDetailsBody');
@@ -2866,7 +2866,6 @@
       activeField = null;
       activeFieldDiv = null;
       closeEditSheet();
-      if (!keepFieldHistory) resetFieldHistory();
 
       editControls.forEach((el) => {
         el.disabled = true;
@@ -3183,7 +3182,7 @@
       updateViewerControlsState();
 
       // A brand new document means any previous pending placement/selection is stale
-      resetPanelsForNewDocument(isEdit);
+      resetPanelsForNewDocument();
       if (skipServerInfo || knownFields) {
         documentFields = skipServerInfo ? transferredFields : knownFields;
         documentFields.forEach((f) => { f.__baselineName = f.name; });
@@ -3286,7 +3285,7 @@
             // and unreachable from here on -- release it now, since the
             // commit point below (which would otherwise do it) is never
             // reached on this stale return.
-            if (outgoing && outgoing !== nextPdfDoc && !isPdfDocRetainedInHistory(outgoing)) {
+            if (outgoing && outgoing !== nextPdfDoc) {
               outgoing.destroy();
             }
             return;
@@ -3301,12 +3300,18 @@
         }
 
         // Commit point: the new document is fully in place (rendered, fields
-        // overlaid), so the outgoing one's resources can finally be released
-        // -- unless undo/redo history still points at it, in which case it's
-        // released later, once its snapshot actually falls out of history.
-        if (outgoing && outgoing !== nextPdfDoc && !isPdfDocRetainedInHistory(outgoing)) {
+        // overlaid), so the outgoing one's resources can finally be released.
+        // Undo/redo snapshots never hold a pdfDoc (see captureDocumentSnapshot),
+        // so nothing else can still be pointing at it.
+        if (outgoing && outgoing !== nextPdfDoc) {
           outgoing.destroy();
         }
+
+        // A genuinely new (non-edit) upload clears undo/redo, but only now
+        // that it has actually committed -- doing this any earlier meant a
+        // failed replacement upload's rollback (which puts the old, still
+        // valid document back) had already wiped that document's history.
+        if (!isEdit) resetFieldHistory();
 
         // Make sure the initial snapshot exists before importing a bundled
         // chain on top of it or refreshing the Revisions panel. This wait is
@@ -3346,7 +3351,7 @@
           // this load itself owns and nobody else will clean up must be
           // released here instead of returning silently.
           if (adopted) {
-            if (outgoing && outgoing !== nextPdfDoc && !isPdfDocRetainedInHistory(outgoing)) {
+            if (outgoing && outgoing !== nextPdfDoc) {
               outgoing.destroy();
             }
           } else if (nextPdfDoc) {
@@ -5803,67 +5808,33 @@
 
     // --- Field-change history (undo/redo) ---
     // Every discrete staged mutation (add/move/resize/rename/toggle/remove/
-    // discard) -- and "Apply changes" itself -- pushes a full pre-mutation
-    // document snapshot onto the undo stack and clears the redo stack.
-    // Undoing/redoing swaps the whole document (file/pdfDoc/fields/baseline/
-    // cached metadata & revisions) wholesale, so undo reaches back across an
-    // Apply just as it does across a plain staged edit.
-    // Deliberately shallow: a snapshot's unit of retention is an entire
-    // document (a live pdf.js PDFDocumentProxy plus a full raw-object dump),
-    // not a small delta, and a retained pdfDoc can't be destroyed while its
-    // snapshot survives (see isPdfDocRetainedInHistory below). At 100 this was
-    // the second-largest source of the page's memory use.
+    // discard) -- and "Apply changes" itself -- pushes a lightweight
+    // pre-mutation snapshot onto the undo stack and clears the redo stack.
+    // Undoing/redoing across a document boundary (an Apply, a certificate
+    // modification) re-opens the target file on demand rather than keeping
+    // a live pdf.js document around for every entry -- a snapshot holds only
+    // the File reference plus the small bits of state that don't already
+    // live in IndexedDB (see captureDocumentSnapshot below). At up to 10
+    // retained pdf.js documents, this used to be the second-largest source
+    // of the page's memory use.
     const FIELD_HISTORY_LIMIT = 10;
 
     // `documentFields`/`fieldsBaseline` are mutated in place elsewhere
     // (push/rect assignment) -- clone them so a later mutation can't reach
-    // back and corrupt an already-captured snapshot. Everything else here is
-    // always reassigned wholesale (never mutated in place), so a plain
-    // reference is safe -- same convention the pre-existing error-rollback
-    // snapshot (see `previousDocumentState` in processNewFile) already uses.
+    // back and corrupt an already-captured snapshot. `file` is a Blob
+    // reference (cheap to hold, and the actual bytes already live in
+    // IndexedDB via the local revision store) -- everything document-shaped
+    // that used to ride along (pdfDoc, metadata, raw dumps, revisions data)
+    // is deliberately left out and reloaded fresh on demand instead.
     function captureDocumentSnapshot() {
       return {
         file: activeFile,
-        pdfDoc,
         pageNum,
         documentFields: cloneFields(documentFields),
         fieldsBaseline: cloneFields(fieldsBaseline),
-        documentMeta,
-        documentRawInfo,
-        documentRawObjects,
-        documentOverview,
-        documentMetaLoadedFor,
-        revisionsData,
-        revisionsLoadedForFile,
         documentSessionId,
         documentRevisionCount,
       };
-    }
-
-    // Whether `doc` (a pdf.js document) is still held by any snapshot in
-    // either stack -- checked before destroying a superseded pdfDoc so undo
-    // never ends up pointing at a torn-down document.
-    function isPdfDocRetainedInHistory(doc) {
-      if (!doc) return false;
-      return fieldHistoryUndo.some((s) => s.pdfDoc === doc) || fieldHistoryRedo.some((s) => s.pdfDoc === doc);
-    }
-
-    // Destroys any pdf.js document from `evictedSnapshots` that's no longer
-    // referenced by the live document or by what's left in either stack --
-    // called wherever snapshots are permanently dropped (cap eviction, a
-    // cleared redo branch, or a full reset), so superseded documents (e.g.
-    // the pre-Apply pdfDoc, once its undo entry falls off) get released
-    // instead of leaking.
-    function cleanupEvictedSnapshots(evictedSnapshots) {
-      if (!evictedSnapshots || !evictedSnapshots.length) return;
-      const destroyed = new Set();
-      evictedSnapshots.forEach((snap) => {
-        const doc = snap && snap.pdfDoc;
-        if (!doc || doc === pdfDoc || destroyed.has(doc)) return;
-        if (isPdfDocRetainedInHistory(doc)) return;
-        doc.destroy();
-        destroyed.add(doc);
-      });
     }
 
     // A revision write landing at `fromIndex` (in the *current* session) has
@@ -5877,18 +5848,11 @@
     // changed either way.
     function dropStaleRedoEntries(fromIndex) {
       if (!fieldHistoryRedo.length) return;
-      const kept = [];
-      const dropped = [];
-      fieldHistoryRedo.forEach((snap) => {
-        if (snap.documentSessionId === documentSessionId && snap.documentRevisionCount >= fromIndex) {
-          dropped.push(snap);
-        } else {
-          kept.push(snap);
-        }
-      });
-      if (!dropped.length) return;
+      const kept = fieldHistoryRedo.filter((snap) => (
+        snap.documentSessionId !== documentSessionId || snap.documentRevisionCount < fromIndex
+      ));
+      if (kept.length === fieldHistoryRedo.length) return;
       fieldHistoryRedo = kept;
-      cleanupEvictedSnapshots(dropped);
       updateHistoryUi();
     }
 
@@ -5897,10 +5861,8 @@
     // discarding the now-stale redo branch.
     function commitFieldHistorySnapshot(snapshot) {
       fieldHistoryUndo.push(snapshot);
-      const evicted = fieldHistoryUndo.length > FIELD_HISTORY_LIMIT ? [fieldHistoryUndo.shift()] : [];
-      const clearedRedo = fieldHistoryRedo;
+      if (fieldHistoryUndo.length > FIELD_HISTORY_LIMIT) fieldHistoryUndo.shift();
       fieldHistoryRedo = [];
-      cleanupEvictedSnapshots(evicted.concat(clearedRedo));
       updateHistoryUi();
     }
 
@@ -5911,11 +5873,9 @@
     }
 
     function resetFieldHistory() {
-      const evicted = fieldHistoryUndo.concat(fieldHistoryRedo);
       fieldHistoryUndo = [];
       fieldHistoryRedo = [];
       rectEditHistorySnapshot = null;
-      cleanupEvictedSnapshots(evicted);
       updateHistoryUi();
     }
 
@@ -5927,11 +5887,13 @@
       if (redoBtn) redoBtn.disabled = blocked || !pdfDoc || fieldHistoryRedo.length === 0;
     }
 
-    // Restores every var captured by captureDocumentSnapshot(). Only re-runs
-    // the page render / metadata / revisions refresh when the pdfDoc itself
-    // actually changed (crossing an Apply boundary) -- a plain staged-edit
-    // step never touches those, so it's cheaper to just redraw the overlays.
-    async function applyDocumentSnapshot(snapshot) {
+    // Restores every var captured by captureDocumentSnapshot(). `loadedDoc`
+    // is required whenever `snapshot.file !== activeFile` -- the caller
+    // (undoFieldChange/redoFieldChange) is responsible for opening it first
+    // (and bailing out before calling this at all if that load turns out to
+    // be stale), since fetching/opening the file needs to happen *before*
+    // committing to the swap.
+    async function applyDocumentSnapshot(snapshot, loadedDoc) {
       // Same document: only the staged-field state this undo/redo step
       // actually changed gets restored. Session id, revision count, and the
       // metadata/revisions caches reflect the document's current, possibly
@@ -5952,18 +5914,11 @@
         return;
       }
 
+      const outgoingDoc = pdfDoc;
       activeFile = snapshot.file;
-      pdfDoc = snapshot.pdfDoc;
-      pageNum = snapshot.pageNum;
+      pdfDoc = loadedDoc;
       documentFields = snapshot.documentFields;
       fieldsBaseline = snapshot.fieldsBaseline;
-      documentMeta = snapshot.documentMeta;
-      documentRawInfo = snapshot.documentRawInfo;
-      documentRawObjects = snapshot.documentRawObjects;
-      documentOverview = snapshot.documentOverview;
-      documentMetaLoadedFor = snapshot.documentMetaLoadedFor;
-      revisionsData = snapshot.revisionsData;
-      revisionsLoadedForFile = snapshot.revisionsLoadedForFile;
       documentSessionId = snapshot.documentSessionId;
       documentRevisionCount = snapshot.documentRevisionCount;
 
@@ -5973,35 +5928,91 @@
 
       if (viewerDiffActive) exitDiffViewMode();
       resetRevisionsDiffState();
+
+      pageNum = Math.min(Math.max(snapshot.pageNum, 1), pdfDoc.numPages);
       document.getElementById('pageCount').textContent = pdfDoc.numPages;
-      await renderPage(pageNum); // also updates viewer controls + field overlays
+      updateViewerControlsState();
+      await renderPage(pageNum);
+
+      outgoingDoc?.destroy();
+
+      documentMeta = null;
+      documentRawInfo = null;
+      documentRawObjects = null;
+      documentOverview = null;
+      documentMetaLoadedFor = null;
       if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
         loadMetadataIfNeeded();
       } else {
         renderMetaTree();
         renderMetaOverview();
       }
+
+      revisionsData = null;
+      revisionsLoadedForFile = null;
       if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
         loadRevisionsIfNeeded();
       }
+
+      resetCertificatesState();
+      if (document.getElementById('sectionCertificates') && !document.getElementById('sectionCertificates').hidden) {
+        loadCertificatesIfNeeded();
+      }
+
+      resetShareForChangedDocument();
+      rectEditHistorySnapshot = null;
     }
 
     // Guards against overlapping undo/redo clicks -- applyDocumentSnapshot()
-    // is async (it may re-render the page) so a second click before the
-    // first finishes would race two snapshot swaps against each other.
+    // is async (it may open a document on the shared worker and re-render
+    // the page) so a second click before the first finishes would race two
+    // snapshot swaps against each other.
     let historyBusy = false;
+
+    // Opens `file` on the shared pdf.js worker for an undo/redo that's
+    // crossing a document boundary, bumping documentLoadGeneration first so
+    // any processNewFile load already in flight is superseded (undo/redo is
+    // itself already blocked while one is, via documentLoadInFlight, but
+    // this also covers a load that starts *during* the open below). Returns
+    // null if a newer load started while this one was opening -- the caller
+    // must not commit to the swap in that case.
+    async function openHistoryTargetDoc(file) {
+      const loadGeneration = ++documentLoadGeneration;
+      const arrayBuffer = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
+      if (loadGeneration !== documentLoadGeneration) {
+        doc.destroy();
+        return null;
+      }
+      return doc;
+    }
 
     async function undoFieldChange() {
       // Blocked mid-load/mid-update: pdfDoc, documentRevisionCount and the
       // rest of the live state are momentarily inconsistent with each other
       // then, and a snapshot swap on top of that would corrupt both.
       if (historyBusy || !fieldHistoryUndo.length || isDocumentUpdating || documentLoadInFlight) return;
+      // Peek before committing to anything -- if this step crosses a
+      // document boundary, the target file has to be opened successfully
+      // *before* the stacks are touched, so a failed/superseded open leaves
+      // history exactly as it was.
+      const candidate = fieldHistoryUndo[fieldHistoryUndo.length - 1];
       historyBusy = true;
       updateHistoryUi();
       try {
+        let loadedDoc = null;
+        if (candidate.file !== activeFile) {
+          try {
+            loadedDoc = await openHistoryTargetDoc(candidate.file);
+          } catch (err) {
+            showNotification(`Could not undo: ${err.message}`, 'error');
+            return;
+          }
+          if (!loadedDoc) return; // superseded while opening
+        }
         const prev = fieldHistoryUndo.pop();
         fieldHistoryRedo.push(captureDocumentSnapshot());
-        await applyDocumentSnapshot(prev);
+        await applyDocumentSnapshot(prev, loadedDoc);
       } finally {
         historyBusy = false;
         updateHistoryUi();
@@ -6010,12 +6021,23 @@
 
     async function redoFieldChange() {
       if (historyBusy || !fieldHistoryRedo.length || isDocumentUpdating || documentLoadInFlight) return;
+      const candidate = fieldHistoryRedo[fieldHistoryRedo.length - 1];
       historyBusy = true;
       updateHistoryUi();
       try {
+        let loadedDoc = null;
+        if (candidate.file !== activeFile) {
+          try {
+            loadedDoc = await openHistoryTargetDoc(candidate.file);
+          } catch (err) {
+            showNotification(`Could not redo: ${err.message}`, 'error');
+            return;
+          }
+          if (!loadedDoc) return; // superseded while opening
+        }
         const next = fieldHistoryRedo.pop();
         fieldHistoryUndo.push(captureDocumentSnapshot());
-        await applyDocumentSnapshot(next);
+        await applyDocumentSnapshot(next, loadedDoc);
       } finally {
         historyBusy = false;
         updateHistoryUi();
