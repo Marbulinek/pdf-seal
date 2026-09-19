@@ -576,8 +576,8 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 .share-hero-seal {
   display: block;
   flex: 0 0 auto;
-  width: 230px;
-  height: 90px;
+  width: 151px;
+  height: 80px;
   border-radius: 12px;
   background: #fff;
   object-fit: cover;
@@ -725,7 +725,7 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 }
 .remove-field-seal {
   width: 120px;
-  height: 100px;
+  height: 101px;
   flex-shrink: 0;
   border-radius: 12px;
   background: #fff;
@@ -5174,8 +5174,7 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
 .help-hero-seal {
   display: block;
   flex: 0 0 auto;
-  width: 150px;
-  height: 110px;
+  height: 95px;
   border-radius: 12px;
   background: #fff;
   object-fit: cover;

@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PDFArray, PDFHexString, PDFName, PDFString } from 'pdf-lib';
-import PdfSignatureTool from '../../lib/PdfSignatureTool';
+import PdfSignatureTool, { truncateLongStrings } from '../../lib/PdfSignatureTool';
 import { buildSignedPdfFixture } from './helpers/pdfSigner';
 import { mintStandardChain } from './helpers/certificateFactory';
 
@@ -801,6 +801,112 @@ describe('PdfSignatureTool: stamp annotation detection', () => {
     tool.addPage();
     expect(tool.listStamps()).toEqual([]);
     expect(tool.getMetadataOverview().features.stampCount).toBe(0);
+  });
+});
+
+describe('applyFieldOps', () => {
+  it('applies add/edit/remove in one pass -- matching a round-trip listFields()', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'ToRemove', { x: 10, y: 10, width: 50, height: 20 });
+    tool.addSignatureField(0, 'ToEdit', { x: 10, y: 40, width: 50, height: 20 });
+
+    tool.applyFieldOps([
+      { op: 'add', page: 0, name: 'NewSig', type: 'signature', x: 100, y: 100, width: 200, height: 60, required: true },
+      { op: 'add', page: 0, name: 'NewText', type: 'text', x: 100, y: 200, width: 150, height: 24 },
+      { op: 'edit', originalName: 'ToEdit', name: 'Edited', x: 20, y: 50, width: 60, height: 25, required: true },
+      { op: 'remove', name: 'ToRemove' },
+    ]);
+
+    // pdf-lib's save() adds appearance objects in memory, so listFields()
+    // is only guaranteed to match a freshly-loaded copy of the same bytes
+    // once it's called *after* the save -- here, toBytes() plus a reload.
+    const bytes = await tool.toBytes();
+    const afterSave = tool.listFields().map((f: any) => f.name).sort();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    const reloadedFields = reloaded.listFields();
+
+    expect(afterSave).toEqual(['Edited', 'NewSig', 'NewText']);
+    expect(reloadedFields.map((f: any) => f.name).sort()).toEqual(['Edited', 'NewSig', 'NewText']);
+
+    const edited = reloadedFields.find((f: any) => f.name === 'Edited');
+    expect(edited?.required).toBe(true);
+    expect(edited?.rect).toMatchObject({ x: 20, y: 50, width: 60, height: 25 });
+
+    const newText = reloadedFields.find((f: any) => f.name === 'NewText');
+    expect(newText?.type).toBe('TextField');
+  });
+
+  it('bumps the modification date and clears any embedded revision chain', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.setRevisionSnapshotChain([{ index: 1, bytes: Buffer.from('x').toString('base64') }]);
+
+    tool.applyFieldOps([{ op: 'add', page: 0, name: 'Sig1', type: 'signature', x: 10, y: 10, width: 50, height: 20 }]);
+
+    expect(tool.getMetadata().modificationDate).toBeInstanceOf(Date);
+
+    const bytes = await tool.toBytes();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    expect(reloaded.getRevisionSnapshotChain()).toEqual([]);
+  });
+
+  it('throws on an unknown op', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(() => tool.applyFieldOps([{ op: 'bogus' }])).toThrow(/Unknown operation/);
+  });
+
+  it('leaves a signed field untouched by ops applied to other fields (signed fixture)', async () => {
+    const fixture = await buildSignedPdfFixture({ fieldName: 'SignedField' });
+    const tool = await PdfSignatureTool.fromBytes(fixture.bytes);
+
+    tool.applyFieldOps([
+      { op: 'add', page: 0, name: 'ExtraField', type: 'signature', x: 300, y: 300, width: 100, height: 40 },
+    ]);
+
+    const bytes = await tool.toBytes();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    const fields = reloaded.listFields();
+
+    expect(fields.map((f: any) => f.name).sort()).toEqual(['ExtraField', 'SignedField']);
+    expect(fields.find((f: any) => f.name === 'SignedField')?.signed).toBe(true);
+  });
+});
+
+describe('truncateLongStrings', () => {
+  it('leaves strings at or under the limit untouched', () => {
+    expect(truncateLongStrings('short', 10)).toBe('short');
+    expect(truncateLongStrings('exactlyten', 10)).toBe('exactlyten');
+  });
+
+  it('truncates a string over the limit and notes how much was cut', () => {
+    const result = truncateLongStrings('a'.repeat(20), 10);
+    expect(result).toBe(`${'a'.repeat(10)}… [truncated, 10 more chars]`);
+  });
+
+  it('recurses into nested objects and arrays, truncating only their string leaves', () => {
+    const input = {
+      short: 'ok',
+      long: 'b'.repeat(20),
+      nested: { deeper: ['c'.repeat(20), 'ok'] },
+      number: 42,
+      nil: null,
+    };
+    const result = truncateLongStrings(input, 10);
+    expect(result.short).toBe('ok');
+    expect(result.long).toBe(`${'b'.repeat(10)}… [truncated, 10 more chars]`);
+    expect(result.nested.deeper[0]).toBe(`${'c'.repeat(10)}… [truncated, 10 more chars]`);
+    expect(result.nested.deeper[1]).toBe('ok');
+    expect(result.number).toBe(42);
+    expect(result.nil).toBeNull();
+  });
+
+  it('does not mutate the input', () => {
+    const input = { long: 'd'.repeat(20) };
+    const result = truncateLongStrings(input, 10);
+    expect(result).not.toBe(input);
+    expect(input.long).toBe('d'.repeat(20));
   });
 });
 

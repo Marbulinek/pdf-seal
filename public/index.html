@@ -36,59 +36,11 @@
     .viewer-diff-banner[hidden] { display: none !important; }
     .viewer-diff-banner button { flex-shrink: 0; }
   </style>
-  <script src="/vendor/pdfjs/pdf.min.js"></script>
-  <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
-
-    // ONE pdf.js worker for the whole page, shared by every document we open
-    // (the live document, each revision snapshot, both sides of a diff).
-    //
-    // Without this, pdf.js spawns a *dedicated* Web Worker per getDocument()
-    // call -- each one re-parsing the 1 MB worker bundle and carrying its own
-    // JS heap plus its own copy of the PDF bytes. With several documents alive
-    // at once (live doc + diffDocA/diffDocB + revisionViewDoc + whatever the
-    // undo stack still pins) that was the single largest slice of this page's
-    // memory footprint.
-    //
-    // Passed per-call as `worker:` rather than set as
-    // GlobalWorkerOptions.workerPort: `workerPort` routes through
-    // PDFWorker.fromPort(), and PDFDocumentLoadingTask.destroy() flags that
-    // shared port with `_pendingDestroy`, after which every later getDocument()
-    // throws "the worker is being destroyed". An explicitly-passed worker is
-    // never assigned to `loadingTask._worker`, so destroy() leaves it alone --
-    // which is what we need, since this app destroys documents in a half-dozen
-    // places.
-    let sharedPdfWorker = null;
-    function getSharedPdfWorker() {
-      if (!sharedPdfWorker || sharedPdfWorker.destroyed) {
-        sharedPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-shared' });
-      }
-      return sharedPdfWorker;
-    }
-
-    // Revision/diff snapshots (diffDocA/diffDocB/revisionViewDoc) get their own
-    // worker, torn down and recreated every time exitDiffViewMode() releases
-    // those documents. They're loaded and destroy()ed far more often than the
-    // live document ever is -- every open/close of the Revisions panel's Visual
-    // Page Diff or single-revision view -- and a worker that has served a
-    // render for a document later destroy()ed while still in flight can be left
-    // unable to complete any later render, on any document, for the rest of
-    // the page's life. Isolating this churn onto a disposable worker (instead
-    // of the long-lived sharedPdfWorker above) means a bad state here can't
-    // wedge the live document view, and a fresh worker on every re-entry means
-    // it can't accumulate across visits either.
-    let diffPdfWorker = null;
-    function getDiffPdfWorker() {
-      if (!diffPdfWorker || diffPdfWorker.destroyed) {
-        diffPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-diff' });
-      }
-      return diffPdfWorker;
-    }
-    function resetDiffPdfWorker() {
-      if (diffPdfWorker) diffPdfWorker.destroy();
-      diffPdfWorker = null;
-    }
-  </script>
+  <!-- pdf.js itself isn't needed until the main script runs (just before </body>), but
+       the request should start as soon as possible -- preload it here so it's already
+       in flight/cached by the time the script tag below is reached, instead of only
+       starting a fetch once the parser gets that far down the page. -->
+  <link rel="preload" href="/vendor/pdfjs/pdf.min.js" as="script">
 </head>
 <body data-active-section="signatures">
 
@@ -678,6 +630,25 @@
           <div id="overlay-layer"></div>
           <div class="drop-replace-overlay" aria-hidden="true"></div>
         </div>
+
+        <!-- Cloned once per field by drawFieldOverlays() instead of building this
+             structure with createElement()/appendChild() calls every time -- see
+             the comment there. Everything event-driven is handled by delegated
+             listeners on #overlay-layer, not per-clone addEventListener calls. -->
+        <template id="fieldOverlayTemplate">
+          <div class="field-overlay">
+            <span class="field-overlay-icon" aria-hidden="true"></span>
+            <div class="field-invisible-pin" aria-hidden="true"><span class="icon icon-eye-off" aria-hidden="true"></span></div>
+            <div class="field-label">
+              <span class="field-label-name"></span>
+              <div class="field-label-tooltip field-label-invisible" hidden>Invisible field — no visible footprint on the page</div>
+              <div class="field-label-tooltip field-label-generic" hidden></div>
+            </div>
+            <div class="resize-handle"></div>
+            <div class="template-save-handle" draggable="true"><span class="icon icon-layers" aria-hidden="true"></span></div>
+            <button type="button" class="field-delete-handle" aria-label="Remove field"><span class="icon icon-close" aria-hidden="true"></span></button>
+          </div>
+        </template>
 
         <div class="document-loading-overlay" id="documentLoadingOverlay" hidden>
           <div class="document-loading-page" id="documentLoadingPage">
@@ -1361,6 +1332,59 @@
     })();
   </script>
 
+  <script src="/vendor/pdfjs/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
+
+    // ONE pdf.js worker for the whole page, shared by every document we open
+    // (the live document, each revision snapshot, both sides of a diff).
+    //
+    // Without this, pdf.js spawns a *dedicated* Web Worker per getDocument()
+    // call -- each one re-parsing the 1 MB worker bundle and carrying its own
+    // JS heap plus its own copy of the PDF bytes. With several documents alive
+    // at once (live doc + diffDocA/diffDocB + revisionViewDoc + whatever the
+    // undo stack still pins) that was the single largest slice of this page's
+    // memory footprint.
+    //
+    // Passed per-call as `worker:` rather than set as
+    // GlobalWorkerOptions.workerPort: `workerPort` routes through
+    // PDFWorker.fromPort(), and PDFDocumentLoadingTask.destroy() flags that
+    // shared port with `_pendingDestroy`, after which every later getDocument()
+    // throws "the worker is being destroyed". An explicitly-passed worker is
+    // never assigned to `loadingTask._worker`, so destroy() leaves it alone --
+    // which is what we need, since this app destroys documents in a half-dozen
+    // places.
+    let sharedPdfWorker = null;
+    function getSharedPdfWorker() {
+      if (!sharedPdfWorker || sharedPdfWorker.destroyed) {
+        sharedPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-shared' });
+      }
+      return sharedPdfWorker;
+    }
+
+    // Revision/diff snapshots (diffDocA/diffDocB/revisionViewDoc) get their own
+    // worker, torn down and recreated every time exitDiffViewMode() releases
+    // those documents. They're loaded and destroy()ed far more often than the
+    // live document ever is -- every open/close of the Revisions panel's Visual
+    // Page Diff or single-revision view -- and a worker that has served a
+    // render for a document later destroy()ed while still in flight can be left
+    // unable to complete any later render, on any document, for the rest of
+    // the page's life. Isolating this churn onto a disposable worker (instead
+    // of the long-lived sharedPdfWorker above) means a bad state here can't
+    // wedge the live document view, and a fresh worker on every re-entry means
+    // it can't accumulate across visits either.
+    let diffPdfWorker = null;
+    function getDiffPdfWorker() {
+      if (!diffPdfWorker || diffPdfWorker.destroyed) {
+        diffPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-diff' });
+      }
+      return diffPdfWorker;
+    }
+    function resetDiffPdfWorker() {
+      if (diffPdfWorker) diffPdfWorker.destroy();
+      diffPdfWorker = null;
+    }
+  </script>
   <script>
     // State variables
     let activeFile = null;
@@ -1394,18 +1418,43 @@
     let documentRawInfo = null;    // raw/custom Info dictionary entries, from /api/info
     let documentRawObjects = null; // { trailer, objects } -- the entire raw PDF object table, from /api/info
     let documentOverview = null;   // simplified Metadata-panel overview (documentInfo/features/pages/attachments/xmp/documentIds), from /api/info
-    let documentMetaLoadedFor = null; // "<documentSessionId>:<revisionCount>" the above four fields correspond to (cache-invalidation key)
+    let documentMetaLoadedFor = null; // the File object the above four fields were loaded for (cache-invalidation key; reference equality with activeFile)
     let metadataLoading = false;
     let currentViewport = null; // viewport of the currently rendered page
     let isPanning = false;
     let panDrag = null;
+    // A new file selection supersedes every outstanding parse/upload for the
+    // previous one. This prevents an older, slower request from spending more
+    // CPU or applying its result over the newer document.
+    let documentLoadGeneration = 0;
+    let activeDocumentFieldsRequest = null;
 
     // Revisions tool state
     let documentSessionId = null;    // groups this document's revision snapshots in IndexedDB (see revisionStore below)
     let documentRevisionCount = 0;   // how many revisions are stored under documentSessionId so far
+    // The versionKey of the version currently active (documentSessionId +
+    // documentRevisionCount), i.e. the row actually shown in the viewer.
+    // Tracked alongside documentRevisionCount because an index alone is
+    // ambiguous -- undo/redo followed by a new edit can reuse an index that
+    // used to point at different bytes -- so anything that needs to name
+    // "this exact stored version" (a cache key, a delta's base) uses this
+    // instead of the index.
+    let activeVersionKey = null;
     let revisionsData = null;        // one entry per local revision for documentSessionId's current revision count; each entry's full summary is loaded lazily (see loadRevisionSummary)
-    let revisionsLoadedForFile = null; // "<documentSessionId>:<revisionCount>" revisionsData corresponds to (cache-invalidation key)
+    let revisionsLoadedForFile = null; // "<documentSessionId>:<activeVersionKey>" revisionsData corresponds to (cache-invalidation key)
     let revisionsLoading = false;
+    // The current document's embedded-revision-chain hydration: a ticket
+    // {sessionId, file, promise, start()} set synchronously by
+    // scheduleEmbeddedRevisionHydration() so ensureRevisionHydration() can
+    // force it to run right away (instead of waiting for its idle callback)
+    // when something needs the local version store to be fully caught up
+    // before it runs -- see ensureRevisionHydration() below.
+    let revisionHydration = null;
+    // Guards undo/redo/certificate-modify against starting mid-load, when
+    // `pdfDoc`/`documentRevisionCount`/etc. are momentarily inconsistent --
+    // set for the duration of any processNewFile() call, regardless of
+    // whether it ultimately succeeds, fails, or is superseded.
+    let documentLoadInFlight = false;
     let revisionsReloadPending = false; // another load was requested while one was already in flight -- rerun once it settles
     // "Show only incremental updates" toggle for the Versions timeline -- persisted
     // across sessions since it's a viewing preference, not document state.
@@ -1413,16 +1462,20 @@
     try {
       onlyIncrementalVersionsFilter = localStorage.getItem('pdfseal-only-incremental-versions') === '1';
     } catch { /* localStorage unavailable (private mode, storage blocked) -- default to off */ }
-    // Per-revision summary cache, keyed by revision index, for revisionSummaryCacheSessionId.
     // summarizeSnapshot() (server-side) computes each revision's summary purely from that
     // revision's own bytes -- nothing about it depends on any other revision -- so once a
-    // given index has been summarized it never needs to be re-uploaded or re-parsed, even
-    // though loadRevisionsIfNeeded() re-runs on every edit while the panel is open. Without
-    // this, opening the Revisions panel on a document with N revisions re-uploads and
-    // re-parses all N of them on every single field edit (O(N) work, and O(N) full PDF
-    // copies in flight at once, per edit -- O(N^2) over a session).
-    let revisionSummaryCache = new Map();
-    let revisionSummaryCacheSessionId = null;
+    // given version has been summarized it never needs to be re-uploaded or re-parsed, even
+    // though loadRevisionsIfNeeded() re-runs on every edit while the panel is open. The
+    // computed summary is persisted into that version's own versionMeta row (see
+    // saveVersionSummary), so it survives a reload too, not just the rest of this session.
+    //
+    // This map covers only the narrower window while a fetch is actually in flight: it's
+    // keyed by versionKey (unique per stored version, immune to index reuse) and holds each
+    // in-flight fetch's promise, so a version already being fetched -- solo, from expanding
+    // its card, or as part of a background batch -- is never uploaded a second time by
+    // whichever path asks for it later. Entries remove themselves once their fetch settles;
+    // after that, the persisted versionMeta.summary is what a re-check finds.
+    let revisionSummaryPromises = new Map();
     // Indices whose card is currently expanded, so a re-render (after a
     // lazy detail fetch finishes) can restore what the user had open
     // instead of collapsing every card back down.
@@ -1436,6 +1489,11 @@
     let currentDiffFromRevIndex = null;
     let currentDiffToRevIndex = null;
     let currentDiffActiveTab = 'overview';
+    // Whether renderDiffDetails() has been run for the currently-held
+    // currentDiffResultData -- the Details tab's object chips are only built
+    // the first time that tab is actually opened (see switchDiffTab), not on
+    // every compare regardless of which tab the user lands on.
+    let diffDetailsRendered = false;
     let pendingDiffLandingTab = null; // which tab to switch to once the in-flight compare finishes (set by runQuickDiff)
     let viewerDiffActive = false; // true while the main viewer shows a revision snapshot/diff instead of the live document
     let hoveredDiffObjectKey = null;
@@ -1538,39 +1596,87 @@
     let activeFieldDiv = null;
 
     // ---------------------------------------------------------------
-    // Local revision store (IndexedDB)
+    // Local version store (IndexedDB)
     // ---------------------------------------------------------------
     // Every edit's resulting PDF is cached here, per document session, so
     // the server never has to hold or re-transmit growing revision history
     // -- it only sees the current, lean document on every edit. History is
     // only ever bundled back into a PDF on explicit export (see the Save
     // As / Copy Base64 flows), and lives only in this browser.
-    const REVISION_DB_NAME = 'pdfseal-revisions';
-    const REVISION_STORE_NAME = 'revisions';
-    let revisionDbPromise = null;
+    //
+    // `pdfseal-versions` is a new database name rather than a version bump
+    // on the old `pdfseal-revisions` -- an IndexedDB upgrade blocks until
+    // every other tab with the old database open closes it, and a fresh
+    // name sidesteps that entirely. Sessions are ephemeral (see
+    // sweepStaleVersionSessions below), so there's no data worth migrating
+    // across; the old database is just deleted once nothing reads it
+    // anymore (see deleteOldRevisionDbAtIdle below).
+    //
+    // All three stores are keyed [sessionId, index] except versionSessions
+    // (keyed by sessionId alone) -- no bySession index on the first two,
+    // since IDBKeyRange.bound([sid,0],[sid,Infinity]) directly on that
+    // composite key does the same job a separate index would, without the
+    // extra write cost of maintaining one.
+    //   versionMeta    {sessionId, index, versionKey, savedAt, source, saveKind, byteLength, storage, baseKey, summary}
+    //   versionBytes   {sessionId, index, buffer}
+    //   versionSessions{sessionId, lastSavedAt}
+    const VERSION_DB_NAME = 'pdfseal-versions';
+    const VERSION_META_STORE = 'versionMeta';
+    const VERSION_BYTES_STORE = 'versionBytes';
+    const VERSION_SESSIONS_STORE = 'versionSessions';
+    let versionDbPromise = null;
+    // The most recently started version write's completion promise (set by
+    // beginVersionWrite, regardless of caller) -- consulted before building
+    // a delta against activeVersionKey, so a delta is only ever based on a
+    // write actually confirmed to have landed, never one still in flight or
+    // one that failed.
+    let lastVersionWriteCompletion = null;
 
-    function openRevisionDb() {
-      if (revisionDbPromise) return revisionDbPromise;
-      revisionDbPromise = new Promise((resolve, reject) => {
-        const req = indexedDB.open(REVISION_DB_NAME, 1);
+    function openVersionDb() {
+      if (versionDbPromise) return versionDbPromise;
+      versionDbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(VERSION_DB_NAME, 1);
         req.onupgradeneeded = () => {
           const db = req.result;
-          if (!db.objectStoreNames.contains(REVISION_STORE_NAME)) {
-            const store = db.createObjectStore(REVISION_STORE_NAME, { keyPath: ['sessionId', 'index'] });
-            store.createIndex('bySession', 'sessionId');
+          if (!db.objectStoreNames.contains(VERSION_META_STORE)) {
+            db.createObjectStore(VERSION_META_STORE, { keyPath: ['sessionId', 'index'] });
+          }
+          if (!db.objectStoreNames.contains(VERSION_BYTES_STORE)) {
+            db.createObjectStore(VERSION_BYTES_STORE, { keyPath: ['sessionId', 'index'] });
+          }
+          if (!db.objectStoreNames.contains(VERSION_SESSIONS_STORE)) {
+            db.createObjectStore(VERSION_SESSIONS_STORE, { keyPath: 'sessionId' });
           }
         };
         req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error || new Error('Could not open the local revision store.'));
+        req.onerror = () => reject(req.error || new Error('Could not open the local version store.'));
       }).catch((err) => {
         // Don't cache a failed open forever -- a transient failure (e.g. a
         // storage quota hiccup) would otherwise permanently disable local
-        // revision tracking for the rest of the page's life.
-        revisionDbPromise = null;
+        // version tracking for the rest of the page's life.
+        versionDbPromise = null;
         throw err;
       });
-      return revisionDbPromise;
+      return versionDbPromise;
     }
+
+    // The pre-v2 database, left behind for a tab that still had it open at
+    // the moment this shipped. Deleted at idle rather than up front, since
+    // another tab still on the old code holding it open would otherwise
+    // block this indefinitely; best-effort, and harmless to retry (or skip)
+    // on a later visit if it's still blocked.
+    const OLD_REVISION_DB_NAME = 'pdfseal-revisions';
+    function deleteOldRevisionDbAtIdle() {
+      const run = () => {
+        try { indexedDB.deleteDatabase(OLD_REVISION_DB_NAME); } catch { /* best-effort */ }
+      };
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 5000 });
+      } else {
+        setTimeout(run, 2000);
+      }
+    }
+    deleteOldRevisionDbAtIdle();
 
     // ---------------------------------------------------------------
     // Version classification (pure) -- same logic as lib/VersionHistory.ts.
@@ -1595,6 +1701,159 @@
         if (isPrefix) return 'incremental';
       }
       return 'rewrite';
+    }
+
+    // classifySave's counterpart for a previous version that's a Blob (here,
+    // the outgoing File) rather than an already-in-memory Uint8Array -- reads
+    // it in chunks instead of pulling the whole thing into memory up front.
+    // A length check alone decides 'rewrite' when the new file is shorter;
+    // otherwise chunks are compared starting from the head, where a genuine
+    // rewrite diverges immediately, so most calls never read the rest.
+    // Mirrors lib/VersionHistory.ts's classifySaveAgainstBlob -- see there
+    // for the full rationale.
+    async function classifySaveAgainstBlob(prevBlob, currBytes, chunkSize = 1024 * 1024) {
+      if (!prevBlob) return 'initial';
+      if (currBytes.length < prevBlob.size) return 'rewrite';
+
+      let offset = 0;
+      while (offset < prevBlob.size) {
+        const end = Math.min(offset + chunkSize, prevBlob.size);
+        const prevChunk = new Uint8Array(await prevBlob.slice(offset, end).arrayBuffer());
+        const currChunk = currBytes.subarray(offset, end);
+        if (!versionBytesEqual(prevChunk, currChunk)) return 'rewrite';
+        offset = end;
+      }
+      return currBytes.length === prevBlob.size ? 'identical' : 'incremental';
+    }
+
+    // Decides how to store one save: as a delta (just the appended bytes,
+    // plus which prior version they extend) when possible, otherwise the
+    // full file. Mirrors lib/VersionHistory.ts's planVersionStorage -- see
+    // there for the full rationale.
+    function planVersionStorage(prior, saveKind, bytes) {
+      if (saveKind === 'incremental' && prior && prior.byteLength <= bytes.length) {
+        return { storage: 'delta', baseKey: prior.versionKey, data: bytes.slice(prior.byteLength) };
+      }
+      return { storage: 'full', baseKey: null, data: bytes };
+    }
+
+    // Which stored rows must be fetched (base first) to reconstruct the
+    // version at `index` -- walking backward through delta rows until a
+    // full row is found. Throws rather than silently assembling wrong bytes
+    // if a baseKey doesn't match the row immediately before it. Mirrors
+    // lib/VersionHistory.ts's versionReadPlan -- see there for the full
+    // rationale.
+    function versionReadPlan(metas, index) {
+      const byIndex = new Map(metas.map((meta) => [meta.index, meta]));
+      const target = byIndex.get(index);
+      if (!target) throw new Error(`Version ${index} is not available locally.`);
+
+      const chain = [target];
+      let current = target;
+      while (current.storage === 'delta') {
+        const base = byIndex.get(current.index - 1);
+        if (!base || base.versionKey !== current.baseKey) {
+          throw new Error(`Version ${index} is not available locally.`);
+        }
+        chain.push(base);
+        current = base;
+      }
+      return chain.reverse();
+    }
+
+    // Splits `items` into sequential batches, each capped at `maxBytes`
+    // total and `maxCount` items -- whichever limit a batch hits first ends
+    // it. An item larger than maxBytes on its own still gets a
+    // (single-item) batch rather than being dropped or split. Mirrors
+    // lib/VersionHistory.ts's batchBySize -- see there for the full
+    // rationale.
+    function batchBySize(items, maxBytes, maxCount) {
+      const batches = [];
+      let current = [];
+      let currentBytes = 0;
+      for (const item of items) {
+        const wouldOverflow = current.length > 0 && (current.length >= maxCount || currentBytes + item.byteLength > maxBytes);
+        if (wouldOverflow) {
+          batches.push(current);
+          current = [];
+          currentBytes = 0;
+        }
+        current.push(item);
+        currentBytes += item.byteLength;
+      }
+      if (current.length) batches.push(current);
+      return batches;
+    }
+
+    // Byte-level equivalent of PdfRevisionTool.findRevisionBoundaries's
+    // /startxref\s+\d+\s*%%EOF/g (server-side) -- scans raw bytes directly
+    // instead of decoding to a string first, so it can run against a File's
+    // bytes with no Buffer. Treats 0xA0 as whitespace too, matching what a
+    // latin1-decoded string's \s already does implicitly. Mirrors
+    // lib/VersionHistory.ts's findRevisionEndOffsets -- see there for the
+    // full rationale.
+    const REVISION_BOUNDARY_WS_BYTES = new Set([0x09, 0x0a, 0x0c, 0x0d, 0x20, 0xa0]);
+    function isRevisionBoundaryWhitespace(byte) {
+      return REVISION_BOUNDARY_WS_BYTES.has(byte);
+    }
+    function bytesMatchAt(bytes, pos, pattern) {
+      if (pos + pattern.length > bytes.length) return false;
+      for (let i = 0; i < pattern.length; i++) {
+        if (bytes[pos + i] !== pattern[i]) return false;
+      }
+      return true;
+    }
+    const STARTXREF_BYTES = Array.from('startxref').map((c) => c.charCodeAt(0));
+    const EOF_MARKER_BYTES = Array.from('%%EOF').map((c) => c.charCodeAt(0));
+    function findRevisionEndOffsets(bytes) {
+      const offsets = [];
+      for (let i = 0; i + STARTXREF_BYTES.length <= bytes.length; i++) {
+        if (!bytesMatchAt(bytes, i, STARTXREF_BYTES)) continue;
+
+        let pos = i + STARTXREF_BYTES.length;
+        const wsStart = pos;
+        while (pos < bytes.length && isRevisionBoundaryWhitespace(bytes[pos])) pos++;
+        if (pos === wsStart) continue;
+
+        const digitsStart = pos;
+        while (pos < bytes.length && bytes[pos] >= 0x30 && bytes[pos] <= 0x39) pos++;
+        if (pos === digitsStart) continue;
+
+        while (pos < bytes.length && isRevisionBoundaryWhitespace(bytes[pos])) pos++;
+
+        if (!bytesMatchAt(bytes, pos, EOF_MARKER_BYTES)) continue;
+        offsets.push(pos + EOF_MARKER_BYTES.length);
+      }
+      return offsets;
+    }
+
+    // Parses this app's own bundled revision-chain format -- the raw JSON
+    // string stored under the PdfSealRevisionChainV1/PdfSealRevisionChain
+    // custom Info key, see PdfSignatureTool.setRevisionSnapshotChain -- into
+    // entries sorted oldest-first. Anything that isn't a usable chain
+    // (absent, malformed JSON, not an array, or fewer than 2 entries)
+    // returns an empty array rather than throwing. Mirrors
+    // lib/VersionHistory.ts's parseRevisionChain -- see there for the full
+    // rationale.
+    function parseRevisionChain(raw) {
+      if (!raw) return [];
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return [];
+      }
+      if (!Array.isArray(parsed)) return [];
+
+      const entries = parsed
+        .filter((entry) => entry && typeof entry === 'object' && typeof entry.bytes === 'string')
+        .map((entry) => ({
+          index: Number.isInteger(entry.index) ? entry.index : 1,
+          bytes: entry.bytes,
+        }));
+
+      if (entries.length < 2) return [];
+      return entries.slice().sort((a, b) => a.index - b.index);
     }
 
     const VERSION_SAVE_KIND_BADGE = {
@@ -1671,130 +1930,175 @@
       return dividers;
     }
 
-    async function putRevision(sessionId, index, source, meta = {}) {
-      // Stored as an ArrayBuffer rather than the Blob/File itself -- Safari
-      // (particularly in Private Browsing) is known to fail to structured-clone
-      // Blob values into IndexedDB, which silently drops the write. A plain
-      // ArrayBuffer clones reliably everywhere.
-      const buffer = await source.arrayBuffer();
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
-        // savedAt backs sweepStaleRevisionSessions() below -- a session with
-        // no writes for a long time is one whose tab was closed (or crashed)
-        // without ever getting a chance to clean up after itself.
-        tx.objectStore(REVISION_STORE_NAME).put({
-          sessionId, index, buffer, savedAt: Date.now(), source: meta.source, saveKind: meta.saveKind,
-        });
+    // Starts a version write: opens the DB (if not already open), then --
+    // synchronously, no await in between -- opens one readwrite transaction
+    // across all three stores and calls put() on each, plus deletes any
+    // rows already stored above `index` (a version written after an
+    // undo/redo can reuse an index that used to have a since-abandoned
+    // future above it; those rows are now orphaned and would leak
+    // otherwise). The synchronous part matters: `put()` structured-clones
+    // its value the instant it's called, so as long as it runs before
+    // `dataBuffer` is handed to pdf.js (which transfers/detaches it), the
+    // stored copy is unaffected by that transfer -- but if anything async
+    // ran in between, the caller could race ahead and transfer the buffer
+    // before put() ever captured it.
+    //
+    // `dataBuffer` is whatever bytes actually get stored -- the full file
+    // for `meta.storage === 'full'`, or just the appended delta for
+    // 'delta' (see planVersionStorage) -- which can be smaller than
+    // `meta.byteLength`, the *reconstructed* version's full size, needed
+    // so a later delta knows where to slice its own base.
+    //
+    // Returns a promise for the transaction's actual completion, to be
+    // joined *later* (like a caller's own pendingVersionWrite already is) --
+    // awaiting the returned promise from beginVersionWrite() itself only
+    // waits for put() to have been queued, not for the write to have
+    // reached disk, so the caller can safely move on to the pdf.js load
+    // immediately after.
+    async function beginVersionWrite(sessionId, index, dataBuffer, meta) {
+      const db = await openVersionDb();
+      const now = Date.now();
+
+      const tx = db.transaction([VERSION_META_STORE, VERSION_BYTES_STORE, VERSION_SESSIONS_STORE], 'readwrite');
+      const metaStore = tx.objectStore(VERSION_META_STORE);
+      const bytesStore = tx.objectStore(VERSION_BYTES_STORE);
+      const sessionsStore = tx.objectStore(VERSION_SESSIONS_STORE);
+
+      bytesStore.put({ sessionId, index, buffer: dataBuffer });
+      metaStore.put({
+        sessionId, index, versionKey: meta.versionKey, savedAt: now,
+        source: meta.source, saveKind: meta.saveKind,
+        byteLength: meta.byteLength,
+        storage: meta.storage, baseKey: meta.baseKey, summary: null,
+      });
+      // savedAt here backs sweepStaleVersionSessions() below -- a session
+      // with no writes for a long time is one whose tab was closed (or
+      // crashed) without ever getting a chance to clean up after itself.
+      sessionsStore.put({ sessionId, lastSavedAt: now });
+
+      const orphanedAbove = IDBKeyRange.bound([sessionId, index + 1], [sessionId, Infinity]);
+      metaStore.delete(orphanedAbove);
+      bytesStore.delete(orphanedAbove);
+
+      const completion = new Promise((resolve, reject) => {
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('Could not store the revision locally.'));
+        tx.onabort = () => reject(tx.error || new Error('Could not save this version locally -- the browser may be low on storage space.'));
+        tx.onerror = () => reject(tx.error || new Error('Could not save this version locally.'));
+      });
+      lastVersionWriteCompletion = completion;
+      return completion;
+    }
+
+    // Surfaces a version write's eventual failure (most commonly a storage
+    // quota error) instead of letting it disappear silently -- the document
+    // itself is fine either way (this only affects local version history),
+    // but the user should know a version wasn't actually saved.
+    function reportVersionWriteFailure(err) {
+      showNotification(`Could not save this version locally: ${err.message}`, 'error', 8000);
+    }
+
+    async function getVersionBytesRow(sessionId, index) {
+      const db = await openVersionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(VERSION_BYTES_STORE, 'readonly');
+        const req = tx.objectStore(VERSION_BYTES_STORE).get([sessionId, index]);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error || new Error('Could not read a local version.'));
       });
     }
 
-    function revisionToBlob(rev) {
-      return new Blob([rev.buffer], { type: 'application/pdf' });
+    // Reconstructs the version at `index` as a Blob: its own bytes directly
+    // if stored in full, or its base's bytes followed by each delta's bytes
+    // in order (versionReadPlan walks that chain, base first) if not.
+    // Concatenating as a Blob -- rather than copying into one combined
+    // buffer -- means the pieces are only actually joined by the browser
+    // when something reads the result, not up front here. Returns null for
+    // anything not cleanly reconstructable (a missing row, or a broken
+    // baseKey link) rather than throwing -- callers already treat a null
+    // result as "not available locally".
+    async function getVersionBlob(sessionId, index) {
+      let chain;
+      try {
+        const metas = await listVersionMetaForSession(sessionId);
+        chain = versionReadPlan(metas, index);
+      } catch (_err) {
+        return null;
+      }
+      const rows = await Promise.all(chain.map((meta) => getVersionBytesRow(sessionId, meta.index)));
+      if (rows.some((row) => !row)) return null;
+      return new Blob(rows.map((row) => row.buffer), { type: 'application/pdf' });
     }
 
-    async function deleteRevision(sessionId, index) {
-      if (!sessionId) return;
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
-        tx.objectStore(REVISION_STORE_NAME).delete([sessionId, index]);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('Could not remove that local revision.'));
-      });
+    // Feeds pdf.js, which wants an ArrayBuffer/TypedArray for `data`, not a
+    // Blob.
+    async function getVersionBytes(sessionId, index) {
+      const blob = await getVersionBlob(sessionId, index);
+      return blob ? await blob.arrayBuffer() : null;
     }
 
-    async function listRevisionsForSession(sessionId) {
+    // Meta rows only (no PDF bytes) for every version in `sessionId`, oldest
+    // first -- cheap enough to read on every panel check, unlike a scan that
+    // would also pull each version's full buffer out of versionBytes.
+    async function listVersionMetaForSession(sessionId) {
       if (!sessionId) return [];
-      const db = await openRevisionDb();
+      const db = await openVersionDb();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).index('bySession').getAll(IDBKeyRange.only(sessionId));
+        const tx = db.transaction(VERSION_META_STORE, 'readonly');
+        const range = IDBKeyRange.bound([sessionId, 0], [sessionId, Infinity]);
+        const req = tx.objectStore(VERSION_META_STORE).getAll(range);
         req.onsuccess = () => resolve((req.result || []).sort((a, b) => a.index - b.index));
-        req.onerror = () => reject(req.error || new Error('Could not read local revisions.'));
+        req.onerror = () => reject(req.error || new Error('Could not read local versions.'));
       });
     }
 
-    // Cheap sibling of listRevisionsForSession -- reads just the (sessionId, index) keys
-    // via getAllKeys, without pulling every revision's full ArrayBuffer into memory just to
-    // find out which indices exist. Used by loadRevisionsIfNeeded so that a document with many
-    // revisions doesn't load N full PDF buffers on every re-check, only the ones actually
-    // missing from revisionSummaryCache.
-    async function listRevisionIndicesForSession(sessionId) {
-      if (!sessionId) return [];
-      const db = await openRevisionDb();
+    // Persists a computed summary into that version's own versionMeta row,
+    // but only if its versionKey still matches -- if the index has since
+    // been overwritten by different bytes (a redo-then-diverge, or a
+    // truncated delta chain), this summary no longer describes what's
+    // actually stored there, and writing it would mislabel that row.
+    async function saveVersionSummary(sessionId, index, versionKey, summary) {
+      const db = await openVersionDb();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).index('bySession').getAllKeys(IDBKeyRange.only(sessionId));
-        req.onsuccess = () => resolve((req.result || []).map((key) => key[1]).sort((a, b) => a - b));
-        req.onerror = () => reject(req.error || new Error('Could not read local revisions.'));
-      });
-    }
-
-    // Sibling of listRevisionIndicesForSession that also pulls each entry's
-    // `source`/`saveKind` (for badging) via a cursor, still without loading
-    // any of the full PDF buffers.
-    async function listRevisionMetaForSession(sessionId) {
-      if (!sessionId) return [];
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const idx = tx.objectStore(REVISION_STORE_NAME).index('bySession');
-        const cursorReq = idx.openCursor(IDBKeyRange.only(sessionId));
-        const result = [];
-        cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
-          if (cursor) {
-            const { index, source, saveKind } = cursor.value;
-            result.push({ index, source, saveKind });
-            cursor.continue();
-          } else {
-            resolve(result.sort((a, b) => a.index - b.index));
-          }
-        };
-        cursorReq.onerror = () => reject(cursorReq.error || new Error('Could not read local revisions.'));
-      });
-    }
-
-    async function getRevisionRecord(sessionId, index) {
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).get([sessionId, index]);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => reject(req.error || new Error('Could not read a local revision.'));
-      });
-    }
-
-    async function getRevision(sessionId, index) {
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).get([sessionId, index]);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => reject(req.error || new Error('Could not read that revision.'));
-      });
-    }
-
-    async function clearRevisionSession(sessionId) {
-      if (!sessionId) return;
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(REVISION_STORE_NAME);
-        const idx = store.index('bySession');
-        const cursorReq = idx.openCursor(IDBKeyRange.only(sessionId));
-        cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
-          if (cursor) {
-            cursor.delete();
-            cursor.continue();
+        const tx = db.transaction(VERSION_META_STORE, 'readwrite');
+        const store = tx.objectStore(VERSION_META_STORE);
+        const req = store.get([sessionId, index]);
+        req.onsuccess = () => {
+          const row = req.result;
+          if (row && row.versionKey === versionKey) {
+            row.summary = summary;
+            store.put(row);
           }
         };
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('Could not clear local revisions.'));
+        tx.onerror = () => reject(tx.error || new Error("Could not save this version's summary."));
+      });
+    }
+
+    // Deletes exactly one stored version -- used to undo a speculative write
+    // when the load/edit that produced it ultimately fails.
+    async function deleteVersion(sessionId, index) {
+      if (!sessionId) return;
+      const db = await openVersionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([VERSION_META_STORE, VERSION_BYTES_STORE], 'readwrite');
+        tx.objectStore(VERSION_META_STORE).delete([sessionId, index]);
+        tx.objectStore(VERSION_BYTES_STORE).delete([sessionId, index]);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('Could not remove that local version.'));
+      });
+    }
+
+    async function clearVersionSession(sessionId) {
+      if (!sessionId) return;
+      const db = await openVersionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([VERSION_META_STORE, VERSION_BYTES_STORE, VERSION_SESSIONS_STORE], 'readwrite');
+        const range = IDBKeyRange.bound([sessionId, 0], [sessionId, Infinity]);
+        tx.objectStore(VERSION_META_STORE).delete(range);
+        tx.objectStore(VERSION_BYTES_STORE).delete(range);
+        tx.objectStore(VERSION_SESSIONS_STORE).delete(sessionId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('Could not clear local versions.'));
       });
     }
 
@@ -1807,123 +2111,187 @@
     // newest row is older than STALE_SESSION_MS and deletes it, so storage
     // doesn't grow forever across browser/tab restarts.
     const STALE_SESSION_MS = 6 * 60 * 60 * 1000; // 6 hours
-    async function sweepStaleRevisionSessions() {
-      const db = await openRevisionDb();
-      const lastSavedBySession = await new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).openCursor();
-        const result = new Map();
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (cursor) {
-            const { sessionId, savedAt } = cursor.value;
-            const prev = result.get(sessionId) || 0;
-            if ((savedAt || 0) > prev) result.set(sessionId, savedAt || 0);
-            cursor.continue();
-          } else {
-            resolve(result);
-          }
-        };
-        req.onerror = () => reject(req.error || new Error('Could not scan local revisions.'));
-      }).catch(() => new Map());
+    async function sweepStaleVersionSessions() {
+      const db = await openVersionDb();
+      // Reads versionSessions only -- one small row per session, never a
+      // full versionBytes buffer -- so this costs nothing proportional to
+      // how much history is actually stored.
+      const sessions = await new Promise((resolve, reject) => {
+        const tx = db.transaction(VERSION_SESSIONS_STORE, 'readonly');
+        const req = tx.objectStore(VERSION_SESSIONS_STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error || new Error('Could not scan local versions.'));
+      }).catch(() => []);
 
       const cutoff = Date.now() - STALE_SESSION_MS;
-      const staleSessions = Array.from(lastSavedBySession.entries())
-        .filter(([, savedAt]) => savedAt < cutoff)
-        .map(([sessionId]) => sessionId);
-      for (const sessionId of staleSessions) {
-        await clearRevisionSession(sessionId).catch(() => {});
+      const staleSessionIds = sessions
+        .filter((s) => (s.lastSavedAt || 0) < cutoff)
+        .map((s) => s.sessionId);
+      for (const sessionId of staleSessionIds) {
+        await clearVersionSession(sessionId).catch(() => {});
       }
     }
-    sweepStaleRevisionSessions().catch(() => {});
+    sweepStaleVersionSessions().catch(() => {});
 
     // Best-effort: attempt to clear the active session's data the moment
     // this tab is closed/navigated away from or the browser quits. Not
     // guaranteed to finish (the page can be torn down mid-transaction) --
-    // sweepStaleRevisionSessions() above is the reliable backstop for
+    // sweepStaleVersionSessions() above is the reliable backstop for
     // whatever this doesn't catch in time.
-    window.addEventListener('pagehide', () => {
-      if (documentSessionId) clearRevisionSession(documentSessionId).catch(() => {});
-      // Releases any pdf.js document (and its worker) still held only by the
-      // undo/redo history -- nothing left alive to reach it once this tab is
-      // gone, so there's no point letting it hang around until GC gets to it.
-      try { resetFieldHistory(); } catch { /* best-effort, same as above */ }
+    window.addEventListener('pagehide', (e) => {
+      // e.persisted means the page is going into the back-forward cache, not
+      // closing -- the tab (and its in-memory state) will likely come right
+      // back, so clearing local storage here would delete a session the user
+      // is about to keep working in.
+      if (e.persisted) return;
+      if (documentSessionId) clearVersionSession(documentSessionId).catch(() => {});
     });
 
-    // Client-side counterpart to hydrateEmbeddedRevisions below, for a P2P-received
-    // file (which never gets sent to the server, see the skipServerInfo path in
-    // processNewFile). This app's own revision-chain format is stored as a custom
-    // Info dict entry, which pdf.js already exposes locally via getMetadata()'s
-    // info.Custom -- so the chain can be unpacked without any server round trip.
-    // Only understands this app's own bundle format, not a native incremental-update
-    // chain from another tool (that fallback requires the server-side parser below).
-    // Shared by both hydrate functions below: stores an ordered list of full
-    // PDF byte buffers (oldest first, the currently-loaded file last) as
-    // contiguous local versions, classifying each against the previous one
-    // *actually kept* and skipping any that are byte-identical to it. All but
-    // the last are tagged 'imported' (they came from the file's own embedded
-    // history, not an edit made in this browser); the last keeps its real
-    // classification but is tagged 'upload' since it's the file the user just
-    // opened. Returns the number of versions actually stored.
-    async function storeHydratedVersionChain(sessionId, buffersInOrder) {
-      let prevBytes = null;
-      let storedIndex = 0;
-      for (let i = 0; i < buffersInOrder.length; i++) {
-        const currBytes = buffersInOrder[i];
-        const saveKind = classifySave(prevBytes, currBytes);
-        if (saveKind === 'identical') continue;
-        storedIndex += 1;
-        const isFinal = i === buffersInOrder.length - 1;
-        const blob = new Blob([currBytes], { type: 'application/pdf' });
-        await putRevision(sessionId, storedIndex, blob, { source: isFinal ? 'upload' : 'imported', saveKind });
-        prevBytes = currBytes;
-      }
-      return storedIndex;
+    // Classifies `currBytes` against the previous step's bytes and stores it
+    // (unless byte-identical), threading {prevBytes, storedIndex,
+    // versionKey} into the next call -- shared by both hydration paths
+    // below so each processes its entries one at a time, never holding more
+    // than the current and previous version's bytes in memory together.
+    async function hydrateStoreStep(sessionId, state, currBytes, source) {
+      const saveKind = classifySave(state.prevBytes, currBytes);
+      if (saveKind === 'identical') return state;
+      const index = state.storedIndex + 1;
+      const versionKey = createSessionId();
+      await beginVersionWrite(sessionId, index, currBytes.buffer, {
+        source, saveKind, versionKey, storage: 'full', baseKey: null, byteLength: currBytes.byteLength,
+      }).catch(reportVersionWriteFailure);
+      return { prevBytes: currBytes, storedIndex: index, versionKey };
     }
 
-    async function hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId) {
-      const meta = await pdfJsDoc.getMetadata().catch(() => null);
-      const custom = meta && meta.info && meta.info.Custom;
-      const rawChain = custom && (custom.PdfSealRevisionChainV1 || custom.PdfSealRevisionChain);
-      if (!rawChain) return;
+    // Cheap pre-filter for hydrateBundledChain below: if neither string
+    // appears anywhere in the raw bytes, this app's chain format (a literal
+    // JSON string under a custom Info key) cannot be present, *and* it
+    // can't be hidden inside a compressed object stream either (that would
+    // need an /ObjStm) -- so the far more expensive step of actually
+    // opening the file in pdf.js can be skipped entirely for the common
+    // case of a document with no embedded chain at all.
+    const BUNDLED_CHAIN_HINT_STRINGS = ['PdfSealRevisionChain', '/ObjStm'];
+    function mightContainBundledChain(latin1Text) {
+      return BUNDLED_CHAIN_HINT_STRINGS.some((needle) => latin1Text.includes(needle));
+    }
 
-      let chain;
+    // Opens `file` on a throwaway PDFWorker/document just long enough to
+    // read getMetadata().info.Custom, then destroys both immediately. This
+    // app's revision-chain format lives in a custom Info dict entry, which
+    // pdf.js already exposes locally -- but that string can be multi-MB,
+    // and reading it through the *live* document (or the shared worker)
+    // would leave pdf.js caching it for that document's entire lifetime.
+    // A disposable worker/document scoped to just this read avoids that.
+    async function readBundledChainRaw(file) {
+      const worker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-hydrate' });
+      let doc = null;
       try {
-        chain = JSON.parse(rawChain);
+        const arrayBuffer = await file.arrayBuffer();
+        doc = await pdfjsLib.getDocument({ data: arrayBuffer, worker }).promise;
+        const meta = await doc.getMetadata().catch(() => null);
+        const custom = meta && meta.info && meta.info.Custom;
+        return (custom && (custom.PdfSealRevisionChainV1 || custom.PdfSealRevisionChain)) || null;
       } catch (_err) {
-        return;
+        return null;
+      } finally {
+        if (doc) doc.destroy();
+        worker.destroy();
       }
-      if (!Array.isArray(chain)) return;
-      chain = chain.filter((entry) => entry && typeof entry === 'object' && typeof entry.bytes === 'string');
-      if (chain.length < 2) return;
-      if (sessionId !== documentSessionId) return; // a newer upload superseded this one
-
-      const sorted = chain.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
-      const buffers = sorted.slice(0, -1).map((entry) => base64ToBytes(entry.bytes));
-      buffers.push(new Uint8Array(await file.arrayBuffer()));
-      if (sessionId !== documentSessionId) return;
-      documentRevisionCount = await storeHydratedVersionChain(sessionId, buffers);
     }
 
-    // Unpacks a PDF's embedded revision chain (see /api/revisions/embedded)
-    // into local IndexedDB versions 1..N-1, leaving version N -- the
-    // already-stored current file -- untouched. Does nothing for a file with
-    // no embedded chain (i.e. one revision or fewer reported).
-    async function hydrateEmbeddedRevisions(file, sessionId) {
-      const formData = new FormData();
-      formData.append('pdfDocument', file);
-      const res = await fetch('/api/revisions/embedded', { method: 'POST', body: formData });
-      if (!res.ok) return;
-      const data = await res.json();
-      const chain = Array.isArray(data.revisions) ? data.revisions : [];
-      if (chain.length < 2) return;
-      if (sessionId !== documentSessionId) return; // a newer upload superseded this one
+    // This app's own bundled revision-chain format (a fresh export with
+    // "Include revision history" turned on). Decodes, classifies, stores
+    // and releases one entry at a time -- dropping `rawChain` and each
+    // entry's base64 string as soon as it's been decoded -- so a chain with
+    // many/large prior versions never holds more than one of them (plus the
+    // current file) in memory at once. Returns null if there's nothing
+    // (embedded chain absent, malformed, or too short to be worth
+    // hydrating) usable to store, so the caller can fall back to native
+    // chain detection.
+    async function hydrateBundledChain(sessionId, file, currentFileBytes) {
+      let rawChain = await readBundledChainRaw(file);
+      if (!rawChain) return null;
+      const entries = parseRevisionChain(rawChain);
+      rawChain = null; // multi-MB string; let go of it now that it's parsed
+      if (!entries.length) return null;
+      if (sessionId !== documentSessionId) return null;
 
-      const sorted = chain.slice().sort((a, b) => a.index - b.index);
-      const buffers = sorted.slice(0, -1).map((entry) => base64ToBytes(entry.bytes));
-      buffers.push(new Uint8Array(await file.arrayBuffer()));
-      if (sessionId !== documentSessionId) return;
-      documentRevisionCount = await storeHydratedVersionChain(sessionId, buffers);
+      let state = { prevBytes: null, storedIndex: 0, versionKey: null };
+      const priorEntries = entries.slice(0, -1); // the last entry is just the current file itself
+      for (const entry of priorEntries) {
+        if (sessionId !== documentSessionId) return null;
+        const currBytes = base64ToBytes(entry.bytes);
+        entry.bytes = null; // drop the decoded-from string now that it's been used
+        state = await hydrateStoreStep(sessionId, state, currBytes, 'imported');
+      }
+      if (sessionId !== documentSessionId) return null;
+      state = await hydrateStoreStep(sessionId, state, currentFileBytes, 'upload');
+
+      return { count: state.storedIndex, versionKey: state.versionKey };
+    }
+
+    // Fallback for a file with no embedded chain of this app's own, but
+    // that has been incrementally updated by some other tool (the normal
+    // way a PDF gains a signature/annotation/form-fill after its first
+    // save) -- found by scanning the raw bytes directly for genuine
+    // `startxref ... %%EOF` boundaries (findRevisionEndOffsets), no pdf.js
+    // needed at all. Since these boundaries are exact append points by
+    // construction, the first is stored in full and each later one as the
+    // literal delta between consecutive boundaries -- read via file.slice()
+    // (the Blob, not the in-memory `bytes` this function was handed) so
+    // that once the boundaries themselves are known, the full-file byte
+    // array can fall out of scope rather than sticking around for the rest
+    // of the loop. The final entry runs to the file's true end rather than
+    // its last detected boundary, in case of trailing bytes after it.
+    async function hydrateNativeChain(sessionId, file, bytes) {
+      const boundaries = findRevisionEndOffsets(bytes);
+      bytes = null;
+      if (boundaries.length < 2) return null;
+
+      let storedIndex = 0;
+      let versionKey = null;
+      let priorVersionKey = null;
+      let start = 0;
+
+      for (let i = 0; i < boundaries.length; i++) {
+        if (sessionId !== documentSessionId) return null;
+        const isLast = i === boundaries.length - 1;
+        const end = isLast ? file.size : boundaries[i];
+        const segment = new Uint8Array(await file.slice(start, end).arrayBuffer());
+
+        storedIndex += 1;
+        versionKey = createSessionId();
+        await beginVersionWrite(sessionId, storedIndex, segment.buffer, {
+          source: isLast ? 'upload' : 'imported', saveKind: i === 0 ? 'initial' : 'incremental',
+          versionKey, storage: i === 0 ? 'full' : 'delta', baseKey: i === 0 ? null : priorVersionKey,
+          byteLength: end, // the full reconstructed size, not just this segment's
+        }).catch(reportVersionWriteFailure);
+
+        priorVersionKey = versionKey;
+        start = end;
+      }
+
+      return { count: storedIndex, versionKey };
+    }
+
+    // Unpacks whichever kind of revision history `file` carries -- this
+    // app's own bundled chain, checked first, then a native incremental
+    // chain from another tool -- into local versions 1..N-1, leaving
+    // version N (the already-stored current file) untouched. Does nothing
+    // for a file with neither.
+    async function hydrateRevisions(sessionId, file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const currentFileBytes = new Uint8Array(arrayBuffer);
+      if (sessionId !== documentSessionId) return null;
+
+      const latin1Text = new TextDecoder('latin1').decode(currentFileBytes);
+      if (mightContainBundledChain(latin1Text)) {
+        const bundled = await hydrateBundledChain(sessionId, file, currentFileBytes);
+        if (bundled) return bundled;
+        if (sessionId !== documentSessionId) return null;
+      }
+
+      return hydrateNativeChain(sessionId, file, currentFileBytes);
     }
 
     // ---------------------------------------------------------------
@@ -2426,6 +2794,22 @@
     const uploadDropdownCtl = setupDropdown('uploadDropdown', 'btnUploadToggle');
     const downloadDropdownCtl = setupDropdown('downloadDropdown', 'btnDownloadToggle');
 
+    function isSectionOpen(sectionId) {
+      const el = document.getElementById(sectionId);
+      return !!el && !el.hidden;
+    }
+
+    // Set instead of calling renderTemplatesPanel() directly while the
+    // Signatures section is hidden (the panel has no per-document/per-file
+    // "loaded for" cache to key a lazy re-render off of, unlike Metadata/
+    // Certificates/Revisions) -- picked up and cleared by setupSectionNav's
+    // click handler the next time Signatures becomes active.
+    let templatesPanelDirty = false;
+    function markTemplatesPanelDirty() {
+      if (isSectionOpen('sectionSignatures')) renderTemplatesPanel();
+      else templatesPanelDirty = true;
+    }
+
     // ---------------------------------------------------------------
     // Section nav (MetaData / Signatures / Certificates / Revisions)
     // The PDF viewer on the left is always visible; only the right-hand
@@ -2475,6 +2859,10 @@
           if (target !== 'signatures' && activeField) deselectActiveField();
           if (target !== 'revisions') suspendRevisionsView();
           if (target !== 'certificates') { closeCertificateSheet(); closeCertificateModifySheet(); closeCertificateTimelineSheet(); }
+          if (target === 'signatures' && templatesPanelDirty) {
+            renderTemplatesPanel();
+            templatesPanelDirty = false;
+          }
           if (target === 'metadata') loadMetadataIfNeeded();
           if (target === 'revisions') {
             loadRevisionsIfNeeded();
@@ -2666,6 +3054,25 @@
       return { bytes, isPdf: header === '%PDF-' };
     }
 
+    // The live validity indicator (below) re-runs on a 200ms debounce while
+    // the user is still typing or right after a paste, so -- unlike
+    // analyzeBase64Pdf(), used once by the actual Load button -- it only
+    // decodes enough of the string to read the "%PDF-" magic bytes rather
+    // than the whole thing. A full decode+byte-array-build on every
+    // keystroke was wasted work for a PDF whose Base64 form can run into
+    // the tens of megabytes.
+    function quickCheckBase64Header(rawInput) {
+      const cleaned = stripSurroundingQuotes(rawInput.trim()).replace(/^data:application\/pdf;base64,/i, '').replace(/\s+/g, '');
+      // 12 chars is itself a multiple of 4 (atob needs a whole group to
+      // decode cleanly) and decodes to 9 bytes -- enough to cover the
+      // 5-byte "%PDF-" magic with room to spare. Floored to the input's own
+      // length while it's still shorter than that (e.g. mid-paste).
+      const headLen = Math.min(12, cleaned.length - (cleaned.length % 4));
+      if (headLen <= 0) return false;
+      const binary = atob(cleaned.slice(0, headLen));
+      return binary.slice(0, 5) === '%PDF-';
+    }
+
     let base64ValidityTimer = null;
     function checkBase64Validity() {
       const raw = base64Input.value;
@@ -2674,7 +3081,7 @@
         return;
       }
       try {
-        setBase64Validity(analyzeBase64Pdf(raw).isPdf ? 'valid' : 'invalid');
+        setBase64Validity(quickCheckBase64Header(raw) ? 'valid' : 'invalid');
       } catch (err) {
         setBase64Validity('invalid');
       }
@@ -2804,14 +3211,18 @@
       // The Templates panel has no overlay (templates are editable with no
       // document open) -- re-rendering it is what enables/disables placing and
       // row dragging as a document comes and goes.
-      renderTemplatesPanel();
+      markTemplatesPanelDirty();
       updateHistoryUi();
     }
 
-    // `keepFieldHistory` is true for an "Apply changes" reload -- undo/redo
-    // spans that boundary (see pushFieldHistory()/applyPendingFieldChanges()),
-    // so a genuinely new document is the only case that should wipe it.
-    function resetPanelsForNewDocument(keepFieldHistory = false) {
+    // Resetting field history (undo/redo) itself is NOT done here -- a
+    // genuinely new (non-edit) upload clears it, but only once that upload
+    // actually commits (see processNewFile's commit point), so a failed
+    // replacement upload's rollback doesn't wipe out the still-valid
+    // document's undo history. An "Apply changes"/certificate-modify reload
+    // never clears it at all -- undo/redo spans that boundary (see
+    // pushFieldHistory()/applyPendingFieldChanges()).
+    function resetPanelsForNewDocument() {
       const editForm = document.getElementById('editFieldForm');
       const addForm = document.getElementById('addSigForm');
       const detailsBody = document.getElementById('fieldDetailsBody');
@@ -2823,7 +3234,6 @@
       activeField = null;
       activeFieldDiv = null;
       closeEditSheet();
-      if (!keepFieldHistory) resetFieldHistory();
 
       editControls.forEach((el) => {
         el.disabled = true;
@@ -2856,8 +3266,13 @@
       documentOverview = null;
       const metaSearchInput = document.getElementById('metaSearchInput');
       if (metaSearchInput) metaSearchInput.value = '';
-      renderMetaTree();
-      renderMetaOverview();
+      // Only worth painting the cleared state now if it's actually visible --
+      // loadMetadataIfNeeded() re-derives it correctly from documentMeta et
+      // al. (now null) whenever the MetaData section is next opened.
+      if (isSectionOpen('sectionMetaData')) {
+        renderMetaTree();
+        renderMetaOverview();
+      }
     }
 
     // Drives the growing-document loading overlay shown while a new file is
@@ -2889,10 +3304,144 @@
       if (overlay) overlay.hidden = true;
     }
 
+    // Reading the form fields is still needed before they can be edited, but it
+    // does not need to block pdf.js from parsing and painting the first page.
+    // Keeping this as a separate promise lets the browser and server work in
+    // parallel while retaining the upload progress UI.
+    function loadDocumentFields(file, onProgress) {
+      const formData = new FormData();
+      formData.append('pdfDocument', file);
+      formData.append('fieldsOnly', 'true');
+      let xhr = null;
+      const promise = new Promise((resolve, reject) => {
+        xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/info');
+        xhr.responseType = 'json';
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress?.((e.loaded / e.total) * 45);
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+          else reject(new Error(`Failed to read document (status ${xhr.status}).`));
+        };
+        xhr.onerror = () => reject(new Error('Network error while reading document.'));
+        xhr.onabort = () => reject(new DOMException('Document loading was superseded.', 'AbortError'));
+        xhr.send(formData);
+      });
+      return {
+        promise,
+        abort: () => {
+          if (xhr && xhr.readyState !== XMLHttpRequest.DONE) xhr.abort();
+        },
+      };
+    }
+
+    // Embedded revision chains can be large and require another full-file
+    // upload (or base64 decode for a P2P document). Do it after the first page
+    // is visible, rather than making the normal open path wait for a feature
+    // that is only needed in the Revisions panel.
+    // Schedules the current document's embedded-revision-chain hydration and
+    // registers it in `revisionHydration` (see its declaration above) so
+    // ensureRevisionHydration() can force it to run early. The idle-deferred
+    // callback and a direct ensureRevisionHydration() call race to invoke
+    // ticket.start() -- whichever comes first wins, the other is a no-op.
+    function scheduleEmbeddedRevisionHydration(file, sessionId) {
+      let started = false;
+      let resolveStart;
+      const startedPromise = new Promise((resolve) => { resolveStart = resolve; });
+
+      const run = async () => {
+        if (sessionId !== documentSessionId || activeFile !== file) return;
+        try {
+          const hydrated = await hydrateRevisions(sessionId, file);
+          if (sessionId !== documentSessionId || activeFile !== file) return;
+          if (hydrated) {
+            documentRevisionCount = hydrated.count;
+            activeVersionKey = hydrated.versionKey;
+          }
+        } catch (_err) {
+          if (sessionId !== documentSessionId || activeFile !== file) return;
+          // A partial hydration can't be trusted -- leave local storage in a
+          // known-consistent state (just the current file, at index 1)
+          // instead of however far it got. beginVersionWrite's own
+          // orphaned-rows cleanup (anything above the index it just wrote)
+          // takes care of the truncation.
+          const versionKey = createSessionId();
+          const recoveryBuffer = await file.arrayBuffer();
+          await beginVersionWrite(sessionId, 1, recoveryBuffer, {
+            source: 'upload', saveKind: 'initial', versionKey,
+            storage: 'full', baseKey: null, byteLength: recoveryBuffer.byteLength,
+          }).catch(reportVersionWriteFailure);
+          documentRevisionCount = 1;
+          activeVersionKey = versionKey;
+        }
+        if (sessionId !== documentSessionId || activeFile !== file) return;
+        revisionsData = null;
+        revisionsLoadedForFile = null;
+        if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+          loadRevisionsIfNeeded();
+        }
+      };
+
+      const ticket = {
+        sessionId,
+        file,
+        promise: startedPromise.then(run),
+        start() {
+          if (started) return;
+          started = true;
+          resolveStart();
+        },
+      };
+      revisionHydration = ticket;
+
+      // Yield at least one turn so the canvas paint is not delayed by revision
+      // parsing. requestIdleCallback is a further win when it is available,
+      // while the timeout keeps the history ready promptly on browsers without it.
+      const defer = () => {
+        if (typeof window.requestIdleCallback === 'function') {
+          window.requestIdleCallback(() => ticket.start(), { timeout: 1000 });
+        } else {
+          setTimeout(() => ticket.start(), 0);
+        }
+      };
+      setTimeout(defer, 0);
+    }
+
+    // Forces the current document's scheduled hydration to run right away
+    // instead of waiting for its idle callback, and waits for it to finish.
+    // A no-op if nothing is scheduled for the current document (an edit, or
+    // a document with no embedded chain that already finished). Callers that
+    // read the local version store -- Apply, certificate modify, bundling
+    // history for export/share, and the tour's Revisions step -- await this
+    // first, so none of them race an in-flight hydration and either
+    // overwrite what it's still writing or read past it incompletely.
+    async function ensureRevisionHydration() {
+      const ticket = revisionHydration;
+      if (!ticket || ticket.sessionId !== documentSessionId || ticket.file !== activeFile) return;
+      ticket.start();
+      await ticket.promise;
+    }
+
     async function processNewFile(file, options = {}) {
+      const loadGeneration = ++documentLoadGeneration;
+      const isCurrentLoad = () => loadGeneration === documentLoadGeneration;
+      // Set for every call regardless of outcome; cleared below only once
+      // *this* generation concludes while still current -- a superseded
+      // (stale) call leaves it alone, since the newer call already set it
+      // for itself and will clear it in its own time.
+      documentLoadInFlight = true;
+      activeDocumentFieldsRequest?.abort();
+      activeDocumentFieldsRequest = null;
       const preservePage = Boolean(options.preservePage);
       const skipServerInfo = Boolean(options.skipServerInfo);
       const transferredFields = Array.isArray(options.transferredFields) ? options.transferredFields : [];
+      // Fields the caller already has (e.g. from apply-changes's withFields
+      // response) -- distinct from skipServerInfo, which additionally means
+      // "P2P, never upload" and changes how hydration runs. A known-fields
+      // load still uploads normally for metadata/certificates/etc.; it just
+      // skips the redundant /api/info round trip purely for field data.
+      const knownFields = Array.isArray(options.knownFields) ? options.knownFields : null;
       const targetPage = preservePage && Number.isInteger(pageNum) && pageNum > 0 ? pageNum : 1;
 
       if (viewerDiffActive) exitDiffViewMode();
@@ -2916,13 +3465,35 @@
         revisionsLoadedForFile,
         documentSessionId,
         documentRevisionCount,
+        activeVersionKey,
       } : null;
+      // The pdf.js document this load is replacing, if any. Ownership of it
+      // transfers to this function: it's kept alive (not destroyed) until the
+      // load either commits (see the commit point below) or fails, so a
+      // rollback always has an intact document to restore rather than one
+      // already torn down.
+      const outgoing = previousDocumentState?.pdfDoc ?? null;
       activeFile = file;
       if (documentChanged) resetShareForChangedDocument();
       if (documentChanged && !preservePage) {
         userHasManuallyZoomed = false;
         document.querySelector('.viewer-column .viewer-scroll').classList.remove('is-zoomed');
       }
+
+      // Show immediate feedback before the first asynchronous step. Storing a
+      // full revision in IndexedDB can take noticeable time for large PDFs;
+      // previously the loading overlay was mounted only after that work had
+      // finished, making the upload action look unresponsive.
+      document.getElementById('emptyStateViewer').style.display = 'none';
+      document.getElementById('pdfContainer').style.display = 'inline-block';
+      showDocumentLoadingOverlay();
+
+      // Read the file's bytes once, shared by classification below, the
+      // local version write, and pdf.js further down -- getDocument()
+      // transfers (detaches) this same buffer, so nothing after that point
+      // can read it again.
+      const arrayBuffer = await file.arrayBuffer();
+      if (!isCurrentLoad()) return; // superseded while reading; nothing was written yet, nothing to clean up
 
       // Track this file as a local revision snapshot. An edit (isEdit)
       // appends to the current session; anything else (a fresh upload,
@@ -2935,6 +3506,22 @@
       // session) as a permanent orphan, since nothing else ever references
       // it again once the in-memory state rolls back.
       let pendingRevisionCleanup = null;
+      // The in-flight version write's actual-completion promise (put()
+      // itself has already been called synchronously by the time this is
+      // assigned -- see beginVersionWrite). Joined later, once the visible
+      // document is ready, so IndexedDB throughput is off the critical
+      // upload path.
+      let pendingVersionWrite = null;
+      const cleanupPendingRevision = () => {
+        if (pendingRevisionCleanup?.type !== 'session') return;
+        const cleanup = () => clearVersionSession(pendingRevisionCleanup.sessionId).catch(() => {});
+        // A clear issued before IndexedDB finishes its put could let the put
+        // land afterwards and leave an orphaned snapshot. Chain the cleanup
+        // behind the write (regardless of whether it succeeds or fails)
+        // whenever this initial load is abandoned.
+        if (pendingVersionWrite) pendingVersionWrite.then(cleanup, cleanup);
+        else cleanup();
+      };
       // The old session isn't dropped until this new load actually
       // succeeds below -- clearing it up front would permanently lose the
       // previous document's history the moment a *replacement* upload
@@ -2942,40 +3529,72 @@
       // puts the old document itself right back on screen.
       let previousSessionIdToClear = null;
       if (isEdit && documentSessionId) {
-        const prevRecord = await getRevisionRecord(documentSessionId, documentRevisionCount).catch(() => null);
-        const prevBytes = prevRecord ? new Uint8Array(prevRecord.buffer) : null;
-        const currBytes = new Uint8Array(await file.arrayBuffer());
-        const saveKind = classifySave(prevBytes, currBytes);
+        const currBytes = new Uint8Array(arrayBuffer);
+        // Classified against the outgoing file (captured above, before
+        // activeFile was reassigned) rather than a stored copy -- no
+        // IndexedDB read needed just to classify this save.
+        const saveKind = await classifySaveAgainstBlob(previousDocumentState?.file ?? null, currBytes);
         if (saveKind === 'identical') {
           // Nothing effective changed (e.g. the edit round-tripped back to
           // the same bytes) -- don't grow the version history over it.
           pendingRevisionCleanup = null;
         } else {
           documentRevisionCount += 1;
+          const versionKey = createSessionId();
           pendingRevisionCleanup = { type: 'index', sessionId: documentSessionId, index: documentRevisionCount };
-          await putRevision(documentSessionId, documentRevisionCount, file, { source: 'edit', saveKind }).catch(() => {});
+          dropStaleRedoEntries(documentRevisionCount);
+
+          // A delta needs its base's write to be confirmed landed --
+          // otherwise (still in flight, or it failed) there's nothing
+          // trustworthy to slice against, so the full file is stored
+          // instead. `prior`'s versionKey is read from activeVersionKey
+          // *before* it's reassigned to this new version's key below.
+          const priorWriteLanded = lastVersionWriteCompletion
+            ? await lastVersionWriteCompletion.then(() => true, () => false)
+            : true;
+          const prior = (priorWriteLanded && previousDocumentState)
+            ? { versionKey: activeVersionKey, byteLength: previousDocumentState.file.size }
+            : null;
+          const plan = planVersionStorage(prior, saveKind, currBytes);
+
+          activeVersionKey = versionKey;
+          // Awaited so put() is guaranteed queued before arrayBuffer is
+          // handed to pdf.js below -- see beginVersionWrite for why. A
+          // delta write stores only plan.data (a fresh, independent copy --
+          // see planVersionStorage), so arrayBuffer itself is untouched by
+          // it either way.
+          pendingVersionWrite = await beginVersionWrite(documentSessionId, documentRevisionCount, plan.data.buffer, {
+            source: 'edit', saveKind, versionKey,
+            storage: plan.storage, baseKey: plan.baseKey, byteLength: currBytes.byteLength,
+          });
         }
       } else {
         previousSessionIdToClear = documentSessionId;
         documentSessionId = createSessionId();
         documentRevisionCount = 1;
+        const versionKey = createSessionId();
+        activeVersionKey = versionKey;
         pendingRevisionCleanup = { type: 'session', sessionId: documentSessionId };
-        await putRevision(documentSessionId, 1, file, { source: 'upload', saveKind: 'initial' }).catch(() => {});
-        // A file exported earlier with "Include revision history" carries
-        // its full prior history baked into its own Info dict -- unpack it
-        // into local revisions 1..N-1 (the just-stored single revision above
-        // stays as N) so the panel shows the file's actual history instead
-        // of treating it as a single fresh document. No-ops for a lean file.
-        if (!skipServerInfo) {
-          await hydrateEmbeddedRevisions(file, documentSessionId).catch(() => {});
-        }
+        // Always a full copy -- a fresh upload starts a new session, so
+        // there's no prior version in it to delta against.
+        pendingVersionWrite = await beginVersionWrite(documentSessionId, 1, arrayBuffer, {
+          source: 'upload', saveKind: 'initial', versionKey,
+          storage: 'full', baseKey: null, byteLength: arrayBuffer.byteLength,
+        });
+      }
+
+      // The async IndexedDB work above may have yielded to a newer selection.
+      // Do not reset or render the new document from this stale invocation.
+      if (!isCurrentLoad()) {
+        cleanupPendingRevision();
+        return;
       }
 
       revisionsData = null;
       revisionsLoadedForFile = null;
       revisionsLoading = false;
       resetRevisionsDiffState();
-      if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+      if (!pendingVersionWrite && document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
         loadRevisionsIfNeeded();
       }
 
@@ -2986,141 +3605,202 @@
       updateViewerControlsState();
 
       // A brand new document means any previous pending placement/selection is stale
-      resetPanelsForNewDocument(isEdit);
-      if (skipServerInfo) {
-        documentFields = transferredFields;
+      resetPanelsForNewDocument();
+      if (skipServerInfo || knownFields) {
+        documentFields = skipServerInfo ? transferredFields : knownFields;
         documentFields.forEach((f) => { f.__baselineName = f.name; });
         fieldsBaseline = cloneFields(documentFields);
         updatePendingChangesUi();
       }
 
-      // Toggle Viewer Visibility
-      document.getElementById('emptyStateViewer').style.display = 'none';
-      document.getElementById('pdfContainer').style.display = 'inline-block';
-      // The new document isn't actually ready to paint yet (server round trip,
-      // then pdf.js parsing/rendering below) -- show a growing progress
-      // overlay in its place instead of leaving the container flash stale/
-      // empty content while that work runs.
-      showDocumentLoadingOverlay();
+      // Set once the new pdf.js document has been obtained and assigned to
+      // the live `pdfDoc` variable -- distinguishes "nothing to clean up
+      // yet" from "the outgoing document has already been displaced" in the
+      // stale-return and error paths below.
+      let nextPdfDoc = null;
+      let adopted = false;
 
       try {
+        // Start the independent browser and server work together. The previous
+        // flow waited for the complete server-side field scan before even
+        // asking pdf.js to open the file.
+        let progressHighWaterMark = 0;
+        const setLoadingProgress = (percent) => {
+          progressHighWaterMark = Math.max(progressHighWaterMark, percent);
+          setDocumentLoadingProgress(progressHighWaterMark);
+        };
+        let fieldsRequestError = null;
+        const fieldsRequest = (skipServerInfo || knownFields)
+          ? null
+          : loadDocumentFields(file, setLoadingProgress);
+        activeDocumentFieldsRequest = fieldsRequest;
+        const fieldsPromise = fieldsRequest
+          ? fieldsRequest.promise.catch((error) => {
+            // Keep the rejection observed even if pdf.js fails first; the
+            // original error still reaches the normal rollback path below.
+            fieldsRequestError = error;
+            return null;
+          })
+          : null;
+
         // A received P2P file must not be sent back to the server merely to
         // populate metadata. Local preview remains fully browser-side.
-        if (!skipServerInfo) {
-          // Only form fields are needed to render the Signatures view (the
-          // default view on every load/edit) -- the full metadata/raw-object
-          // dump is expensive to compute and is fetched separately, lazily,
-          // only if/when the MetaData section is actually opened.
-          // Uses XMLHttpRequest (rather than fetch) specifically for
-          // upload.onprogress, which drives the loading overlay's percentage.
-          const formData = new FormData();
-          formData.append('pdfDocument', file);
-          formData.append('fieldsOnly', 'true');
-          const data = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', '/api/info');
-            xhr.responseType = 'json';
-            xhr.upload.onprogress = (e) => {
-              if (!e.lengthComputable) return;
-              setDocumentLoadingProgress((e.loaded / e.total) * 45);
-            };
-            xhr.onload = () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                resolve(xhr.response);
-              } else {
-                reject(new Error(`Failed to read document (status ${xhr.status}).`));
-              }
-            };
-            xhr.onerror = () => reject(new Error('Network error while reading document.'));
-            xhr.send(formData);
-          });
-          documentFields = data.fields || [];
-          documentFields.forEach((f) => { f.__baselineName = f.name; });
-          fieldsBaseline = cloneFields(documentFields);
-          updatePendingChangesUi();
-        }
-        setDocumentLoadingProgress(50);
+        setLoadingProgress(50);
         documentMeta = null;
         documentRawInfo = null;
         documentRawObjects = null;
         documentOverview = null;
         documentMetaLoadedFor = null;
 
-        // 2. Render PDF
-        const arrayBuffer = await file.arrayBuffer();
-        setDocumentLoadingProgress(65);
-        const nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
-        setDocumentLoadingProgress(80);
-
-        // Release the previous document's worker + internal caches now that the
-        // new one has loaded successfully -- otherwise every reload (including
-        // the one that follows every field add/edit/remove) leaks a worker.
-        // Skipped when the outgoing pdfDoc is still held by the undo/redo
-        // history (an Apply just pushed a snapshot pointing at it) -- it gets
-        // destroyed later, once its snapshot actually falls out of history.
-        if (pdfDoc && pdfDoc !== nextPdfDoc && !isPdfDocRetainedInHistory(pdfDoc)) {
-          pdfDoc.destroy();
+        // 2. Render PDF -- `arrayBuffer` was already read once, above, and
+        // shared with the version write that just happened.
+        if (!isCurrentLoad()) {
+          cleanupPendingRevision();
+          return;
         }
+        setLoadingProgress(65);
+        nextPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
+        if (!isCurrentLoad()) {
+          nextPdfDoc.destroy();
+          cleanupPendingRevision();
+          return;
+        }
+        setLoadingProgress(80);
+
+        // Adopt the new document now that it has loaded successfully, but
+        // don't destroy `outgoing` yet -- if a later step in this same load
+        // fails (the server-side field scan, etc.), the rollback path below
+        // needs it intact to restore. It's released once the load reaches
+        // its commit point, further down, or by whichever cleanup path
+        // handles this load's failure/staleness.
         pdfDoc = nextPdfDoc;
-
-        // A P2P-received file skipped hydrateEmbeddedRevisions() above (it requires
-        // a server round trip) -- recover its bundled revision history, if any, now
-        // that pdf.js has parsed the Info dict locally.
-        if (skipServerInfo) {
-          await hydrateEmbeddedRevisionsFromPdfDoc(nextPdfDoc, file, documentSessionId).catch(() => {});
-          revisionsData = null;
-          revisionsLoadedForFile = null;
-          if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
-            loadRevisionsIfNeeded();
-          }
-        }
+        adopted = true;
 
         // Metadata (and any other panel keyed off `pdfDoc`) can only render
         // correctly once `pdfDoc` itself is assigned above -- doing this any
         // earlier left whichever right-hand section was already active (e.g.
         // MetaData) showing its stale "no document" state until the user
-        // clicked away to another section and back. The heavy metadata
-        // fetch itself only runs if that section is actually open right now.
-        if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
-          loadMetadataIfNeeded();
-        } else {
-          renderMetaTree();
-          renderMetaOverview();
-        }
+        // clicked away to another section and back. If MetaData isn't the
+        // open section, there's nothing to paint yet either way --
+        // loadMetadataIfNeeded() re-fetches correctly (documentMetaLoadedFor
+        // still points at the old file) whenever it's next opened.
+        if (isSectionOpen('sectionMetaData')) loadMetadataIfNeeded();
 
         document.getElementById('pageCount').textContent = pdfDoc.numPages;
         pageNum = Math.min(Math.max(targetPage, 1), pdfDoc.numPages);
         updateViewerControlsState();
         await renderPage(pageNum);
-        setDocumentLoadingProgress(100);
+        setLoadingProgress(100);
         hideDocumentLoadingOverlay();
+
+        // Let the first page appear before waiting for the server-side field
+        // scan. Once it returns, lay the real field overlays over the page.
+        // Skipped whenever there's no fieldsPromise to wait on at all --
+        // skipServerInfo (P2P) or knownFields (already have them) alike.
+        if (fieldsPromise) {
+          const data = await fieldsPromise;
+          if (!isCurrentLoad()) {
+            // Adoption already happened above, so `outgoing` is displaced
+            // and unreachable from here on -- release it now, since the
+            // commit point below (which would otherwise do it) is never
+            // reached on this stale return.
+            if (outgoing && outgoing !== nextPdfDoc) {
+              outgoing.destroy();
+            }
+            return;
+          }
+          if (activeDocumentFieldsRequest === fieldsRequest) activeDocumentFieldsRequest = null;
+          if (fieldsRequestError) throw fieldsRequestError;
+          documentFields = data.fields || [];
+          documentFields.forEach((f) => { f.__baselineName = f.name; });
+          fieldsBaseline = cloneFields(documentFields);
+          updatePendingChangesUi();
+          if (currentViewport) drawFieldOverlays(currentViewport);
+        }
+
+        // Commit point: the new document is fully in place (rendered, fields
+        // overlaid), so the outgoing one's resources can finally be released.
+        // Undo/redo snapshots never hold a pdfDoc (see captureDocumentSnapshot),
+        // so nothing else can still be pointing at it.
+        if (outgoing && outgoing !== nextPdfDoc) {
+          outgoing.destroy();
+        }
+
+        // A genuinely new (non-edit) upload clears undo/redo, but only now
+        // that it has actually committed -- doing this any earlier meant a
+        // failed replacement upload's rollback (which puts the old, still
+        // valid document back) had already wiped that document's history.
+        if (!isEdit) resetFieldHistory();
+
+        // Make sure the version write actually landed before importing a
+        // bundled chain on top of it or refreshing the Revisions panel. This
+        // wait is deliberately after the first visible page and field
+        // overlays. A failure here (most likely a storage quota error)
+        // doesn't roll back the document -- it's still fine -- but the user
+        // should know this version wasn't actually saved locally.
+        if (pendingVersionWrite) {
+          await pendingVersionWrite.catch(reportVersionWriteFailure);
+          if (!isCurrentLoad()) return;
+          if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+            loadRevisionsIfNeeded();
+          }
+        }
+
+        // A fresh upload may carry the app's own revision chain. It is useful
+        // only to the Revisions section, so keep it off the critical preview
+        // path. Edits already belong to an existing local session and do not
+        // need this import.
+        if (!isEdit) {
+          scheduleEmbeddedRevisionHydration(file, documentSessionId);
+        }
 
         // Only now that the replacement document has fully loaded is the
         // previous document's local history actually unreachable -- safe
         // to drop it.
         if (previousSessionIdToClear) {
-          clearRevisionSession(previousSessionIdToClear).catch(() => {});
-          if (revisionSummaryCacheSessionId === previousSessionIdToClear) {
-            revisionSummaryCache = new Map();
-            revisionSummaryCacheSessionId = null;
-          }
+          clearVersionSession(previousSessionIdToClear).catch(() => {});
         }
 
+        documentLoadInFlight = false;
+
       } catch (err) {
+        if (!isCurrentLoad()) {
+          // A newer load superseded this one while it was failing. Whatever
+          // this load itself owns and nobody else will clean up must be
+          // released here instead of returning silently.
+          if (adopted) {
+            if (outgoing && outgoing !== nextPdfDoc) {
+              outgoing.destroy();
+            }
+          } else if (nextPdfDoc) {
+            nextPdfDoc.destroy();
+          }
+          return;
+        }
+        if (activeDocumentFieldsRequest) {
+          activeDocumentFieldsRequest.abort();
+          activeDocumentFieldsRequest = null;
+        }
         hideDocumentLoadingOverlay();
+        if (pendingVersionWrite) await pendingVersionWrite.catch(() => {});
         if (pendingRevisionCleanup) {
           if (pendingRevisionCleanup.type === 'session') {
-            clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
-            if (revisionSummaryCacheSessionId === pendingRevisionCleanup.sessionId) revisionSummaryCache.clear();
+            clearVersionSession(pendingRevisionCleanup.sessionId).catch(() => {});
           } else {
-            deleteRevision(pendingRevisionCleanup.sessionId, pendingRevisionCleanup.index).catch(() => {});
-            // That index number can be reused by the next edit attempt (documentRevisionCount
-            // is rolled back below) -- drop any cached summary for it so a retry doesn't serve
-            // a stale result computed from the failed attempt's bytes.
-            if (revisionSummaryCacheSessionId === pendingRevisionCleanup.sessionId) {
-              revisionSummaryCache.delete(pendingRevisionCleanup.index);
-            }
+            // That index number can be reused by the next edit attempt
+            // (documentRevisionCount is rolled back below), but this
+            // attempt's versionKey never is -- summaries are keyed by
+            // versionKey (see revisionSummaryPromises), so there's nothing
+            // to invalidate for a retry to collide with.
+            deleteVersion(pendingRevisionCleanup.sessionId, pendingRevisionCleanup.index).catch(() => {});
           }
+        }
+        // This load is being abandoned in favor of restoring the previous
+        // document (or clearing to none) -- release the document it adopted,
+        // since `outgoing` was never destroyed (the commit point above was
+        // never reached) and is about to be restored/kept intact instead.
+        if (adopted && nextPdfDoc && nextPdfDoc !== previousDocumentState?.pdfDoc) {
+          nextPdfDoc.destroy();
         }
         if (previousDocumentState) {
           // Roll back to the last valid document instead of leaving the
@@ -3139,22 +3819,21 @@
           revisionsLoadedForFile = previousDocumentState.revisionsLoadedForFile;
           documentSessionId = previousDocumentState.documentSessionId;
           documentRevisionCount = previousDocumentState.documentRevisionCount;
+          activeVersionKey = previousDocumentState.activeVersionKey;
           updatePendingChangesUi();
-          renderMetaTree();
-          renderMetaOverview();
           document.getElementById('pageCount').textContent = pdfDoc.numPages;
           updateViewerControlsState();
           await renderPage(pageNum);
           // The failed upload may have already fetched (and rendered) revision/
           // metadata data for the bad file before this rollback ran -- re-sync
           // the panel to the restored document instead of leaving it showing
-          // data for a file the viewer no longer displays.
+          // data for a file the viewer no longer displays. If MetaData isn't
+          // open, this is also what (re-)renders it correctly once it is --
+          // there's no separate render call above for that reason.
           if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
             loadRevisionsIfNeeded();
           }
-          if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
-            loadMetadataIfNeeded();
-          }
+          if (isSectionOpen('sectionMetaData')) loadMetadataIfNeeded();
         } else {
           activeFile = null;
           pdfDoc = null;
@@ -3169,8 +3848,11 @@
           documentMetaLoadedFor = null;
           documentSessionId = null;
           documentRevisionCount = 0;
-          renderMetaTree();
-          renderMetaOverview();
+          activeVersionKey = null;
+          // No render call here either -- loadMetadataIfNeeded()'s
+          // documentMetaLoadedFor === activeFile check (both null now) takes
+          // its cheap early-return path and paints the cleared state
+          // correctly whenever MetaData is next opened.
           updateViewerControlsState();
           document.getElementById('pdfContainer').style.display = 'none';
           document.getElementById('emptyStateViewer').style.display = 'flex';
@@ -3178,6 +3860,7 @@
             loadRevisionsIfNeeded();
           }
         }
+        documentLoadInFlight = false;
         showNotification('Error processing PDF: ' + err.message, 'error');
       }
     }
@@ -3217,14 +3900,27 @@
       return Math.max(0.1, scale);
     }
 
+    // Bumped on every renderPage() call, and checked after each await inside
+    // it -- rapid paging (holding down Next, or a programmatic jump landing
+    // mid-flight of a previous one) can have an older call's getPage()/
+    // render() still resolving after a newer call has already started. The
+    // per-render pdf.js cancellation (currentRenderTask.cancel(), below)
+    // stops the older call's *canvas paint*, but renderPage() itself has no
+    // other way to know it's now stale -- without this it would still go on
+    // to overlay the *newer* viewport with the *older* page's fields and
+    // write the wrong page number into the UI.
+    let renderPageGeneration = 0;
+
     async function renderPage(num) {
       if (!pdfDoc) return;
+      const generation = ++renderPageGeneration;
 
       const page = await pdfDoc.getPage(num);
       // A diff view can claim the shared canvas while getPage() is pending --
       // it cancels render tasks, but this one does not exist yet. Bail before
       // creating it rather than painting the live document over the diff.
       if (viewerDiffActive) return;
+      if (generation !== renderPageGeneration) return;
 
       // Unless the user has explicitly zoomed in/out: scale the page to fit
       // the panel edge-to-edge (preserving aspect ratio).
@@ -3239,13 +3935,14 @@
       viewport.scaleX = currentScale;
       viewport.scaleY = currentScale;
 
-      await renderPageToSharedCanvas(page, viewport);
+      const rendered = await renderPageToSharedCanvas(page, viewport);
       // A revision snapshot or visual diff can claim the shared canvas while
       // this render is in flight (sizeCanvasForVisualDiff cancels it). Bail
       // rather than finish: everything below describes what's on screen --
       // page indicator, viewport, the live document's field overlays -- and
       // none of it is true of the diff that's actually there now.
       if (viewerDiffActive) return;
+      if (!rendered || generation !== renderPageGeneration) return;
 
       currentViewport = viewport;
       drawFieldOverlays(viewport);
@@ -3256,21 +3953,39 @@
       updateViewerControlsState();
     }
 
+    // Ceiling on the shared canvas's *backing-store* resolution, independent
+    // of viewport.width/height (its intended on-screen CSS size). Each
+    // dimension feeds the canvas's memory footprint multiplicatively (RGBA,
+    // 4 bytes/pixel), and an unusually large page -- well outside common
+    // paper sizes -- can reach that ceiling at even a modest zoom. Past it,
+    // the canvas rasterizes at a capped internal resolution and is scaled
+    // up in CSS to its intended size instead -- the same trick the visual
+    // diff view already uses for its own resolution ceiling.
+    const MAX_CANVAS_DIMENSION = 4096;
+
     async function renderPageToSharedCanvas(page, viewport) {
       if (currentRenderTask) {
         currentRenderTask.cancel();
         currentRenderTask = null;
       }
 
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      // The visual diff rasterizes below full zoom and scales the canvas up in
-      // CSS (see sizeCanvasForVisualDiff) -- clear that here so a normal render
-      // always presents at its natural pixel size.
-      canvas.style.width = '';
-      canvas.style.height = '';
+      const overscale = Math.max(1, viewport.width / MAX_CANVAS_DIMENSION, viewport.height / MAX_CANVAS_DIMENSION);
+      const renderViewport = overscale > 1 ? page.getViewport({ scale: viewport.scale / overscale }) : viewport;
 
-      const renderParams = { canvasContext: ctx, viewport };
+      canvas.height = renderViewport.height;
+      canvas.width = renderViewport.width;
+      if (overscale > 1) {
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+      } else {
+        // The visual diff rasterizes below full zoom and scales the canvas up in
+        // CSS (see sizeCanvasForVisualDiff) -- clear that here so a normal render
+        // always presents at its natural pixel size.
+        canvas.style.width = '';
+        canvas.style.height = '';
+      }
+
+      const renderParams = { canvasContext: ctx, viewport: renderViewport };
       const renderTask = page.render(renderParams);
       currentRenderTask = renderTask;
 
@@ -3281,18 +3996,40 @@
         throw err;
       } finally {
         if (currentRenderTask === renderTask) currentRenderTask = null;
+        // pdf.js holds a page's decoded images, fonts and operator list on
+        // both the main thread and the worker until it's told to let go.
+        // In `finally` so a cancelled render still releases them -- left
+        // only in the success path, paging quickly (each render cancelling
+        // the last) never reached this line and accumulated one page's
+        // worth of caches per page ever shown.
+        page.cleanup();
       }
-
-      // pdf.js holds a page's decoded images, fonts and operator list on both
-      // the main thread and the worker until it's told to let go. Without this,
-      // paging through a document accumulates every page it has ever shown.
-      page.cleanup();
 
       return true;
     }
 
+    // div -> field for whichever field the div currently represents. A
+    // weak map so a discarded overlay (drawFieldOverlays rebuilds the whole
+    // layer on every render) never needs explicit cleanup here.
+    const fieldOverlayFields = new WeakMap();
+    const fieldOverlayTemplate = document.getElementById('fieldOverlayTemplate');
+
     function drawFieldOverlays(viewport) {
-      overlayLayer.querySelectorAll('.field-overlay').forEach(el => el.remove());
+      // Build off-DOM, then swap the complete field layer in one operation.
+      // Rendering a page with many form fields previously caused one layout-
+      // visible insertion per field; a fragment keeps that work batched.
+      //
+      // Each field's DOM subtree is cloned from #fieldOverlayTemplate rather
+      // than built with createElement()/appendChild() calls, and none of it
+      // carries its own addEventListener -- every interaction (hover label,
+      // drag-to-move, resize, drag-to-template, delete) is handled once by
+      // delegated listeners on overlayLayer itself, set up below, that look
+      // up which field a div represents via fieldOverlayFields. A document
+      // with a couple hundred fields (large-images-200-fields.pdf, one of
+      // this repo's perf fixtures) used to mean a couple hundred fresh
+      // createElement() trees plus over a thousand fresh closures/listeners
+      // on every single render -- paging, zooming, undo/redo, all of it.
+      const fieldLayer = document.createDocumentFragment();
       activeFieldDiv = null;
       const fieldsOnThisPage = documentFields.filter(f => f.page === (pageNum - 1));
       const invisibleFieldPins = [];
@@ -3301,7 +4038,8 @@
         if (!field.rect) return;
 
         const isInvisible = isRectPracticallyInvisible(field.rect);
-        const div = document.createElement('div');
+        const div = fieldOverlayTemplate.content.firstElementChild.cloneNode(true);
+        fieldOverlayFields.set(div, field);
         div.className = `field-overlay${field.required ? ' required' : ''}${isFieldStaged(field) ? ' is-staged' : ''}${isInvisible ? ' is-invisible-field' : ''}`;
         // Lets other sections address one overlay by name -- the Certificates
         // panel jumps here to select the field a signature belongs to.
@@ -3310,34 +4048,26 @@
         div.title = field.signed === true
           ? `${field.name} — signed, so it cannot be moved or removed without breaking the signature${invisibleSuffix}`
           : (field.tooltip ? `${field.name} — ${field.tooltip}${invisibleSuffix}` : `${field.name || 'Signature field'}${invisibleSuffix}`);
-        div.innerHTML = field.signed === true
+        div.querySelector('.field-overlay-icon').innerHTML = field.signed === true
           ? ICONS.lock
           : (field.type === 'Signature' ? ICONS.pen : ICONS.fileText);
         applyRectToOverlay(div, field.rect);
-        if (isInvisible) {
-          const pin = document.createElement('div');
-          pin.className = 'field-invisible-pin';
-          pin.innerHTML = ICONS.eyeOff;
-          div.appendChild(pin);
-          invisibleFieldPins.push({ div, pin });
-        }
 
-        const label = document.createElement('div');
-        label.className = 'field-label';
-        label.textContent = field.name || 'Signature field';
-        if (isInvisible) {
-          const invisibleLine = document.createElement('div');
-          invisibleLine.className = 'field-label-tooltip field-label-invisible';
-          invisibleLine.textContent = 'Invisible field — no visible footprint on the page';
-          label.appendChild(invisibleLine);
-        }
-        if (field.tooltip) {
-          const tooltipLine = document.createElement('div');
-          tooltipLine.className = 'field-label-tooltip';
-          tooltipLine.textContent = field.tooltip;
-          label.appendChild(tooltipLine);
-        }
-        div.appendChild(label);
+        // The pin (like every other conditionally-shown part of this
+        // template) is always present in the clone -- an inline style,
+        // rather than the `hidden` attribute, is what actually hides it,
+        // since [hidden]'s default display:none loses the cascade to
+        // .field-invisible-pin's own unconditional `display: flex`.
+        const pin = div.querySelector('.field-invisible-pin');
+        pin.style.display = isInvisible ? '' : 'none';
+        if (isInvisible) invisibleFieldPins.push({ div, pin });
+
+        const label = div.querySelector('.field-label');
+        label.querySelector('.field-label-name').textContent = field.name || 'Signature field';
+        label.querySelector('.field-label-invisible').hidden = !isInvisible;
+        const tooltipLine = label.querySelector('.field-label-generic');
+        tooltipLine.hidden = !field.tooltip;
+        tooltipLine.textContent = field.tooltip || '';
 
         // A signed field's /Rect is inside the bytes its signature covers, so
         // moving, resizing or removing it corrupts that signature. Lock the
@@ -3346,155 +4076,196 @@
         const isSignedField = field.signed === true;
         if (isSignedField) div.classList.add('is-signed');
 
-        let handle = null;
-        if (!isSignedField) {
-          handle = document.createElement('div');
-          handle.className = 'resize-handle';
-          div.appendChild(handle);
-        }
+        // Same cascade note as the pin above: .resize-handle's CSS only
+        // shows it while the overlay is .active, but a *signed* field must
+        // never show it even then -- this inline style wins regardless.
+        div.querySelector('.resize-handle').style.display = isSignedField ? 'none' : '';
 
         // Saving a field into a signature template is a drag off the page and
         // into the Signature Templates panel. The overlay body already owns
         // mouse-dragging (repositioning), so the two gestures can't share an
-        // element -- this corner grip is the HTML5 drag source, and swallows
-        // its own mousedown so grabbing it never starts a reposition.
-        const templateGrip = document.createElement('div');
-        templateGrip.className = 'template-save-handle';
-        if (isSignedField) templateGrip.hidden = true;
-        templateGrip.draggable = true;
+        // element -- this corner grip is the HTML5 drag source.
+        const templateGrip = div.querySelector('.template-save-handle');
+        templateGrip.hidden = isSignedField;
         templateGrip.title = `Drag "${field.name || 'this field'}" into Signature Templates to save it`;
-        templateGrip.innerHTML = ICONS.layers;
-        templateGrip.addEventListener('mousedown', (e) => e.stopPropagation());
-        templateGrip.addEventListener('dragstart', (e) => beginDocumentFieldDrag(field, e));
-        templateGrip.addEventListener('dragend', endDocumentFieldDrag);
-        div.appendChild(templateGrip);
 
         // Delete straight from the overlay -- top-left corner, opposite the
         // save-to-template grip. Reuses the same confirmation modal as the
         // "Remove field" button in the Edit panel, keyed off the field name.
-        const deleteHandle = document.createElement('button');
-        deleteHandle.type = 'button';
-        deleteHandle.className = 'field-delete-handle';
+        const deleteHandle = div.querySelector('.field-delete-handle');
         deleteHandle.title = `Remove "${field.name || 'this field'}"`;
-        deleteHandle.setAttribute('aria-label', 'Remove field');
-        deleteHandle.innerHTML = ICONS.x;
-        if (isSignedField) deleteHandle.hidden = true;
-        deleteHandle.addEventListener('mousedown', (e) => e.stopPropagation());
-        deleteHandle.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (!activeFile) return;
-          selectFieldOverlay(div, field);
-          openRemoveFieldModal(field.name);
-        });
-        div.appendChild(deleteHandle);
-
-        div.addEventListener('mouseenter', () => {
-          overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
-            if (el !== div) {
-              const label = el.querySelector('.field-label');
-              if (label) label.style.display = 'none';
-            }
-          });
-          const label = div.querySelector('.field-label');
-          if (label) {
-            label.style.display = 'block';
-            positionFieldLabel(div, label);
-          }
-        });
-
-        div.addEventListener('mouseleave', () => {
-          if (!div.classList.contains('active')) {
-            const label = div.querySelector('.field-label');
-            if (label) label.style.display = 'none';
-          }
-        });
-
-        // Drag the body to reposition. A plain click (no movement) on a field
-        // that's already selected toggles it off instead of re-selecting it.
-        div.addEventListener('mousedown', (e) => {
-          // Outside Signatures, overlays keep pointer-events on only so hover
-          // can show the name/tooltip label -- they must stay non-interactive.
-          if (document.body.dataset.activeSection !== 'signatures') return;
-          if (handle && e.target === handle) return;
-          if (isPanning) return; // let the pointerdown bubble up to the pan handler instead
-          e.preventDefault();
-          const wasActive = activeField === field;
-          selectFieldOverlay(div, field);
-          // Selectable so its properties can be read, but not draggable: the
-          // /Rect is inside the bytes the signature covers.
-          if (isSignedField) return;
-
-          const startX = e.clientX, startY = e.clientY;
-          const startLeft = parseFloat(div.style.left);
-          const startTop = parseFloat(div.style.top);
-          let moved = false;
-
-          function onMove(ev) {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
-            let newLeft = startLeft + dx;
-            let newTop = startTop + dy;
-            newLeft = Math.max(0, Math.min(newLeft, canvas.width - div.offsetWidth));
-            newTop = Math.max(0, Math.min(newTop, canvas.height - div.offsetHeight));
-            div.style.left = `${newLeft}px`;
-            div.style.top = `${newTop}px`;
-          }
-          function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            if (moved) {
-              commitOverlayToField(div, field);
-            } else if (wasActive) {
-              deselectActiveField();
-            }
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
-
-        // Drag the handle to resize. Signed fields have no handle -- resizing
-        // rewrites the /Rect the signature covers.
-        handle?.addEventListener('mousedown', (e) => {
-          if (isPanning) return;
-          e.preventDefault();
-          e.stopPropagation();
-          selectFieldOverlay(div, field);
-
-          const startX = e.clientX, startY = e.clientY;
-          const startWidth = parseFloat(div.style.width);
-          const startHeight = parseFloat(div.style.height);
-          const left = parseFloat(div.style.left);
-          const top = parseFloat(div.style.top);
-
-          function onMove(ev) {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            let newWidth = Math.max(20, startWidth + dx);
-            let newHeight = Math.max(20, startHeight + dy);
-            newWidth = Math.min(newWidth, canvas.width - left);
-            newHeight = Math.min(newHeight, canvas.height - top);
-            div.style.width = `${newWidth}px`;
-            div.style.height = `${newHeight}px`;
-          }
-          function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            commitOverlayToField(div, field);
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
+        deleteHandle.hidden = isSignedField;
 
         if (activeField === field) {
           div.classList.add('active');
           activeFieldDiv = div;
         }
-        overlayLayer.appendChild(div);
+        fieldLayer.appendChild(div);
       });
+
+      // renderPage() only invokes this for the live document. Diff/revision
+      // views own the overlay layer themselves, so replacing its children here
+      // cannot remove their markers.
+      overlayLayer.replaceChildren(fieldLayer);
 
       if (invisibleFieldPins.length) layoutInvisibleFieldPins(invisibleFieldPins);
     }
+
+    // One-time delegated listeners for every field overlay drawFieldOverlays()
+    // draws, present or future -- see its comment for why. Each handler
+    // resolves e.target back to the .field-overlay div (and from there, via
+    // fieldOverlayFields, back to the field it represents) instead of relying
+    // on a per-element closure.
+    let hoveredFieldOverlayDiv = null;
+
+    // mouseenter/mouseleave don't bubble, so a real per-overlay enter/leave
+    // is synthesized from mouseover/mouseout (which do) -- entering/leaving
+    // a *child* of the same overlay (the label, a handle) doesn't count,
+    // which is what the hoveredFieldOverlayDiv/relatedTarget checks below
+    // are for.
+    overlayLayer.addEventListener('mouseover', (e) => {
+      const div = e.target.closest('.field-overlay');
+      if (!div || div === hoveredFieldOverlayDiv) return;
+      hoveredFieldOverlayDiv = div;
+      overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
+        if (el !== div) {
+          const label = el.querySelector('.field-label');
+          if (label) label.style.display = 'none';
+        }
+      });
+      const label = div.querySelector('.field-label');
+      if (label) {
+        label.style.display = 'block';
+        positionFieldLabel(div, label);
+      }
+    });
+
+    overlayLayer.addEventListener('mouseout', (e) => {
+      const div = e.target.closest('.field-overlay');
+      if (!div || div.contains(e.relatedTarget)) return;
+      if (div === hoveredFieldOverlayDiv) hoveredFieldOverlayDiv = null;
+      if (!div.classList.contains('active')) {
+        const label = div.querySelector('.field-label');
+        if (label) label.style.display = 'none';
+      }
+    });
+
+    overlayLayer.addEventListener('mousedown', (e) => {
+      const div = e.target.closest('.field-overlay');
+      if (!div) return;
+      const field = fieldOverlayFields.get(div);
+      if (!field) return;
+
+      // The template-save-handle and delete-handle each own their own
+      // gesture (drag-to-template below; delete-click below) -- neither
+      // should also start the overlay's reposition drag underneath it.
+      if (e.target.closest('.template-save-handle') || e.target.closest('.field-delete-handle')) return;
+
+      const isSignedField = div.classList.contains('is-signed');
+      const handle = div.querySelector('.resize-handle');
+
+      // Drag the handle to resize. Signed fields' handle is display:none
+      // (see drawFieldOverlays), so this can never match for one.
+      if (handle && e.target.closest('.resize-handle') === handle) {
+        if (isPanning) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectFieldOverlay(div, field);
+
+        const startX = e.clientX, startY = e.clientY;
+        const startWidth = parseFloat(div.style.width);
+        const startHeight = parseFloat(div.style.height);
+        const left = parseFloat(div.style.left);
+        const top = parseFloat(div.style.top);
+
+        function onMove(ev) {
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let newWidth = Math.max(20, startWidth + dx);
+          let newHeight = Math.max(20, startHeight + dy);
+          newWidth = Math.min(newWidth, canvas.width - left);
+          newHeight = Math.min(newHeight, canvas.height - top);
+          div.style.width = `${newWidth}px`;
+          div.style.height = `${newHeight}px`;
+        }
+        function onUp() {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          commitOverlayToField(div, field);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+        return;
+      }
+
+      // Drag the body to reposition. A plain click (no movement) on a field
+      // that's already selected toggles it off instead of re-selecting it.
+      //
+      // Outside Signatures, overlays keep pointer-events on only so hover
+      // can show the name/tooltip label -- they must stay non-interactive.
+      if (document.body.dataset.activeSection !== 'signatures') return;
+      if (isPanning) return; // let the pointerdown bubble up to the pan handler instead
+      e.preventDefault();
+      const wasActive = activeField === field;
+      selectFieldOverlay(div, field);
+      // Selectable so its properties can be read, but not draggable: the
+      // /Rect is inside the bytes the signature covers.
+      if (isSignedField) return;
+
+      const startX = e.clientX, startY = e.clientY;
+      const startLeft = parseFloat(div.style.left);
+      const startTop = parseFloat(div.style.top);
+      let moved = false;
+
+      function onMove(ev) {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+        let newLeft = startLeft + dx;
+        let newTop = startTop + dy;
+        newLeft = Math.max(0, Math.min(newLeft, canvas.width - div.offsetWidth));
+        newTop = Math.max(0, Math.min(newTop, canvas.height - div.offsetHeight));
+        div.style.left = `${newLeft}px`;
+        div.style.top = `${newTop}px`;
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (moved) {
+          commitOverlayToField(div, field);
+        } else if (wasActive) {
+          deselectActiveField();
+        }
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    overlayLayer.addEventListener('click', (e) => {
+      const deleteHandle = e.target.closest('.field-delete-handle');
+      if (!deleteHandle) return;
+      const div = deleteHandle.closest('.field-overlay');
+      const field = div && fieldOverlayFields.get(div);
+      if (!field) return;
+      e.stopPropagation();
+      if (!activeFile) return;
+      selectFieldOverlay(div, field);
+      openRemoveFieldModal(field.name);
+    });
+
+    overlayLayer.addEventListener('dragstart', (e) => {
+      const grip = e.target.closest('.template-save-handle');
+      if (!grip) return;
+      const div = grip.closest('.field-overlay');
+      const field = div && fieldOverlayFields.get(div);
+      if (!field) return;
+      beginDocumentFieldDrag(field, e);
+    });
+
+    overlayLayer.addEventListener('dragend', (e) => {
+      if (!e.target.closest('.template-save-handle')) return;
+      endDocumentFieldDrag();
+    });
 
     // Invisible-field pins are fixed-size, so a field parked hard against a
     // page edge/corner (their most common spot) would otherwise have its pin
@@ -3516,9 +4287,17 @@
       const clampY = (y) => Math.min(Math.max(y, minY), maxY);
       const SPACING = PIN_RADIUS * 2 + 4; // center-to-center gap that keeps neighboring pins from touching
 
+      // Read pass: every entry's current field rect, gathered up front. The
+      // placement math below only touches these plain numbers -- reading a
+      // fresh getBoundingClientRect() for pin N *after* pin N-1's style
+      // writes have already landed would force a synchronous layout
+      // recalculation per pin, which is the real cost on a document with
+      // many invisible fields (a multi-signer PDF can easily have a dozen).
+      const fieldRects = entries.map(({ div }) => div.getBoundingClientRect());
+
       const placedCenters = [];
-      entries.forEach(({ div, pin }) => {
-        const fieldRect = div.getBoundingClientRect();
+      const placements = entries.map(({ div, pin }, i) => {
+        const fieldRect = fieldRects[i];
         const anchorX = fieldRect.left + fieldRect.width / 2;
         const anchorY = fieldRect.top + fieldRect.height / 2;
 
@@ -3556,6 +4335,15 @@
         // relative to div's box -- not the viewport.
         const localX = cx - fieldRect.left;
         const localY = cy - fieldRect.top;
+        const dx = anchorX - cx;
+        const dy = anchorY - cy;
+        const dist = Math.hypot(dx, dy);
+        return { div, pin, localX, localY, dist, angle: Math.atan2(dy, dx) };
+      });
+
+      // Write pass: no geometry reads below this point, so none of these
+      // style/dataset/DOM writes can trigger a layout recalc mid-loop.
+      placements.forEach(({ div, pin, localX, localY, dist, angle }) => {
         pin.style.left = `${localX}px`;
         pin.style.top = `${localY}px`;
         // Read by positionInvisibleFieldLabel() so the hover label anchors
@@ -3564,9 +4352,6 @@
         div.dataset.pinLocalX = String(localX);
         div.dataset.pinLocalY = String(localY);
 
-        const dx = anchorX - cx;
-        const dy = anchorY - cy;
-        const dist = Math.hypot(dx, dy);
         let leader = div.querySelector('.field-invisible-pin-leader');
         if (dist > 3) {
           if (!leader) {
@@ -3577,7 +4362,7 @@
           leader.style.left = `${localX}px`;
           leader.style.top = `${localY}px`;
           leader.style.width = `${dist}px`;
-          leader.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+          leader.style.transform = `rotate(${angle}rad)`;
         } else if (leader) {
           leader.remove();
         }
@@ -4331,7 +5116,7 @@
           showNotification('Could not save templates to this browser. Changes will be lost on reload.', 'error');
         }
       }
-      renderTemplatesPanel();
+      markTemplatesPanelDirty();
       updateTemplatesBackupUi();
     }
 
@@ -5466,11 +6251,37 @@
         const response = await fetch(endpoint, { method: 'POST', body: formData });
         if (!response.ok) throw new Error(await extractErrorMessage(response));
 
-        // Get updated PDF as a Blob and convert back to File object
-        const blob = await response.blob();
-        const updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
+        const contentType = response.headers.get('content-type') || '';
+        let updatedFile;
+        let knownFields = null;
 
-        await processNewFile(updatedFile, { preservePage: true, isEdit: true });
+        if (contentType.startsWith('multipart/form-data')) {
+          // apply-changes's withFields response: the PDF and its
+          // already-recomputed field list in one body, so processNewFile
+          // doesn't have to re-upload and re-scan the file just to get the
+          // fields back. new Response(...).formData() is the standard way
+          // to parse a multipart body outside of an actual request.
+          const blob = await response.blob();
+          const parsedForm = await new Response(blob, { headers: { 'Content-Type': contentType } }).formData();
+          const pdfPart = parsedForm.get('pdfDocument');
+          if (!(pdfPart instanceof Blob)) throw new Error('Could not read the server response.');
+          updatedFile = new File([pdfPart], activeFile.name || 'document.pdf', { type: 'application/pdf' });
+          try {
+            const fieldsPart = parsedForm.get('fields');
+            if (typeof fieldsPart === 'string') knownFields = JSON.parse(fieldsPart);
+          } catch (_err) {
+            // The fields part didn't parse -- fall back to the normal fields
+            // request inside processNewFile rather than failing the apply
+            // over what's still a perfectly good PDF.
+            knownFields = null;
+          }
+        } else {
+          // Get updated PDF as a Blob and convert back to File object
+          const blob = await response.blob();
+          updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
+        }
+
+        await processNewFile(updatedFile, { preservePage: true, isEdit: true, knownFields });
         loadingToast?.dismissNotification();
         showNotification(successMessage, 'success');
         return true;
@@ -5507,67 +6318,53 @@
 
     // --- Field-change history (undo/redo) ---
     // Every discrete staged mutation (add/move/resize/rename/toggle/remove/
-    // discard) -- and "Apply changes" itself -- pushes a full pre-mutation
-    // document snapshot onto the undo stack and clears the redo stack.
-    // Undoing/redoing swaps the whole document (file/pdfDoc/fields/baseline/
-    // cached metadata & revisions) wholesale, so undo reaches back across an
-    // Apply just as it does across a plain staged edit.
-    // Deliberately shallow: a snapshot's unit of retention is an entire
-    // document (a live pdf.js PDFDocumentProxy plus a full raw-object dump),
-    // not a small delta, and a retained pdfDoc can't be destroyed while its
-    // snapshot survives (see isPdfDocRetainedInHistory below). At 100 this was
-    // the second-largest source of the page's memory use.
+    // discard) -- and "Apply changes" itself -- pushes a lightweight
+    // pre-mutation snapshot onto the undo stack and clears the redo stack.
+    // Undoing/redoing across a document boundary (an Apply, a certificate
+    // modification) re-opens the target file on demand rather than keeping
+    // a live pdf.js document around for every entry -- a snapshot holds only
+    // the File reference plus the small bits of state that don't already
+    // live in IndexedDB (see captureDocumentSnapshot below). At up to 10
+    // retained pdf.js documents, this used to be the second-largest source
+    // of the page's memory use.
     const FIELD_HISTORY_LIMIT = 10;
 
     // `documentFields`/`fieldsBaseline` are mutated in place elsewhere
     // (push/rect assignment) -- clone them so a later mutation can't reach
-    // back and corrupt an already-captured snapshot. Everything else here is
-    // always reassigned wholesale (never mutated in place), so a plain
-    // reference is safe -- same convention the pre-existing error-rollback
-    // snapshot (see `previousDocumentState` in processNewFile) already uses.
+    // back and corrupt an already-captured snapshot. `file` is a Blob
+    // reference (cheap to hold, and the actual bytes already live in
+    // IndexedDB via the local revision store) -- everything document-shaped
+    // that used to ride along (pdfDoc, metadata, raw dumps, revisions data)
+    // is deliberately left out and reloaded fresh on demand instead.
     function captureDocumentSnapshot() {
       return {
         file: activeFile,
-        pdfDoc,
         pageNum,
         documentFields: cloneFields(documentFields),
         fieldsBaseline: cloneFields(fieldsBaseline),
-        documentMeta,
-        documentRawInfo,
-        documentRawObjects,
-        documentOverview,
-        documentMetaLoadedFor,
-        revisionsData,
-        revisionsLoadedForFile,
         documentSessionId,
         documentRevisionCount,
+        activeVersionKey,
       };
     }
 
-    // Whether `doc` (a pdf.js document) is still held by any snapshot in
-    // either stack -- checked before destroying a superseded pdfDoc so undo
-    // never ends up pointing at a torn-down document.
-    function isPdfDocRetainedInHistory(doc) {
-      if (!doc) return false;
-      return fieldHistoryUndo.some((s) => s.pdfDoc === doc) || fieldHistoryRedo.some((s) => s.pdfDoc === doc);
-    }
-
-    // Destroys any pdf.js document from `evictedSnapshots` that's no longer
-    // referenced by the live document or by what's left in either stack --
-    // called wherever snapshots are permanently dropped (cap eviction, a
-    // cleared redo branch, or a full reset), so superseded documents (e.g.
-    // the pre-Apply pdfDoc, once its undo entry falls off) get released
-    // instead of leaking.
-    function cleanupEvictedSnapshots(evictedSnapshots) {
-      if (!evictedSnapshots || !evictedSnapshots.length) return;
-      const destroyed = new Set();
-      evictedSnapshots.forEach((snap) => {
-        const doc = snap && snap.pdfDoc;
-        if (!doc || doc === pdfDoc || destroyed.has(doc)) return;
-        if (isPdfDocRetainedInHistory(doc)) return;
-        doc.destroy();
-        destroyed.add(doc);
-      });
+    // A revision write landing at `fromIndex` (in the *current* session) has
+    // just replaced whatever local bytes previously lived there. Any redo
+    // entry aimed at that index or higher was captured against those old
+    // bytes -- redoing into it now would restore an in-memory document that
+    // no longer matches what's actually stored at that index, so it's
+    // dropped rather than left to silently diverge. Called unconditionally
+    // wherever such a write happens, regardless of whether the edit that
+    // triggered it ultimately succeeds -- the row itself has already
+    // changed either way.
+    function dropStaleRedoEntries(fromIndex) {
+      if (!fieldHistoryRedo.length) return;
+      const kept = fieldHistoryRedo.filter((snap) => (
+        snap.documentSessionId !== documentSessionId || snap.documentRevisionCount < fromIndex
+      ));
+      if (kept.length === fieldHistoryRedo.length) return;
+      fieldHistoryRedo = kept;
+      updateHistoryUi();
     }
 
     // Pushes an already-captured snapshot (the pre-mutation state) onto the
@@ -5575,10 +6372,8 @@
     // discarding the now-stale redo branch.
     function commitFieldHistorySnapshot(snapshot) {
       fieldHistoryUndo.push(snapshot);
-      const evicted = fieldHistoryUndo.length > FIELD_HISTORY_LIMIT ? [fieldHistoryUndo.shift()] : [];
-      const clearedRedo = fieldHistoryRedo;
+      if (fieldHistoryUndo.length > FIELD_HISTORY_LIMIT) fieldHistoryUndo.shift();
       fieldHistoryRedo = [];
-      cleanupEvictedSnapshots(evicted.concat(clearedRedo));
       updateHistoryUi();
     }
 
@@ -5589,80 +6384,142 @@
     }
 
     function resetFieldHistory() {
-      const evicted = fieldHistoryUndo.concat(fieldHistoryRedo);
       fieldHistoryUndo = [];
       fieldHistoryRedo = [];
       rectEditHistorySnapshot = null;
-      cleanupEvictedSnapshots(evicted);
       updateHistoryUi();
     }
 
     function updateHistoryUi() {
       const undoBtn = document.getElementById('btnHistoryUndo');
       const redoBtn = document.getElementById('btnHistoryRedo');
-      if (undoBtn) undoBtn.disabled = historyBusy || !pdfDoc || fieldHistoryUndo.length === 0;
-      if (redoBtn) redoBtn.disabled = historyBusy || !pdfDoc || fieldHistoryRedo.length === 0;
+      const blocked = historyBusy || isDocumentUpdating || documentLoadInFlight;
+      if (undoBtn) undoBtn.disabled = blocked || !pdfDoc || fieldHistoryUndo.length === 0;
+      if (redoBtn) redoBtn.disabled = blocked || !pdfDoc || fieldHistoryRedo.length === 0;
     }
 
-    // Restores every var captured by captureDocumentSnapshot(). Only re-runs
-    // the page render / metadata / revisions refresh when the pdfDoc itself
-    // actually changed (crossing an Apply boundary) -- a plain staged-edit
-    // step never touches those, so it's cheaper to just redraw the overlays.
-    async function applyDocumentSnapshot(snapshot) {
-      const pdfDocChanged = pdfDoc !== snapshot.pdfDoc;
+    // Restores every var captured by captureDocumentSnapshot(). `loadedDoc`
+    // is required whenever `snapshot.file !== activeFile` -- the caller
+    // (undoFieldChange/redoFieldChange) is responsible for opening it first
+    // (and bailing out before calling this at all if that load turns out to
+    // be stale), since fetching/opening the file needs to happen *before*
+    // committing to the swap.
+    async function applyDocumentSnapshot(snapshot, loadedDoc) {
+      // Same document: only the staged-field state this undo/redo step
+      // actually changed gets restored. Session id, revision count, and the
+      // metadata/revisions caches reflect the document's current, possibly
+      // since-refreshed state (e.g. hydration completing after this snapshot
+      // was captured) -- restoring them from a stale snapshot would silently
+      // revert that background work. This is what made undoing the tour's
+      // "undo" step put the revision count back to its pre-hydration value.
+      if (snapshot.file === activeFile) {
+        pageNum = snapshot.pageNum;
+        documentFields = snapshot.documentFields;
+        fieldsBaseline = snapshot.fieldsBaseline;
 
+        deselectActiveField();
+        clearPendingField();
+        updatePendingChangesUi();
+        updateViewerControlsState();
+        if (currentViewport) drawFieldOverlays(currentViewport);
+        return;
+      }
+
+      const outgoingDoc = pdfDoc;
       activeFile = snapshot.file;
-      pdfDoc = snapshot.pdfDoc;
-      pageNum = snapshot.pageNum;
+      pdfDoc = loadedDoc;
       documentFields = snapshot.documentFields;
       fieldsBaseline = snapshot.fieldsBaseline;
-      documentMeta = snapshot.documentMeta;
-      documentRawInfo = snapshot.documentRawInfo;
-      documentRawObjects = snapshot.documentRawObjects;
-      documentOverview = snapshot.documentOverview;
-      documentMetaLoadedFor = snapshot.documentMetaLoadedFor;
-      revisionsData = snapshot.revisionsData;
-      revisionsLoadedForFile = snapshot.revisionsLoadedForFile;
       documentSessionId = snapshot.documentSessionId;
       documentRevisionCount = snapshot.documentRevisionCount;
+      activeVersionKey = snapshot.activeVersionKey;
 
       deselectActiveField();
       clearPendingField();
       updatePendingChangesUi();
 
-      if (pdfDocChanged) {
-        if (viewerDiffActive) exitDiffViewMode();
-        resetRevisionsDiffState();
-        document.getElementById('pageCount').textContent = pdfDoc.numPages;
-        await renderPage(pageNum); // also updates viewer controls + field overlays
-        if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
-          loadMetadataIfNeeded();
-        } else {
-          renderMetaTree();
-          renderMetaOverview();
-        }
-        if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
-          loadRevisionsIfNeeded();
-        }
-      } else {
-        updateViewerControlsState();
-        if (currentViewport) drawFieldOverlays(currentViewport);
+      if (viewerDiffActive) exitDiffViewMode();
+      resetRevisionsDiffState();
+
+      pageNum = Math.min(Math.max(snapshot.pageNum, 1), pdfDoc.numPages);
+      document.getElementById('pageCount').textContent = pdfDoc.numPages;
+      updateViewerControlsState();
+      await renderPage(pageNum);
+
+      outgoingDoc?.destroy();
+
+      documentMeta = null;
+      documentRawInfo = null;
+      documentRawObjects = null;
+      documentOverview = null;
+      documentMetaLoadedFor = null;
+      if (isSectionOpen('sectionMetaData')) loadMetadataIfNeeded();
+
+      revisionsData = null;
+      revisionsLoadedForFile = null;
+      if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+        loadRevisionsIfNeeded();
       }
+
+      resetCertificatesState();
+      if (document.getElementById('sectionCertificates') && !document.getElementById('sectionCertificates').hidden) {
+        loadCertificatesIfNeeded();
+      }
+
+      resetShareForChangedDocument();
+      rectEditHistorySnapshot = null;
     }
 
     // Guards against overlapping undo/redo clicks -- applyDocumentSnapshot()
-    // is async (it may re-render the page) so a second click before the
-    // first finishes would race two snapshot swaps against each other.
+    // is async (it may open a document on the shared worker and re-render
+    // the page) so a second click before the first finishes would race two
+    // snapshot swaps against each other.
     let historyBusy = false;
 
+    // Opens `file` on the shared pdf.js worker for an undo/redo that's
+    // crossing a document boundary, bumping documentLoadGeneration first so
+    // any processNewFile load already in flight is superseded (undo/redo is
+    // itself already blocked while one is, via documentLoadInFlight, but
+    // this also covers a load that starts *during* the open below). Returns
+    // null if a newer load started while this one was opening -- the caller
+    // must not commit to the swap in that case.
+    async function openHistoryTargetDoc(file) {
+      const loadGeneration = ++documentLoadGeneration;
+      const arrayBuffer = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: arrayBuffer, worker: getSharedPdfWorker() }).promise;
+      if (loadGeneration !== documentLoadGeneration) {
+        doc.destroy();
+        return null;
+      }
+      return doc;
+    }
+
     async function undoFieldChange() {
-      if (historyBusy || !fieldHistoryUndo.length) return;
+      // Blocked mid-load/mid-update: pdfDoc, documentRevisionCount and the
+      // rest of the live state are momentarily inconsistent with each other
+      // then, and a snapshot swap on top of that would corrupt both.
+      if (historyBusy || !fieldHistoryUndo.length || isDocumentUpdating || documentLoadInFlight) return;
+      // Peek before committing to anything -- if this step crosses a
+      // document boundary, the target file has to be opened successfully
+      // *before* the stacks are touched, so a failed/superseded open leaves
+      // history exactly as it was.
+      const candidate = fieldHistoryUndo[fieldHistoryUndo.length - 1];
       historyBusy = true;
       updateHistoryUi();
       try {
+        let loadedDoc = null;
+        if (candidate.file !== activeFile) {
+          try {
+            loadedDoc = await openHistoryTargetDoc(candidate.file);
+          } catch (err) {
+            showNotification(`Could not undo: ${err.message}`, 'error');
+            return;
+          }
+          if (!loadedDoc) return; // superseded while opening
+        }
         const prev = fieldHistoryUndo.pop();
         fieldHistoryRedo.push(captureDocumentSnapshot());
-        await applyDocumentSnapshot(prev);
+        await applyDocumentSnapshot(prev, loadedDoc);
       } finally {
         historyBusy = false;
         updateHistoryUi();
@@ -5670,13 +6527,24 @@
     }
 
     async function redoFieldChange() {
-      if (historyBusy || !fieldHistoryRedo.length) return;
+      if (historyBusy || !fieldHistoryRedo.length || isDocumentUpdating || documentLoadInFlight) return;
+      const candidate = fieldHistoryRedo[fieldHistoryRedo.length - 1];
       historyBusy = true;
       updateHistoryUi();
       try {
+        let loadedDoc = null;
+        if (candidate.file !== activeFile) {
+          try {
+            loadedDoc = await openHistoryTargetDoc(candidate.file);
+          } catch (err) {
+            showNotification(`Could not redo: ${err.message}`, 'error');
+            return;
+          }
+          if (!loadedDoc) return; // superseded while opening
+        }
         const next = fieldHistoryRedo.pop();
         fieldHistoryUndo.push(captureDocumentSnapshot());
-        await applyDocumentSnapshot(next);
+        await applyDocumentSnapshot(next, loadedDoc);
       } finally {
         historyBusy = false;
         updateHistoryUi();
@@ -5918,12 +6786,25 @@
     // before the element leaves the layout.
     let pendingDetailsHideTimer = null;
 
+    // updatePendingChangesUi() runs on every field add/move/resize/rename --
+    // including continuously while dragging -- but its DOM-building row list
+    // (renderPendingChangesDetails) only matters while the "View changes"
+    // popover is actually open, which is rare. While it's closed, that build
+    // is skipped and just flagged dirty here; togglePendingChangesDetails()
+    // catches up on it the moment the popover opens.
+    let pendingChangesDetailsDirty = true;
+    let lastPendingChangeOps = [];
+
     function togglePendingChangesDetails() {
       const details = document.getElementById('pendingChangesDetails');
       const toggle = document.getElementById('pendingChangesToggle');
       if (!details || !toggle) return;
       clearTimeout(pendingDetailsHideTimer);
       if (details.hidden) {
+        if (pendingChangesDetailsDirty) {
+          renderPendingChangesDetails(lastPendingChangeOps);
+          pendingChangesDetailsDirty = false;
+        }
         details.hidden = false;
         void details.offsetWidth; // restart the enter transition from its closed state
         details.classList.add('is-open');
@@ -5939,12 +6820,19 @@
       const bar = document.getElementById('pendingChangesBar');
       if (!bar) return;
       const ops = computeFieldOps();
+      lastPendingChangeOps = ops;
       const count = ops.length;
       const label = document.getElementById('pendingChangesLabel');
       if (label) label.textContent = `${count} unsaved change${count === 1 ? '' : 's'}`;
       const description = document.getElementById('pendingChangesDescription');
       if (description) description.textContent = describePendingFieldChanges(ops);
-      renderPendingChangesDetails(ops);
+      const detailsEl = document.getElementById('pendingChangesDetails');
+      if (detailsEl && !detailsEl.hidden) {
+        renderPendingChangesDetails(ops);
+        pendingChangesDetailsDirty = false;
+      } else {
+        pendingChangesDetailsDirty = true;
+      }
       if (count === 0) {
         hidePendingChangesBar(pendingChangesHideReason);
         pendingChangesHideReason = null;
@@ -5967,6 +6855,10 @@
     async function applyPendingFieldChanges() {
       const ops = computeFieldOps();
       if (!ops.length) return true;
+      // Let any in-flight hydration finish writing before this edit reads
+      // documentRevisionCount / writes its own row -- otherwise the two can
+      // interleave and one overwrites what the other just stored.
+      await ensureRevisionHydration();
       // Captured before the request so Undo can reach back across this Apply
       // to the pre-apply file/fields -- only committed to history on success,
       // so a failed apply (which processNewFile rolls back on its own) never
@@ -5978,7 +6870,10 @@
       // the server only needs the actual op fields.
       formData.append('ops', JSON.stringify(ops, (key, value) => (key.startsWith('_') ? undefined : value)));
       const label = ops.length === 1 ? '1 change' : `${ops.length} changes`;
-      const success = await handleApiUpdate('/api/apply-changes', formData, `Applied ${label}.`);
+      // withFields asks the server to return the updated field list along
+      // with the PDF in one response, so this Apply costs one upload
+      // instead of one upload plus a second round trip to re-fetch fields.
+      const success = await handleApiUpdate('/api/apply-changes?withFields=true', formData, `Applied ${label}.`);
       if (success) commitFieldHistorySnapshot(preApplySnapshot);
       return success;
     }
@@ -6082,14 +6977,19 @@
     // history. Uses XMLHttpRequest (rather than fetch) specifically for
     // upload.onprogress, which drives the "preparing export" notification.
     async function bundleRevisionHistoryPdf(onProgress) {
-      const localRevisions = await listRevisionsForSession(documentSessionId);
-      const priorRevisions = localRevisions.filter((rev) => rev.index < documentRevisionCount);
+      // Without this, bundling while hydration is still writing prior
+      // versions produces an export missing whatever it hadn't stored yet.
+      await ensureRevisionHydration();
+      const priorMetas = (await listVersionMetaForSession(documentSessionId))
+        .filter((meta) => meta.index < documentRevisionCount);
+      const priorBlobs = await Promise.all(priorMetas.map((meta) => getVersionBlob(documentSessionId, meta.index)));
 
       const formData = new FormData();
       formData.append('pdfDocument', activeFile);
-      for (const rev of priorRevisions) {
-        formData.append('priorRevisions', revisionToBlob(rev), `revision-${rev.index}.pdf`);
-      }
+      priorMetas.forEach((meta, i) => {
+        const blob = priorBlobs[i];
+        if (blob) formData.append('priorRevisions', blob, `revision-${meta.index}.pdf`);
+      });
 
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -6816,14 +7716,30 @@ function metaEntriesOf(node) {
   return Array.isArray(node) ? node.map((v, i) => [`[${i}]`, v]) : Object.entries(node);
 }
 
+// Holds the not-yet-rendered children of a collapsed <details data-lazy-id>
+// branch, keyed by that id -- see the delegated 'toggle' listener below.
+// Cleared at the start of every fresh tree render (renderMetaTree,
+// renderRawObjectSourceTree); a hydrated branch removes its own entry.
+const metaTreeLazyRegistry = new Map();
+let metaTreeLazySeq = 0;
+
+// Scoped cleanup for one container's worth of lazy entries -- called right
+// before that container's HTML is replaced. Not a blanket registry clear:
+// renderRawObjectSourceTree renders two sibling containers (before/after)
+// back to back through this same registry, and clearing all of it while
+// building the second would orphan the lazy ids already handed to the
+// first, which is sitting in the DOM by then with no way to re-render.
+function clearLazyMetaEntriesIn(container) {
+  container.querySelectorAll('[data-lazy-id]').forEach((el) => {
+    metaTreeLazyRegistry.delete(el.getAttribute('data-lazy-id'));
+  });
+}
+
 function renderMetaTreeNode(key, value, depth, term, forceOpen) {
   const keyHtml = highlightMetaTerm(String(key), term);
 
   if (isExpandableMetaValue(value)) {
     const entries = metaEntriesOf(value);
-    const childrenHtml = entries.length
-      ? entries.map(([k, v]) => renderMetaTreeNode(k, v, depth + 1, term, forceOpen)).join('')
-      : '<div class="meta-leaf"><span class="meta-value">Empty</span></div>';
     // Only the top couple of levels open automatically on a search. Opening
     // *every* matching branch meant a search laid out the entire filtered
     // object table at once; collapsed <details> children cost nothing to lay
@@ -6831,9 +7747,34 @@ function renderMetaTreeNode(key, value, depth, term, forceOpen) {
     const shouldOpen = Boolean(forceOpen)
       || (Boolean(term) && depth < 2)
       || (depth === 0 && key === 'Document Metadata');
-    return `<details class="meta-branch" data-depth="${depth}"${shouldOpen ? ' open' : ''}>
+
+    if (!entries.length) {
+      return `<details class="meta-branch" data-depth="${depth}"${shouldOpen ? ' open' : ''}>
+        <summary><span class="meta-key">${keyHtml}</span><span class="meta-count">0</span></summary>
+        <div class="meta-branch-body"><div class="meta-leaf"><span class="meta-value">Empty</span></div></div>
+      </details>`;
+    }
+
+    // A branch that opens automatically needs its children rendered now (a
+    // search result must be visible immediately). Everything else -- the
+    // overwhelming majority of branches, especially each of up to 500
+    // objects under "All PDF Objects (raw)" -- defers building its subtree
+    // (recursively, string-by-string) until the user actually opens it, since
+    // a collapsed <details> not laying its content out doesn't stop this
+    // function from having already built and parsed that content into DOM.
+    if (shouldOpen) {
+      const childrenHtml = entries.map(([k, v]) => renderMetaTreeNode(k, v, depth + 1, term, forceOpen)).join('');
+      return `<details class="meta-branch" data-depth="${depth}" open>
+        <summary><span class="meta-key">${keyHtml}</span><span class="meta-count">${entries.length}</span></summary>
+        <div class="meta-branch-body">${childrenHtml}</div>
+      </details>`;
+    }
+
+    const lazyId = `mtl${++metaTreeLazySeq}`;
+    metaTreeLazyRegistry.set(lazyId, { entries, depth, term, forceOpen });
+    return `<details class="meta-branch" data-depth="${depth}" data-lazy-id="${lazyId}">
       <summary><span class="meta-key">${keyHtml}</span><span class="meta-count">${entries.length}</span></summary>
-      <div class="meta-branch-body">${childrenHtml}</div>
+      <div class="meta-branch-body"></div>
     </details>`;
   }
 
@@ -6844,6 +7785,26 @@ function renderMetaTreeNode(key, value, depth, term, forceOpen) {
     <span class="meta-value">${valueHtml}</span>
   </div>`;
 }
+
+// Delegated on the document (capture phase, since 'toggle' does not bubble)
+// so it covers every <details class="meta-branch"> regardless of which
+// container rendered it -- the Document Info tab's tree and the raw-object
+// inspector modal's before/after trees alike.
+document.addEventListener('toggle', (e) => {
+  const details = e.target;
+  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS' || !details.open) return;
+  const lazyId = details.getAttribute('data-lazy-id');
+  if (!lazyId) return;
+  const entry = metaTreeLazyRegistry.get(lazyId);
+  metaTreeLazyRegistry.delete(lazyId);
+  details.removeAttribute('data-lazy-id');
+  if (!entry) return;
+  const body = details.querySelector(':scope > .meta-branch-body');
+  if (!body) return;
+  body.innerHTML = entry.entries
+    .map(([k, v]) => renderMetaTreeNode(k, v, entry.depth + 1, entry.term, entry.forceOpen))
+    .join('');
+}, true);
 
 // Keep only the branches/leaves whose key or value matches the search term.
 // Works on both plain objects and arrays.
@@ -6891,8 +7852,12 @@ async function loadMetadataIfNeeded() {
     return;
   }
 
-  const cacheKey = `${documentSessionId}:${documentRevisionCount}`;
-  if (documentMetaLoadedFor === cacheKey) {
+  // Keyed by the File object itself, not "<sessionId>:<revisionCount>" --
+  // an undo/redo/certificate-modify sequence can leave documentRevisionCount
+  // pointing at an index that's been reused for genuinely different bytes,
+  // which a session:count key can't tell apart. Every load/edit always
+  // produces a new File instance, so reference equality is exact.
+  if (documentMetaLoadedFor === activeFile) {
     renderMetaTree();
     renderMetaOverview();
     return;
@@ -6919,7 +7884,7 @@ async function loadMetadataIfNeeded() {
     documentRawInfo = data.rawInfo || null;
     documentRawObjects = data.rawObjects || null;
     documentOverview = data.overview || null;
-    documentMetaLoadedFor = cacheKey;
+    documentMetaLoadedFor = requestedFile;
     renderMetaTree();
     renderMetaOverview();
   } catch (err) {
@@ -6928,7 +7893,11 @@ async function loadMetadataIfNeeded() {
     if (overviewEl) overviewEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
     if (treeEl) treeEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
   } finally {
-    if (requestedFile === activeFile) metadataLoading = false;
+    // Always clear, even if the file changed mid-load -- gating this on
+    // `requestedFile === activeFile` left it stuck `true` forever once the
+    // file changed, permanently blocking every future metadata load (the
+    // early return above never lets a new load start).
+    metadataLoading = false;
   }
 }
 
@@ -6958,6 +7927,14 @@ function renderMetaTree() {
   const container = document.getElementById('metaTreeContainer');
   const clearBtn = document.getElementById('metaSearchClearBtn');
   if (!container) return;
+
+  // This is about to discard every <details> currently in the container, so
+  // any lazy-children entries still pending for them would otherwise sit in
+  // the registry forever, unreachable but still holding their (possibly
+  // large) raw object data. Scoped to this container's own elements, not a
+  // blanket registry clear -- renderRawObjectSourceTree renders two other
+  // containers (before/after) through the same registry.
+  clearLazyMetaEntriesIn(container);
 
   const rawTerm = (document.getElementById('metaSearchInput')?.value || '').trim();
   const term = rawTerm.toLowerCase();
@@ -7050,7 +8027,7 @@ function renderDocumentInfoCard(info) {
 // independent of this browser's locally-stored Versions history, though for
 // a file that was incrementally saved before being uploaded, the two
 // usually line up (each boundary gets imported as its own "Incremental
-// update" version -- see hydrateEmbeddedRevisions). The link is just a
+// update" version -- see hydrateNativeChain). The link is just a
 // cross-reference to help make that connection, not a claim the counts are
 // always identical.
 function incrementalUpdatesCell(count) {
@@ -8072,6 +9049,10 @@ async function startSendingShare() {
   if (!activeFile || !crypto.subtle || !window.RTCPeerConnection) {
     return setShareStatus('Your browser doesn’t support secure sharing. Try Chrome, Firefox, or Edge.', 'error');
   }
+  // Let any in-flight hydration finish before anything below reads local
+  // version history (directly, or indirectly through applyPendingFieldChanges
+  // / bundleRevisionHistoryPdf, which also await it themselves).
+  await ensureRevisionHydration();
   // Staged field edits live only in `documentFields` until applied -- make
   // sure what gets shared actually includes them.
   if (computeFieldOps().length) {
@@ -8092,7 +9073,9 @@ async function startSendingShare() {
     const includeHistory = Boolean(loadSettings().includeRevisionHistoryByDefault);
     if (includeHistory) {
       setShareStatus('Bundling revision history…', 'waiting');
-      fileToShare = await bundleRevisionHistoryPdf('share');
+      fileToShare = await bundleRevisionHistoryPdf((loaded, total) => {
+        setShareProgress(loaded, total, 'Bundling revision history…');
+      });
       // bundleRevisionHistoryPdf leaves the progress bar reading "Done" —
       // that only reflects the bundling upload, not the share transfer
       // itself, which hasn't started. Reset it so the bar doesn't falsely
@@ -8229,6 +9212,18 @@ function exitDiffViewMode() {
   diffDocA = null;
   diffDocB = null;
   resetVisualDiffPixelCache();
+  // The pixel-diff worker (distinct from diffPdfWorker below) holds up to
+  // VISUAL_DIFF_PIXEL_CACHE_LIMIT cached RGBA pages until told otherwise --
+  // resetVisualDiffPixelCache() only clears its cache, it doesn't leave the
+  // worker thread itself. Terminate it here; getDiffWorker() spins up a
+  // fresh one on the next comparison.
+  if (diffWorker) {
+    diffWorker.terminate();
+    diffWorker = null;
+  }
+  diffWorkerPending.forEach(({ reject }) => reject(new Error('Diff view closed.')));
+  diffWorkerPending.clear();
+  diffPixelCacheKeys = [];
   // Recreate the diff worker from scratch next time -- see resetDiffPdfWorker's
   // definition for why it can't just be left running across visits.
   resetDiffPdfWorker();
@@ -8295,7 +9290,10 @@ async function loadRevisionsIfNeeded() {
     return;
   }
 
-  const cacheKey = `${documentSessionId}:${documentRevisionCount}`;
+  // Keyed by activeVersionKey rather than documentRevisionCount -- an
+  // undo/redo/certificate-modify sequence can reuse an index for genuinely
+  // different bytes, which a count alone can't tell apart.
+  const cacheKey = `${documentSessionId}:${activeVersionKey}`;
   if (revisionsLoadedForFile === cacheKey && revisionsData) {
     loadingState.hidden = true;
     renderRevisionsTimeline(revisionsData);
@@ -8323,7 +9321,7 @@ async function loadRevisionsIfNeeded() {
   loadingState.hidden = false;
 
   try {
-    const metas = await listRevisionMetaForSession(requestedSessionId);
+    const metas = await listVersionMetaForSession(requestedSessionId);
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
     if (!metas.length) {
       throw new Error(
@@ -8331,24 +9329,23 @@ async function loadRevisionsIfNeeded() {
       );
     }
 
-    if (revisionSummaryCacheSessionId !== requestedSessionId) {
-      revisionSummaryCache = new Map();
-      revisionSummaryCacheSessionId = requestedSessionId;
-    }
-
     // Build the list from what's already known locally first -- index,
-    // source and saveKind cost nothing to read from IndexedDB (a cursor over
-    // small fields, no PDF bytes pulled in) -- so the panel paints instantly.
-    // The heavier per-revision summary (parses the PDF server-side for
-    // metadata/fields/signatures/change counts) is then fetched in the
-    // background for every revision (see loadAllRevisionSummaries() below)
-    // so signed status shows up front without expanding each card;
-    // expanding a card just displays what's already cached instead of
-    // firing its own request.
-    revisionsData = metas.map(({ index, source, saveKind }) => ({
-      ...(revisionSummaryCache.get(index) || { index, loaded: false }),
-      source,
-      saveKind,
+    // source, saveKind and byteLength cost nothing to read from IndexedDB (a
+    // getAll over small fields, no PDF bytes pulled in) -- so the panel
+    // paints instantly. A version summarized in an earlier visit already
+    // has its summary sitting in meta.summary (see saveVersionSummary), so
+    // it renders fully loaded with no fetch at all; only genuinely
+    // never-summarized versions are fetched in the background (see
+    // loadAllRevisionSummaries() below) so signed status shows up front
+    // without expanding each card -- expanding one just displays what's
+    // already loaded/cached instead of firing its own request.
+    revisionsData = metas.map((meta) => ({
+      ...(meta.summary ? { ...meta.summary, loaded: true } : { loaded: false }),
+      index: meta.index,
+      versionKey: meta.versionKey,
+      byteLength: meta.byteLength,
+      source: meta.source,
+      saveKind: meta.saveKind,
     }));
     revisionsData.forEach((rev, i) => { rev.isFinal = i === revisionsData.length - 1; });
     revisionsLoadedForFile = cacheKey;
@@ -8380,82 +9377,119 @@ async function loadRevisionsIfNeeded() {
   }
 }
 
-// Fetches and caches the full summary (metadata/fields/signatures/change
-// counts -- requires the server to actually parse this revision's PDF)
-// for exactly one revision. Called on demand when a revision card is
-// expanded, not up front for the whole panel.
+// Uploads and summarizes exactly the revisions in `revs` that aren't
+// already fetched elsewhere (server parses each PDF for
+// metadata/fields/signatures/change counts), persists each result into its
+// own versionMeta row, and applies it back onto the matching object in
+// `revs` (mutated in place). Shared by loadRevisionSummary() (a single-item
+// `revs`, for an on-demand card expand) and loadAllRevisionSummaries()
+// (a whole batch) -- either way, a revision already being fetched by the
+// *other* path is left to that in-flight promise instead of being uploaded
+// a second time (see revisionSummaryPromises above).
+async function ensureSummariesLoaded(requestedSessionId, revs) {
+  const need = revs.filter((rev) => !rev.loaded);
+  if (!need.length) return;
+
+  const fresh = need.filter((rev) => !revisionSummaryPromises.has(rev.versionKey));
+  if (fresh.length) {
+    const batchPromise = (async () => {
+      const blobs = await Promise.all(fresh.map((rev) => getVersionBlob(requestedSessionId, rev.index)));
+      const included = [];
+      const formData = new FormData();
+      fresh.forEach((rev, i) => {
+        const blob = blobs[i];
+        if (blob) {
+          formData.append('pdfDocument', blob, `revision-${rev.index}.pdf`);
+          included.push(rev);
+        }
+      });
+      if (!included.length) return new Map();
+
+      const res = await fetch('/api/revisions', { method: 'POST', body: formData });
+      let data;
+      try {
+        data = await res.json();
+      } catch (_e) {
+        throw new Error(`Server returned status ${res.status}.`);
+      }
+      if (!res.ok) throw new Error(data?.error || 'Could not read these revisions.');
+
+      // The server tags each summary with its position within this one
+      // batch (index 1..N / isFinal) -- neither means anything here, so
+      // drop them and let each revision's own index (already correct from
+      // the local list) stand.
+      const rawRevisions = Array.isArray(data.revisions) ? data.revisions : [];
+      const results = new Map();
+      included.forEach((rev, i) => {
+        const raw = rawRevisions[i];
+        if (!raw) return;
+        const { index: _ignoredIndex, isFinal: _ignoredIsFinal, ...summary } = raw;
+        results.set(rev.versionKey, summary);
+      });
+      await Promise.all(included.map((rev) => {
+        const summary = results.get(rev.versionKey);
+        return summary ? saveVersionSummary(requestedSessionId, rev.index, rev.versionKey, summary).catch(() => {}) : null;
+      }));
+      return results;
+    })();
+
+    fresh.forEach((rev) => {
+      const perItem = batchPromise.then((results) => results.get(rev.versionKey));
+      revisionSummaryPromises.set(rev.versionKey, perItem);
+      // Removes itself once settled, success or failure -- but only if this
+      // is still the registered promise for that versionKey (a later
+      // request for the same key, started after this one already cleaned
+      // up, shouldn't have its own entry evicted by this stale handler).
+      perItem.finally(() => {
+        if (revisionSummaryPromises.get(rev.versionKey) === perItem) revisionSummaryPromises.delete(rev.versionKey);
+      }).catch(() => {});
+    });
+  }
+
+  await Promise.all(need.map(async (rev) => {
+    const promise = revisionSummaryPromises.get(rev.versionKey);
+    if (!promise) return; // loaded (or abandoned) by the time we got here
+    const summary = await promise.catch(() => null);
+    if (summary) Object.assign(rev, summary, { index: rev.index, loaded: true });
+  }));
+}
+
+// Fetches and caches the full summary for exactly one revision. Called on
+// demand when a revision card is expanded, not up front for the whole
+// panel.
 async function loadRevisionSummary(index) {
-  const cached = revisionSummaryCache.get(index);
-  if (cached && cached.loaded) return cached;
-
   const requestedSessionId = documentSessionId;
-  const record = await getRevisionRecord(requestedSessionId, index);
-  if (!record) throw new Error('Local revision snapshot not found.');
+  const meta = (await listVersionMetaForSession(requestedSessionId)).find((m) => m.index === index);
+  if (!meta) throw new Error('Local revision snapshot not found.');
 
-  const formData = new FormData();
-  formData.append('pdfDocument', revisionToBlob(record), `revision-${index}.pdf`);
-  const res = await fetch('/api/revisions', { method: 'POST', body: formData });
-  let data;
-  try {
-    data = await res.json();
-  } catch (_e) {
-    throw new Error(`Server returned status ${res.status}.`);
+  const rev = meta.summary
+    ? { ...meta.summary, index, loaded: true }
+    : { index, versionKey: meta.versionKey, loaded: false };
+  if (!rev.loaded) {
+    await ensureSummariesLoaded(requestedSessionId, [rev]);
+    if (requestedSessionId !== documentSessionId) throw new Error('Document changed.');
+    if (!rev.loaded) throw new Error('Could not read this revision.');
   }
-  if (!res.ok) throw new Error(data?.error || 'Could not read this revision.');
-  if (requestedSessionId !== documentSessionId) throw new Error('Document changed.');
-
-  // The server tags the single summary it returns with index 1 / isFinal
-  // true (its position within this one-file batch) -- neither means
-  // anything here, so drop them and let the caller's own index/isFinal
-  // (already correct from the local list) stand.
-  const raw = (data.revisions && data.revisions[0]) || {};
-  const { index: _ignoredIndex, isFinal: _ignoredIsFinal, ...summary } = raw;
-  const result = { ...summary, index, loaded: true };
-  if (revisionSummaryCacheSessionId === requestedSessionId) {
-    revisionSummaryCache.set(index, result);
-  }
-  return result;
+  return rev;
 }
 
 // Background counterpart to loadRevisionSummary(): fetches full summaries
-// for every not-yet-loaded revision in one batched request (the /api/revisions
-// route already accepts multiple files), so signed status can be shown on
-// every card without the user having to expand each one first. Mutates the
-// entries in `revisions` in place and re-renders once, rather than one
-// render per revision.
+// for every not-yet-loaded revision, in sequential batches of at most 8MB
+// and 8 files (see batchBySize in lib/VersionHistory.ts), re-rendering
+// after each batch lands so cards fill in progressively -- "Signed" status
+// shows up without the user having to expand each one first, without
+// holding every revision's bytes in flight to the server at once.
 async function loadAllRevisionSummaries(requestedSessionId, revisions) {
   const pending = revisions.filter((rev) => !rev.loaded);
   if (!pending.length) return;
 
-  const records = await Promise.all(pending.map((rev) => getRevisionRecord(requestedSessionId, rev.index)));
-  if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
-
-  const formData = new FormData();
-  pending.forEach((rev, i) => {
-    const record = records[i];
-    if (record) formData.append('pdfDocument', revisionToBlob(record), `revision-${rev.index}.pdf`);
-  });
-  if (![...formData.keys()].length) return;
-
-  const res = await fetch('/api/revisions', { method: 'POST', body: formData });
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data) return;
-  if (requestedSessionId !== documentSessionId) return;
-
-  const rawRevisions = Array.isArray(data.revisions) ? data.revisions : [];
-  let rawI = 0;
-  pending.forEach((rev, i) => {
-    if (!records[i]) return; // record vanished locally between listing and fetch; leave unloaded
-    const raw = rawRevisions[rawI++] || {};
-    const { index: _ignoredIndex, isFinal: _ignoredIsFinal, ...summary } = raw;
-    const result = { ...summary, index: rev.index, loaded: true };
-    if (revisionSummaryCacheSessionId === requestedSessionId) {
-      revisionSummaryCache.set(rev.index, result);
-    }
-    Object.assign(rev, result);
-  });
-
-  if (revisionsData === revisions) renderRevisionsTimeline(revisions);
+  const batches = batchBySize(pending, 8 * 1024 * 1024, 8);
+  for (const batch of batches) {
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
+    await ensureSummariesLoaded(requestedSessionId, batch).catch(() => {});
+    if (requestedSessionId !== documentSessionId) return;
+    if (revisionsData === revisions) renderRevisionsTimeline(revisions);
+  }
 }
 
 const TAG_LABEL_CLASS = {
@@ -8719,7 +9753,10 @@ async function viewRevisionInMainViewer(revIndex) {
   const requestedSessionId = documentSessionId; // guards against a stale response landing after a newer upload
   try {
     const doc = await fetchRevisionPdfDoc(revIndex, requestedSessionId);
-    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
+    if (requestedSessionId !== documentSessionId) {
+      doc.destroy(); // a newer upload superseded this request -- nothing else references this doc
+      return;
+    }
     if (revisionViewDoc && revisionViewDoc !== doc) revisionViewDoc.destroy();
     revisionViewDoc = doc;
     revisionViewIndex = revIndex;
@@ -8763,9 +9800,9 @@ async function renderRevisionViewPage(num) {
 
 async function downloadRevisionFile(revIndex) {
   try {
-    const rev = await getRevision(documentSessionId, revIndex);
-    if (!rev) throw new Error(`Version ${revIndex} is not available locally.`);
-    const url = URL.createObjectURL(revisionToBlob(rev));
+    const blob = await getVersionBlob(documentSessionId, revIndex);
+    if (!blob) throw new Error(`Version ${revIndex} is not available locally.`);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     const baseName = (activeFile.name || 'document.pdf').replace(/\.pdf$/i, '');
@@ -8946,6 +9983,7 @@ function resetRevisionsDiffState() {
   currentDiffFromRevIndex = null;
   currentDiffToRevIndex = null;
   currentDiffActiveTab = 'overview';
+  diffDetailsRendered = false;
   diffCurrentPage = 1;
   pendingDiffLandingTab = null;
   suspendedRevisionsView = null;
@@ -9453,6 +10491,7 @@ function whereItIsHtml(item) {
 function renderRawObjectSourceTree(containerId, node, term) {
   const container = document.getElementById(containerId);
   if (!container) return;
+  clearLazyMetaEntriesIn(container);
   if (node === null || node === undefined || typeof node !== 'object') {
     container.innerHTML = '<p class="diff-empty-note">Not present on this side.</p>';
     return;
@@ -9909,6 +10948,15 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
   if (subject) subject.textContent = 'Comparing…';
   openRevisionsCompareSheet();
 
+  // Compare supersedes a single-revision "View" that may still be open --
+  // release its document rather than leaving it resident until the next
+  // exitDiffViewMode().
+  if (revisionViewDoc) {
+    revisionViewDoc.destroy();
+    revisionViewDoc = null;
+    revisionViewIndex = null;
+  }
+
   // A new pair invalidates the snapshots the Visual tab renders from. Without
   // this, opening that tab while the new ones load quietly shows the previous
   // comparison instead -- the indices move first so renderVisualDiffView()
@@ -9939,16 +10987,16 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
   }
 
   try {
-    const [fromRev, toRev] = await Promise.all([
-      getRevision(requestedSessionId, from),
-      getRevision(requestedSessionId, to),
+    const [fromBlob, toBlob] = await Promise.all([
+      getVersionBlob(requestedSessionId, from),
+      getVersionBlob(requestedSessionId, to),
     ]);
-    if (!fromRev || !toRev) throw new Error('One of the selected revisions is not available locally.');
+    if (!fromBlob || !toBlob) throw new Error('One of the selected revisions is not available locally.');
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
 
     const formData = new FormData();
-    formData.append('from', revisionToBlob(fromRev), `revision-${from}.pdf`);
-    formData.append('to', revisionToBlob(toRev), `revision-${to}.pdf`);
+    formData.append('from', fromBlob, `revision-${from}.pdf`);
+    formData.append('to', toBlob, `revision-${to}.pdf`);
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
     const res = await fetch('/api/revisions/diff', { method: 'POST', body: formData });
     let data;
@@ -9963,7 +11011,14 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
     currentDiffResultData = data.diff;
 
     renderDiffOverview(data.diff);
-    renderDiffDetails(data.diff, from, to);
+    // The Details tab's object chips are the most expensive thing this
+    // panel builds (one card per changed object, each with badges/meta rows/
+    // dictionary-change lists) -- skip building them until that tab is
+    // actually the one being shown. switchDiffTab() builds them lazily on
+    // first visit; this covers the case where the compare already landed on
+    // Details (e.g. via pendingDiffLandingTab from a cross-link).
+    diffDetailsRendered = currentDiffActiveTab === 'details';
+    if (diffDetailsRendered) renderDiffDetails(data.diff, from, to);
     renderCompareVerdict(data.diff);
     viewTabs.hidden = false;
     // Reveal whichever tab is current -- everything above rendered hidden.
@@ -10000,9 +11055,9 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
 // ---------------------------------------------------------------
 
 async function fetchRevisionPdfDoc(revisionIndex, sessionId = documentSessionId) {
-  const rev = await getRevision(sessionId, revisionIndex);
-  if (!rev) throw new Error(`Could not load snapshot for revision ${revisionIndex}`);
-  return await pdfjsLib.getDocument({ data: rev.buffer, worker: getDiffPdfWorker() }).promise;
+  const bytes = await getVersionBytes(sessionId, revisionIndex);
+  if (!bytes) throw new Error(`Could not load snapshot for revision ${revisionIndex}`);
+  return await pdfjsLib.getDocument({ data: bytes, worker: getDiffPdfWorker() }).promise;
 }
 
 // Re-acquire whichever comparison snapshots aren't currently open. Both are
@@ -10047,10 +11102,15 @@ async function loadDiffDocs() {
   const requestedFrom = currentDiffFromRevIndex;
   const requestedTo = currentDiffToRevIndex;
 
-  const [docA, docB] = await Promise.all([
+  // allSettled rather than all: a rejection on one side must not orphan the
+  // other side's already-resolved document -- with Promise.all, that
+  // document is never captured anywhere and simply leaks.
+  const [resultA, resultB] = await Promise.allSettled([
     diffDocA || fetchRevisionPdfDoc(requestedFrom, requestedSessionId),
     diffDocB || fetchRevisionPdfDoc(requestedTo, requestedSessionId),
   ]);
+  const docA = resultA.status === 'fulfilled' ? resultA.value : null;
+  const docB = resultB.status === 'fulfilled' ? resultB.value : null;
 
   // Torn down, superseded by a newer document, or aimed at a different pair of
   // revisions while these were loading. Anything never assigned is ours to
@@ -10059,9 +11119,15 @@ async function loadDiffDocs() {
       || requestedSessionId !== documentSessionId
       || requestedFrom !== currentDiffFromRevIndex
       || requestedTo !== currentDiffToRevIndex) {
-    if (docA !== diffDocA) docA?.destroy();
-    if (docB !== diffDocB) docB?.destroy();
+    if (docA && docA !== diffDocA) docA.destroy();
+    if (docB && docB !== diffDocB) docB.destroy();
     return;
+  }
+
+  if (resultA.status === 'rejected' || resultB.status === 'rejected') {
+    if (docA && docA !== diffDocA) docA.destroy();
+    if (docB && docB !== diffDocB) docB.destroy();
+    throw resultA.status === 'rejected' ? resultA.reason : resultB.reason;
   }
 
   const changed = docA !== diffDocA || docB !== diffDocB;
@@ -10091,6 +11157,11 @@ function switchDiffTab(targetTab) {
   if (!DIFF_TAB_PANELS[targetTab]) targetTab = 'overview';
   currentDiffActiveTab = targetTab;
   markActiveDiffTab(targetTab);
+
+  if (targetTab === 'details' && !diffDetailsRendered && currentDiffResultData) {
+    renderDiffDetails(currentDiffResultData, currentDiffFromRevIndex, currentDiffToRevIndex);
+    diffDetailsRendered = true;
+  }
 
   Object.entries(DIFF_TAB_PANELS).forEach(([tab, id]) => {
     const panel = document.getElementById(id);
@@ -10585,6 +11656,11 @@ async function drawVisualDiffBase(page, side, pageNum, scale, width, height) {
     off.height = 0;
     if (err && err.name === 'RenderingCancelledException') return false;
     throw err;
+  } finally {
+    // Release the page's cached fonts/operator list on both outcomes --
+    // otherwise every diff render (there can be many across a comparison)
+    // accumulates one page's worth of pdf.js-internal caches.
+    page.cleanup();
   }
 
   releaseVisualDiffBase();
@@ -10927,8 +12003,11 @@ async function loadCertificatesIfNeeded() {
     return;
   }
 
-  const cacheKey = `${documentSessionId || ''}:${documentRevisionCount}:${activeFile.name}:${activeFile.size}`;
-  if (certificatesLoadedForFile === cacheKey && certificatesData) {
+  // Reference equality with activeFile, not a session:count:name:size key --
+  // an undo/redo/certificate-modify sequence can reuse a revision index for
+  // genuinely different bytes, and two edits can coincidentally share a
+  // name+size. Every load/edit always produces a new File instance.
+  if (certificatesLoadedForFile === activeFile && certificatesData) {
     renderCertificatesPanel(certificatesData);
     return;
   }
@@ -10958,7 +12037,7 @@ async function loadCertificatesIfNeeded() {
     if (!response.ok) throw new Error(payload?.error || 'The certificates could not be read.');
 
     certificatesData = payload.report;
-    certificatesLoadedForFile = cacheKey;
+    certificatesLoadedForFile = requestedFile;
     renderCertificatesPanel(certificatesData);
   } catch (error) {
     if (requestedFile !== activeFile) return;
@@ -12519,11 +13598,23 @@ async function handleCertificateFilePicked(file) {
 
 async function confirmCertificateModification() {
   const state = pendingCertificateModification;
-  if (!state || !activeFile) return;
+  // Also blocked mid-load/mid-update, the same as undo/redo -- pdfDoc and
+  // documentRevisionCount are momentarily inconsistent then.
+  if (!state || !activeFile || isDocumentUpdating || documentLoadInFlight) return;
+
+  // Let any in-flight hydration finish writing before this edit reads
+  // documentRevisionCount / writes its own row.
+  await ensureRevisionHydration();
 
   const applyBtn = document.getElementById('btnCertificateModifyApply');
   applyBtn.disabled = true;
   const toast = showNotification('Rewriting the signature…', 'loading', 0);
+  // Captured before the request, the same pattern applyPendingFieldChanges
+  // uses for preApplySnapshot: committed to undo history only on success, so
+  // a failed modification (which processNewFile rolls back on its own)
+  // never leaves a no-op undo step, and redo never points at a version this
+  // modification's edit write is about to overwrite.
+  const preModifySnapshot = captureDocumentSnapshot();
 
   try {
     const formData = new FormData();
@@ -12552,6 +13643,7 @@ async function confirmCertificateModification() {
     // One reload path for everything: certificates, chain, validation,
     // signatures and revisions all refresh from processNewFile.
     await processNewFile(updated, { preservePage: true, isEdit: true });
+    commitFieldHistorySnapshot(preModifySnapshot);
 
     const removed = meta?.removedCertificates?.length ? ` Removed ${meta.removedCertificates.join(', ')}.` : '';
     showNotification(
@@ -13023,6 +14115,10 @@ function buildTourSteps() {
       body: "Every saved version of this file, oldest first, badged by how it was produced. This sample has three, all imported from the file's own embedded history: the original terms, a clause change plus new fields, and the signed final version — each a full rewrite of the PDF, not an appended update.",
       enter: async () => {
         await tourGoToSection('navBtnRevisions');
+        // The sample's three versions come from its embedded chain --
+        // without this, the panel can render before hydration has finished
+        // unpacking it and show just the one (current) version.
+        await ensureRevisionHydration();
         await loadRevisionsIfNeeded();
         await waitFor(() => !document.getElementById('revisionsTimeline')?.hidden);
         document.querySelector('[data-rev-toggle="3"]')?.click();

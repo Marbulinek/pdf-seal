@@ -14,6 +14,7 @@ import { parseCertificateFile, parseCertificate } from "./lib/CertificateModel";
 import { applyCertificateOperation, CertificateModificationError } from "./lib/PdfCertificateModifier";
 import { checkCertificate, checkLink, buildChain } from "./lib/CertificateChain";
 import { simulateTrust } from "./lib/TrustSimulation";
+import { encodeMultipart } from "./lib/MultipartResponse";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -370,6 +371,12 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   let outputPath: string | null = null;
+  // Ask for the updated field list alongside the PDF, in one response, so
+  // the client doesn't have to re-upload the file to /api/info just to
+  // learn what it already just told the server to create. Best-effort: a
+  // client that doesn't ask for it, or a listFields() failure below, both
+  // fall back to the plain PDF download every caller already handles.
+  const withFields = req.query.withFields === "true";
 
   try {
     const safePath = resolveUploadPath(file.path);
@@ -385,59 +392,38 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
       throw new Error("No changes to apply.");
     }
 
-    for (const op of ops) {
-      if (!op || typeof op !== "object") continue;
+    tool.applyFieldOps(ops);
 
-      if (op.op === "add") {
-        const page = parseInt(op.page, 10) || 0;
-        const name = String(op.name || `SigField_${Date.now()}`);
-        const fieldOptions = {
-          x: parseFloat(op.x) || 50,
-          y: parseFloat(op.y) || 50,
-          width: parseFloat(op.width) || 200,
-          height: parseFloat(op.height) || 60,
-          required: op.required === true || op.required === "true",
-        };
-        if (op.type === "text") {
-          tool.addTextField(page, name, { ...fieldOptions, multiline: op.multiline === true || op.multiline === "true" });
-        } else {
-          tool.addSignatureField(page, name, fieldOptions);
-        }
-      } else if (op.op === "edit") {
-        const originalName = String(op.originalName || "");
-        const newName = String(op.name || originalName);
-        if (!originalName) throw new Error("Field name is required.");
-
-        if (originalName !== newName) {
-          tool.renameField(originalName, newName);
-        }
-
-        const x = parseFloat(op.x);
-        const y = parseFloat(op.y);
-        const width = parseFloat(op.width);
-        const height = parseFloat(op.height);
-        if ([x, y, width, height].every((value) => Number.isFinite(value))) {
-          tool.setFieldRect(newName, { x, y, width, height });
-        }
-
-        tool.setFieldRequired(newName, op.required === true || op.required === "true");
-        if (op.multiline !== undefined) {
-          const fieldInfo = tool.listFields().find((f: any) => f.name === newName);
-          if (fieldInfo?.type === "TextField") {
-            tool.setFieldMultiline(newName, op.multiline === true || op.multiline === "true");
-          }
-        }
-      } else if (op.op === "remove") {
-        const name = String(op.name || "");
-        if (!name) throw new Error("Field name is required.");
-        tool.removeField(name);
-      } else {
-        throw new Error(`Unknown operation "${op.op}".`);
+    if (withFields) {
+      // pdf-lib's save() adds appearance objects in memory, so the field
+      // list has to be read back *after* toBytes(), not before it.
+      let bytes: Uint8Array | null = null;
+      let fields: any[] | null = null;
+      try {
+        bytes = await tool.toBytes();
+        fields = tool.listFields();
+      } catch (_e) {
+        bytes = null;
+        fields = null;
       }
+      if (bytes && fields) {
+        const multipart = encodeMultipart([
+          { name: "pdfDocument", filename: "signed-document.pdf", contentType: "application/pdf", data: Buffer.from(bytes) },
+          { name: "fields", contentType: "application/json", data: Buffer.from(JSON.stringify(fields)) },
+        ]);
+        res.setHeader("Content-Type", `multipart/form-data; boundary=${multipart.boundary}`);
+        res.setHeader("Content-Length", String(multipart.body.length));
+        // This response is generated fresh from the just-applied edit, never
+        // a cached representation of anything -- res.send()'s automatic ETag
+        // would just spend time hashing a body nothing will ever revalidate.
+        res.setHeader("Cache-Control", "no-store");
+        res.end(multipart.body);
+        cleanupFiles(file.path, null);
+        return;
+      }
+      // listFields() (or toBytes()) failed -- fall through to the plain
+      // download below, the same response a client without the flag gets.
     }
-
-    tool.setMetadata({ modificationDate: new Date() });
-    tool.clearRevisionSnapshotChain();
 
     outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath, { baseDir: UPLOADS_DIR });
@@ -452,60 +438,17 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
   }
 });
 
-// --- API Endpoint: Read a PDF's Embedded/Native Revision History ---
-// A file can carry its prior revisions in two different ways, and the
-// client hydrates its local IndexedDB revision store from whichever one
-// applies so the Revisions panel reflects what the file actually
-// contains instead of treating every upload as a single fresh document:
-//
-//   1. A PDF exported by this app with "Include revision history" has its
-//      history baked into its own Info dictionary (see
-//      PdfSignatureTool.setRevisionSnapshotChain) -- checked first.
-//   2. Any PDF that has been incrementally updated (the normal way a file
-//      gains a signature/annotation/form-fill after its first save, in
-//      Acrobat or any other tool -- see PdfRevisionTool's module doc)
-//      carries genuine `startxref ... %%EOF` revision boundaries. When
-//      there's no chain but more than one such boundary, each boundary's
-//      byte-range prefix is a complete, independently valid snapshot of
-//      the file as it existed at that point -- used as a fallback so
-//      revision history isn't only recognized for this app's own exports.
-//
-// Returns an empty array for a file with neither (the common case).
-app.post("/api/revisions/embedded", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-  try {
-    const safePath = resolveUploadPath(file.path);
-    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-    let revisions = tool.getRevisionSnapshotChain();
-
-    if (revisions.length < 2) {
-      const fileBytes = fs.readFileSync(safePath);
-      const boundaries = PdfRevisionTool.findRevisionBoundaries(fileBytes);
-      if (boundaries.length > 1) {
-        revisions = boundaries.map((boundary, i) => ({
-          index: i + 1,
-          bytes: Buffer.from(fileBytes.subarray(0, boundary.endOffset)).toString("base64"),
-        }));
-      }
-    }
-
-    res.json({ revisions });
-  } catch (error: any) {
-    logError("api-revisions-embedded", error, { filePath: file.path });
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  } finally {
-    cleanupFiles(file.path);
-  }
-});
-
 // --- API Endpoint: Summarize PDF Revisions ---
 // The client now keeps each edit's snapshot locally (IndexedDB) rather than
 // embedding them in the PDF, so this takes N independent PDF buffers --
 // oldest first -- and summarizes each one. Stateless like every other route
 // here: nothing is persisted or correlated across requests.
-app.post("/api/revisions", uploadLimiter, upload.array("pdfDocument"), async (req: Request, res: Response) => {
+// Capped at 16 files -- the client sends sequential batches of at most 8
+// (see batchBySize in lib/VersionHistory.ts), so this is headroom, not the
+// expected size; it exists so this route can't be made to accept an
+// unbounded multipart body just because the byte-size cap alone wouldn't
+// catch a huge number of tiny files.
+app.post("/api/revisions", uploadLimiter, upload.array("pdfDocument", 16), async (req: Request, res: Response) => {
   const files = Array.isArray(req.files) ? req.files : [];
   if (!files.length) return res.status(400).json({ error: "No files uploaded" });
 
