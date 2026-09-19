@@ -205,10 +205,14 @@ plain top-level functions in `public/index.html`'s script, so they hang off
 
 ## Baseline
 
-Recorded before any change in this plan, on the 3-commit head of
-`fix/performance-improvements` (`bc23d97`). Fill in after running the
-scenarios above once against that commit; re-measure after each numbered
-commit in the plan and compare.
+The table below was the plan for measuring every scenario above,
+before-vs-after, against the 3-commit head of `fix/performance-improvements`
+(`bc23d97`), using the instrumentation snippet. That full instrumented run
+was not actually executed commit-by-commit during this work -- what follows
+instead is what was concretely measured or directly observed while building
+and browser-testing each commit. The scenarios and snippet above remain the
+right tool for anyone who wants exact `apiCalls`/`usedJSHeapMB`/
+`longTaskTotalMs` numbers for a specific pair of commits.
 
 | Scenario | Metric | Before | After |
 | --- | --- | --- | --- |
@@ -222,8 +226,62 @@ commit in the plan and compare.
 | Startup sweep (reload with stored history) | `longTaskTotalMs` in first 2s | | |
 | Oversize rollback | leaked `liveLoadingTasks` | | |
 
-Expected direction by the end of the plan (see the plan's own Verification
-section for the full list): one full upload per fresh open (was 2) and one
-per Apply (was 2); peak heap opening Revisions no longer scaling with
-N x file size; startup no longer deserializing every stored PDF; ~900KB
-less image data per visit.
+## What actually changed, commit by commit
+
+- **`apply-changes returns the updated field list`** (`?withFields=true`) --
+  removes one full `/api/info` re-upload of the just-saved PDF after every
+  Apply, purely to learn the field list the server already had in hand.
+- **`lightweight undo snapshots`** -- an undo/redo entry no longer carries a
+  duplicated pdf.js document; it's the `File` plus cloned field arrays and a
+  few identifiers. Restoring one only reopens a pdf.js document when it
+  targets a different file than what's currently open (same-file field
+  edits are the common case for undo/redo, and those no longer reopen
+  anything).
+- **`IndexedDB v2` + `delta storage`** -- replaced a single `pdfseal-revisions`
+  store (one full PDF copy per version) with `pdfseal-versions`'
+  `versionMeta`/`versionBytes`/`versionSessions` split, storing an
+  incremental save's *appended tail only* rather than a second full copy.
+  Measured directly against this repo's `native-incremental-6.pdf` fixture
+  (6 versions, 5 of them true incremental saves): storing all 6 as full
+  copies took roughly file-size x 6; storing versions 2-6 as deltas against
+  their predecessor took roughly file-size x 1.2 -- about an 80% reduction
+  for that fixture, verified via direct `versionBytes` object-store
+  inspection plus a byte-exact reconstruction check through the
+  `baseKey` chain.
+- **`persisted, batched revision summaries`** -- a version's badge/
+  diff-ability summary is computed once and cached in `versionMeta.summary`
+  instead of re-derived from bytes on every Versions panel open, and
+  summaries for entries still missing one are fetched in size-bounded
+  batches (≤8MB/≤8 files per request) rather than one request per entry.
+- **`client-side, streamed hydration`** -- removed the
+  `/api/revisions/embedded` route entirely (confirmed unreachable: a direct
+  POST to it now 404s, and network inspection during native/bundled/demo-
+  sample uploads shows zero calls to it). Hydrating a newly opened file's
+  prior revisions no longer uploads the whole file to the server, gets back
+  every prior revision as base64 in one JSON response, and holds the whole
+  chain in memory before writing it out -- it's decoded and written to
+  IndexedDB one entry at a time, client-side.
+- **`lazy UI parts`** -- concrete, directly measured numbers from this pass:
+  - The four largest static images (the logo, always visible in the header,
+    plus three seal illustrations shown in the pending-changes bar, the
+    Help/remove-field modals, and the Share panel) went from ~1.1MB combined
+    to ~84KB, resized in place to roughly 2x their largest on-page display
+    size (all were originally served at up to 1919px wide for a ~230px-wide
+    spot) and recompressed (JPEG quality 78).
+  - `large-images-200-fields.pdf` (this repo's 200-field perf fixture):
+    `drawFieldOverlays()` used to build ~200 fresh `createElement()` subtrees
+    (~8 nodes each) and attach ~8 listeners per field -- around 1,400
+    listeners -- on every single render (page turn, zoom, undo/redo, any
+    field edit). Now one `<template>` clone per field and a fixed set of
+    ~6 delegated listeners on `#overlay-layer` regardless of field count.
+  - The Metadata raw tree's "All PDF Objects (raw)" branch (capped at 500
+    entries) no longer builds and parses each object's own nested subtree
+    into DOM until that specific `<details>` is actually opened -- checked
+    directly: a freshly rendered tree has 0 characters of built HTML under
+    an unopened branch, populated only on its first `toggle`.
+  - Compare Revisions' Details tab (one card per changed object, each with
+    badges/meta rows/dictionary-change lists) is now built on first visit
+    to that tab rather than on every compare regardless of which tab the
+    user lands on -- checked directly: `revisionsDiffResults` stays empty
+    after a compare that lands on Overview, and switching to Details for
+    the first time is what populates it.
