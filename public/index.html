@@ -1756,6 +1756,77 @@
       return batches;
     }
 
+    // Byte-level equivalent of PdfRevisionTool.findRevisionBoundaries's
+    // /startxref\s+\d+\s*%%EOF/g (server-side) -- scans raw bytes directly
+    // instead of decoding to a string first, so it can run against a File's
+    // bytes with no Buffer. Treats 0xA0 as whitespace too, matching what a
+    // latin1-decoded string's \s already does implicitly. Mirrors
+    // lib/VersionHistory.ts's findRevisionEndOffsets -- see there for the
+    // full rationale.
+    const REVISION_BOUNDARY_WS_BYTES = new Set([0x09, 0x0a, 0x0c, 0x0d, 0x20, 0xa0]);
+    function isRevisionBoundaryWhitespace(byte) {
+      return REVISION_BOUNDARY_WS_BYTES.has(byte);
+    }
+    function bytesMatchAt(bytes, pos, pattern) {
+      if (pos + pattern.length > bytes.length) return false;
+      for (let i = 0; i < pattern.length; i++) {
+        if (bytes[pos + i] !== pattern[i]) return false;
+      }
+      return true;
+    }
+    const STARTXREF_BYTES = Array.from('startxref').map((c) => c.charCodeAt(0));
+    const EOF_MARKER_BYTES = Array.from('%%EOF').map((c) => c.charCodeAt(0));
+    function findRevisionEndOffsets(bytes) {
+      const offsets = [];
+      for (let i = 0; i + STARTXREF_BYTES.length <= bytes.length; i++) {
+        if (!bytesMatchAt(bytes, i, STARTXREF_BYTES)) continue;
+
+        let pos = i + STARTXREF_BYTES.length;
+        const wsStart = pos;
+        while (pos < bytes.length && isRevisionBoundaryWhitespace(bytes[pos])) pos++;
+        if (pos === wsStart) continue;
+
+        const digitsStart = pos;
+        while (pos < bytes.length && bytes[pos] >= 0x30 && bytes[pos] <= 0x39) pos++;
+        if (pos === digitsStart) continue;
+
+        while (pos < bytes.length && isRevisionBoundaryWhitespace(bytes[pos])) pos++;
+
+        if (!bytesMatchAt(bytes, pos, EOF_MARKER_BYTES)) continue;
+        offsets.push(pos + EOF_MARKER_BYTES.length);
+      }
+      return offsets;
+    }
+
+    // Parses this app's own bundled revision-chain format -- the raw JSON
+    // string stored under the PdfSealRevisionChainV1/PdfSealRevisionChain
+    // custom Info key, see PdfSignatureTool.setRevisionSnapshotChain -- into
+    // entries sorted oldest-first. Anything that isn't a usable chain
+    // (absent, malformed JSON, not an array, or fewer than 2 entries)
+    // returns an empty array rather than throwing. Mirrors
+    // lib/VersionHistory.ts's parseRevisionChain -- see there for the full
+    // rationale.
+    function parseRevisionChain(raw) {
+      if (!raw) return [];
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return [];
+      }
+      if (!Array.isArray(parsed)) return [];
+
+      const entries = parsed
+        .filter((entry) => entry && typeof entry === 'object' && typeof entry.bytes === 'string')
+        .map((entry) => ({
+          index: Number.isInteger(entry.index) ? entry.index : 1,
+          bytes: entry.bytes,
+        }));
+
+      if (entries.length < 2) return [];
+      return entries.slice().sort((a, b) => a.index - b.index);
+    }
+
     const VERSION_SAVE_KIND_BADGE = {
       incremental: { label: 'Incremental update', tone: 'positive' },
       rewrite: { label: 'Full rewrite', tone: 'neutral' },
@@ -2047,93 +2118,151 @@
       if (documentSessionId) clearVersionSession(documentSessionId).catch(() => {});
     });
 
-    // Client-side counterpart to hydrateEmbeddedRevisions below, for a P2P-received
-    // file (which never gets sent to the server, see the skipServerInfo path in
-    // processNewFile). This app's own revision-chain format is stored as a custom
-    // Info dict entry, which pdf.js already exposes locally via getMetadata()'s
-    // info.Custom -- so the chain can be unpacked without any server round trip.
-    // Only understands this app's own bundle format, not a native incremental-update
-    // chain from another tool (that fallback requires the server-side parser below).
-    // Shared by both hydrate functions below: stores an ordered list of full
-    // PDF byte buffers (oldest first, the currently-loaded file last) as
-    // contiguous local versions, classifying each against the previous one
-    // *actually kept* and skipping any that are byte-identical to it. All but
-    // the last are tagged 'imported' (they came from the file's own embedded
-    // history, not an edit made in this browser); the last keeps its real
-    // classification but is tagged 'upload' since it's the file the user just
-    // opened. Returns the stored count and the final entry's versionKey (the
-    // caller's new activeVersionKey).
-    async function storeHydratedVersionChain(sessionId, buffersInOrder) {
-      let prevBytes = null;
+    // Classifies `currBytes` against the previous step's bytes and stores it
+    // (unless byte-identical), threading {prevBytes, storedIndex,
+    // versionKey} into the next call -- shared by both hydration paths
+    // below so each processes its entries one at a time, never holding more
+    // than the current and previous version's bytes in memory together.
+    async function hydrateStoreStep(sessionId, state, currBytes, source) {
+      const saveKind = classifySave(state.prevBytes, currBytes);
+      if (saveKind === 'identical') return state;
+      const index = state.storedIndex + 1;
+      const versionKey = createSessionId();
+      await beginVersionWrite(sessionId, index, currBytes.buffer, {
+        source, saveKind, versionKey, storage: 'full', baseKey: null, byteLength: currBytes.byteLength,
+      }).catch(reportVersionWriteFailure);
+      return { prevBytes: currBytes, storedIndex: index, versionKey };
+    }
+
+    // Cheap pre-filter for hydrateBundledChain below: if neither string
+    // appears anywhere in the raw bytes, this app's chain format (a literal
+    // JSON string under a custom Info key) cannot be present, *and* it
+    // can't be hidden inside a compressed object stream either (that would
+    // need an /ObjStm) -- so the far more expensive step of actually
+    // opening the file in pdf.js can be skipped entirely for the common
+    // case of a document with no embedded chain at all.
+    const BUNDLED_CHAIN_HINT_STRINGS = ['PdfSealRevisionChain', '/ObjStm'];
+    function mightContainBundledChain(latin1Text) {
+      return BUNDLED_CHAIN_HINT_STRINGS.some((needle) => latin1Text.includes(needle));
+    }
+
+    // Opens `file` on a throwaway PDFWorker/document just long enough to
+    // read getMetadata().info.Custom, then destroys both immediately. This
+    // app's revision-chain format lives in a custom Info dict entry, which
+    // pdf.js already exposes locally -- but that string can be multi-MB,
+    // and reading it through the *live* document (or the shared worker)
+    // would leave pdf.js caching it for that document's entire lifetime.
+    // A disposable worker/document scoped to just this read avoids that.
+    async function readBundledChainRaw(file) {
+      const worker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-hydrate' });
+      let doc = null;
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        doc = await pdfjsLib.getDocument({ data: arrayBuffer, worker }).promise;
+        const meta = await doc.getMetadata().catch(() => null);
+        const custom = meta && meta.info && meta.info.Custom;
+        return (custom && (custom.PdfSealRevisionChainV1 || custom.PdfSealRevisionChain)) || null;
+      } catch (_err) {
+        return null;
+      } finally {
+        if (doc) doc.destroy();
+        worker.destroy();
+      }
+    }
+
+    // This app's own bundled revision-chain format (a fresh export with
+    // "Include revision history" turned on). Decodes, classifies, stores
+    // and releases one entry at a time -- dropping `rawChain` and each
+    // entry's base64 string as soon as it's been decoded -- so a chain with
+    // many/large prior versions never holds more than one of them (plus the
+    // current file) in memory at once. Returns null if there's nothing
+    // (embedded chain absent, malformed, or too short to be worth
+    // hydrating) usable to store, so the caller can fall back to native
+    // chain detection.
+    async function hydrateBundledChain(sessionId, file, currentFileBytes) {
+      let rawChain = await readBundledChainRaw(file);
+      if (!rawChain) return null;
+      const entries = parseRevisionChain(rawChain);
+      rawChain = null; // multi-MB string; let go of it now that it's parsed
+      if (!entries.length) return null;
+      if (sessionId !== documentSessionId) return null;
+
+      let state = { prevBytes: null, storedIndex: 0, versionKey: null };
+      const priorEntries = entries.slice(0, -1); // the last entry is just the current file itself
+      for (const entry of priorEntries) {
+        if (sessionId !== documentSessionId) return null;
+        const currBytes = base64ToBytes(entry.bytes);
+        entry.bytes = null; // drop the decoded-from string now that it's been used
+        state = await hydrateStoreStep(sessionId, state, currBytes, 'imported');
+      }
+      if (sessionId !== documentSessionId) return null;
+      state = await hydrateStoreStep(sessionId, state, currentFileBytes, 'upload');
+
+      return { count: state.storedIndex, versionKey: state.versionKey };
+    }
+
+    // Fallback for a file with no embedded chain of this app's own, but
+    // that has been incrementally updated by some other tool (the normal
+    // way a PDF gains a signature/annotation/form-fill after its first
+    // save) -- found by scanning the raw bytes directly for genuine
+    // `startxref ... %%EOF` boundaries (findRevisionEndOffsets), no pdf.js
+    // needed at all. Since these boundaries are exact append points by
+    // construction, the first is stored in full and each later one as the
+    // literal delta between consecutive boundaries -- read via file.slice()
+    // (the Blob, not the in-memory `bytes` this function was handed) so
+    // that once the boundaries themselves are known, the full-file byte
+    // array can fall out of scope rather than sticking around for the rest
+    // of the loop. The final entry runs to the file's true end rather than
+    // its last detected boundary, in case of trailing bytes after it.
+    async function hydrateNativeChain(sessionId, file, bytes) {
+      const boundaries = findRevisionEndOffsets(bytes);
+      bytes = null;
+      if (boundaries.length < 2) return null;
+
       let storedIndex = 0;
       let versionKey = null;
-      for (let i = 0; i < buffersInOrder.length; i++) {
-        const currBytes = buffersInOrder[i];
-        const saveKind = classifySave(prevBytes, currBytes);
-        if (saveKind === 'identical') continue;
+      let priorVersionKey = null;
+      let start = 0;
+
+      for (let i = 0; i < boundaries.length; i++) {
+        if (sessionId !== documentSessionId) return null;
+        const isLast = i === boundaries.length - 1;
+        const end = isLast ? file.size : boundaries[i];
+        const segment = new Uint8Array(await file.slice(start, end).arrayBuffer());
+
         storedIndex += 1;
-        const isFinal = i === buffersInOrder.length - 1;
         versionKey = createSessionId();
-        // Always a full copy for now -- hydrated entries are decoded from
-        // base64 one at a time (see storeHydratedVersionChain's own
-        // doc-comment above), not read incrementally, so there's no natural
-        // "previous write" to slice a delta against here yet.
-        await beginVersionWrite(sessionId, storedIndex, currBytes.buffer, {
-          source: isFinal ? 'upload' : 'imported', saveKind, versionKey,
-          storage: 'full', baseKey: null, byteLength: currBytes.byteLength,
+        await beginVersionWrite(sessionId, storedIndex, segment.buffer, {
+          source: isLast ? 'upload' : 'imported', saveKind: i === 0 ? 'initial' : 'incremental',
+          versionKey, storage: i === 0 ? 'full' : 'delta', baseKey: i === 0 ? null : priorVersionKey,
+          byteLength: end, // the full reconstructed size, not just this segment's
         }).catch(reportVersionWriteFailure);
-        prevBytes = currBytes;
+
+        priorVersionKey = versionKey;
+        start = end;
       }
+
       return { count: storedIndex, versionKey };
     }
 
-    async function hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId) {
-      const meta = await pdfJsDoc.getMetadata().catch(() => null);
-      const custom = meta && meta.info && meta.info.Custom;
-      const rawChain = custom && (custom.PdfSealRevisionChainV1 || custom.PdfSealRevisionChain);
-      if (!rawChain) return;
+    // Unpacks whichever kind of revision history `file` carries -- this
+    // app's own bundled chain, checked first, then a native incremental
+    // chain from another tool -- into local versions 1..N-1, leaving
+    // version N (the already-stored current file) untouched. Does nothing
+    // for a file with neither.
+    async function hydrateRevisions(sessionId, file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const currentFileBytes = new Uint8Array(arrayBuffer);
+      if (sessionId !== documentSessionId) return null;
 
-      let chain;
-      try {
-        chain = JSON.parse(rawChain);
-      } catch (_err) {
-        return;
+      const latin1Text = new TextDecoder('latin1').decode(currentFileBytes);
+      if (mightContainBundledChain(latin1Text)) {
+        const bundled = await hydrateBundledChain(sessionId, file, currentFileBytes);
+        if (bundled) return bundled;
+        if (sessionId !== documentSessionId) return null;
       }
-      if (!Array.isArray(chain)) return;
-      chain = chain.filter((entry) => entry && typeof entry === 'object' && typeof entry.bytes === 'string');
-      if (chain.length < 2) return;
-      if (sessionId !== documentSessionId) return; // a newer upload superseded this one
 
-      const sorted = chain.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
-      const buffers = sorted.slice(0, -1).map((entry) => base64ToBytes(entry.bytes));
-      buffers.push(new Uint8Array(await file.arrayBuffer()));
-      if (sessionId !== documentSessionId) return;
-      const hydrated = await storeHydratedVersionChain(sessionId, buffers);
-      documentRevisionCount = hydrated.count;
-      activeVersionKey = hydrated.versionKey;
-    }
-
-    // Unpacks a PDF's embedded revision chain (see /api/revisions/embedded)
-    // into local IndexedDB versions 1..N-1, leaving version N -- the
-    // already-stored current file -- untouched. Does nothing for a file with
-    // no embedded chain (i.e. one revision or fewer reported).
-    async function hydrateEmbeddedRevisions(file, sessionId) {
-      const formData = new FormData();
-      formData.append('pdfDocument', file);
-      const res = await fetch('/api/revisions/embedded', { method: 'POST', body: formData });
-      if (!res.ok) return;
-      const data = await res.json();
-      const chain = Array.isArray(data.revisions) ? data.revisions : [];
-      if (chain.length < 2) return;
-      if (sessionId !== documentSessionId) return; // a newer upload superseded this one
-
-      const sorted = chain.slice().sort((a, b) => a.index - b.index);
-      const buffers = sorted.slice(0, -1).map((entry) => base64ToBytes(entry.bytes));
-      buffers.push(new Uint8Array(await file.arrayBuffer()));
-      if (sessionId !== documentSessionId) return;
-      const hydrated = await storeHydratedVersionChain(sessionId, buffers);
-      documentRevisionCount = hydrated.count;
-      activeVersionKey = hydrated.versionKey;
+      return hydrateNativeChain(sessionId, file, currentFileBytes);
     }
 
     // ---------------------------------------------------------------
@@ -3143,7 +3272,7 @@
     // ensureRevisionHydration() can force it to run early. The idle-deferred
     // callback and a direct ensureRevisionHydration() call race to invoke
     // ticket.start() -- whichever comes first wins, the other is a no-op.
-    function scheduleEmbeddedRevisionHydration(file, sessionId, pdfJsDoc, skipServerInfo) {
+    function scheduleEmbeddedRevisionHydration(file, sessionId) {
       let started = false;
       let resolveStart;
       const startedPromise = new Promise((resolve) => { resolveStart = resolve; });
@@ -3151,10 +3280,11 @@
       const run = async () => {
         if (sessionId !== documentSessionId || activeFile !== file) return;
         try {
-          if (skipServerInfo) {
-            await hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId);
-          } else {
-            await hydrateEmbeddedRevisions(file, sessionId);
+          const hydrated = await hydrateRevisions(sessionId, file);
+          if (sessionId !== documentSessionId || activeFile !== file) return;
+          if (hydrated) {
+            documentRevisionCount = hydrated.count;
+            activeVersionKey = hydrated.versionKey;
           }
         } catch (_err) {
           if (sessionId !== documentSessionId || activeFile !== file) return;
@@ -3551,7 +3681,7 @@
         // path. Edits already belong to an existing local session and do not
         // need this import.
         if (!isEdit) {
-          scheduleEmbeddedRevisionHydration(file, documentSessionId, nextPdfDoc, skipServerInfo);
+          scheduleEmbeddedRevisionHydration(file, documentSessionId);
         }
 
         // Only now that the replacement document has fully loaded is the
@@ -7651,7 +7781,7 @@ function renderDocumentInfoCard(info) {
 // independent of this browser's locally-stored Versions history, though for
 // a file that was incrementally saved before being uploaded, the two
 // usually line up (each boundary gets imported as its own "Incremental
-// update" version -- see hydrateEmbeddedRevisions). The link is just a
+// update" version -- see hydrateNativeChain). The link is just a
 // cross-reference to help make that connection, not a claim the counts are
 // always identical.
 function incrementalUpdatesCell(count) {

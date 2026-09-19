@@ -438,54 +438,6 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
   }
 });
 
-// --- API Endpoint: Read a PDF's Embedded/Native Revision History ---
-// A file can carry its prior revisions in two different ways, and the
-// client hydrates its local IndexedDB revision store from whichever one
-// applies so the Revisions panel reflects what the file actually
-// contains instead of treating every upload as a single fresh document:
-//
-//   1. A PDF exported by this app with "Include revision history" has its
-//      history baked into its own Info dictionary (see
-//      PdfSignatureTool.setRevisionSnapshotChain) -- checked first.
-//   2. Any PDF that has been incrementally updated (the normal way a file
-//      gains a signature/annotation/form-fill after its first save, in
-//      Acrobat or any other tool -- see PdfRevisionTool's module doc)
-//      carries genuine `startxref ... %%EOF` revision boundaries. When
-//      there's no chain but more than one such boundary, each boundary's
-//      byte-range prefix is a complete, independently valid snapshot of
-//      the file as it existed at that point -- used as a fallback so
-//      revision history isn't only recognized for this app's own exports.
-//
-// Returns an empty array for a file with neither (the common case).
-app.post("/api/revisions/embedded", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-  try {
-    const safePath = resolveUploadPath(file.path);
-    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-    let revisions = tool.getRevisionSnapshotChain();
-
-    if (revisions.length < 2) {
-      const fileBytes = fs.readFileSync(safePath);
-      const boundaries = PdfRevisionTool.findRevisionBoundaries(fileBytes);
-      if (boundaries.length > 1) {
-        revisions = boundaries.map((boundary, i) => ({
-          index: i + 1,
-          bytes: Buffer.from(fileBytes.subarray(0, boundary.endOffset)).toString("base64"),
-        }));
-      }
-    }
-
-    res.json({ revisions });
-  } catch (error: any) {
-    logError("api-revisions-embedded", error, { filePath: file.path });
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  } finally {
-    cleanupFiles(file.path);
-  }
-});
-
 // --- API Endpoint: Summarize PDF Revisions ---
 // The client now keeps each edit's snapshot locally (IndexedDB) rather than
 // embedding them in the PDF, so this takes N independent PDF buffers --
