@@ -1408,8 +1408,16 @@
     // Revisions tool state
     let documentSessionId = null;    // groups this document's revision snapshots in IndexedDB (see revisionStore below)
     let documentRevisionCount = 0;   // how many revisions are stored under documentSessionId so far
+    // The versionKey of the version currently active (documentSessionId +
+    // documentRevisionCount), i.e. the row actually shown in the viewer.
+    // Tracked alongside documentRevisionCount because an index alone is
+    // ambiguous -- undo/redo followed by a new edit can reuse an index that
+    // used to point at different bytes -- so anything that needs to name
+    // "this exact stored version" (a cache key, a delta's base) uses this
+    // instead of the index.
+    let activeVersionKey = null;
     let revisionsData = null;        // one entry per local revision for documentSessionId's current revision count; each entry's full summary is loaded lazily (see loadRevisionSummary)
-    let revisionsLoadedForFile = null; // "<documentSessionId>:<revisionCount>" revisionsData corresponds to (cache-invalidation key)
+    let revisionsLoadedForFile = null; // "<documentSessionId>:<activeVersionKey>" revisionsData corresponds to (cache-invalidation key)
     let revisionsLoading = false;
     // The current document's embedded-revision-chain hydration: a ticket
     // {sessionId, file, promise, start()} set synchronously by
@@ -1555,39 +1563,81 @@
     let activeFieldDiv = null;
 
     // ---------------------------------------------------------------
-    // Local revision store (IndexedDB)
+    // Local version store (IndexedDB)
     // ---------------------------------------------------------------
     // Every edit's resulting PDF is cached here, per document session, so
     // the server never has to hold or re-transmit growing revision history
     // -- it only sees the current, lean document on every edit. History is
     // only ever bundled back into a PDF on explicit export (see the Save
     // As / Copy Base64 flows), and lives only in this browser.
-    const REVISION_DB_NAME = 'pdfseal-revisions';
-    const REVISION_STORE_NAME = 'revisions';
-    let revisionDbPromise = null;
+    //
+    // `pdfseal-versions` is a new database name rather than a version bump
+    // on the old `pdfseal-revisions` -- an IndexedDB upgrade blocks until
+    // every other tab with the old database open closes it, and a fresh
+    // name sidesteps that entirely. Sessions are ephemeral (see
+    // sweepStaleVersionSessions below), so there's no data worth migrating
+    // across; the old database is just deleted once nothing reads it
+    // anymore (see deleteOldRevisionDbAtIdle below).
+    //
+    // All three stores are keyed [sessionId, index] except versionSessions
+    // (keyed by sessionId alone) -- no bySession index on the first two,
+    // since IDBKeyRange.bound([sid,0],[sid,Infinity]) directly on that
+    // composite key does the same job a separate index would, without the
+    // extra write cost of maintaining one.
+    //   versionMeta    {sessionId, index, versionKey, savedAt, source, saveKind, byteLength, storage, baseKey, summary}
+    //   versionBytes   {sessionId, index, buffer}
+    //   versionSessions{sessionId, lastSavedAt}
+    const VERSION_DB_NAME = 'pdfseal-versions';
+    const VERSION_META_STORE = 'versionMeta';
+    const VERSION_BYTES_STORE = 'versionBytes';
+    const VERSION_SESSIONS_STORE = 'versionSessions';
+    let versionDbPromise = null;
 
-    function openRevisionDb() {
-      if (revisionDbPromise) return revisionDbPromise;
-      revisionDbPromise = new Promise((resolve, reject) => {
-        const req = indexedDB.open(REVISION_DB_NAME, 1);
+    function openVersionDb() {
+      if (versionDbPromise) return versionDbPromise;
+      versionDbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(VERSION_DB_NAME, 1);
         req.onupgradeneeded = () => {
           const db = req.result;
-          if (!db.objectStoreNames.contains(REVISION_STORE_NAME)) {
-            const store = db.createObjectStore(REVISION_STORE_NAME, { keyPath: ['sessionId', 'index'] });
-            store.createIndex('bySession', 'sessionId');
+          if (!db.objectStoreNames.contains(VERSION_META_STORE)) {
+            db.createObjectStore(VERSION_META_STORE, { keyPath: ['sessionId', 'index'] });
+          }
+          if (!db.objectStoreNames.contains(VERSION_BYTES_STORE)) {
+            db.createObjectStore(VERSION_BYTES_STORE, { keyPath: ['sessionId', 'index'] });
+          }
+          if (!db.objectStoreNames.contains(VERSION_SESSIONS_STORE)) {
+            db.createObjectStore(VERSION_SESSIONS_STORE, { keyPath: 'sessionId' });
           }
         };
         req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error || new Error('Could not open the local revision store.'));
+        req.onerror = () => reject(req.error || new Error('Could not open the local version store.'));
       }).catch((err) => {
         // Don't cache a failed open forever -- a transient failure (e.g. a
         // storage quota hiccup) would otherwise permanently disable local
-        // revision tracking for the rest of the page's life.
-        revisionDbPromise = null;
+        // version tracking for the rest of the page's life.
+        versionDbPromise = null;
         throw err;
       });
-      return revisionDbPromise;
+      return versionDbPromise;
     }
+
+    // The pre-v2 database, left behind for a tab that still had it open at
+    // the moment this shipped. Deleted at idle rather than up front, since
+    // another tab still on the old code holding it open would otherwise
+    // block this indefinitely; best-effort, and harmless to retry (or skip)
+    // on a later visit if it's still blocked.
+    const OLD_REVISION_DB_NAME = 'pdfseal-revisions';
+    function deleteOldRevisionDbAtIdle() {
+      const run = () => {
+        try { indexedDB.deleteDatabase(OLD_REVISION_DB_NAME); } catch { /* best-effort */ }
+      };
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 5000 });
+      } else {
+        setTimeout(run, 2000);
+      }
+    }
+    deleteOldRevisionDbAtIdle();
 
     // ---------------------------------------------------------------
     // Version classification (pure) -- same logic as lib/VersionHistory.ts.
@@ -1612,6 +1662,29 @@
         if (isPrefix) return 'incremental';
       }
       return 'rewrite';
+    }
+
+    // classifySave's counterpart for a previous version that's a Blob (here,
+    // the outgoing File) rather than an already-in-memory Uint8Array -- reads
+    // it in chunks instead of pulling the whole thing into memory up front.
+    // A length check alone decides 'rewrite' when the new file is shorter;
+    // otherwise chunks are compared starting from the head, where a genuine
+    // rewrite diverges immediately, so most calls never read the rest.
+    // Mirrors lib/VersionHistory.ts's classifySaveAgainstBlob -- see there
+    // for the full rationale.
+    async function classifySaveAgainstBlob(prevBlob, currBytes, chunkSize = 1024 * 1024) {
+      if (!prevBlob) return 'initial';
+      if (currBytes.length < prevBlob.size) return 'rewrite';
+
+      let offset = 0;
+      while (offset < prevBlob.size) {
+        const end = Math.min(offset + chunkSize, prevBlob.size);
+        const prevChunk = new Uint8Array(await prevBlob.slice(offset, end).arrayBuffer());
+        const currChunk = currBytes.subarray(offset, end);
+        if (!versionBytesEqual(prevChunk, currChunk)) return 'rewrite';
+        offset = end;
+      }
+      return currBytes.length === prevBlob.size ? 'identical' : 'incremental';
     }
 
     const VERSION_SAVE_KIND_BADGE = {
@@ -1688,151 +1761,137 @@
       return dividers;
     }
 
-    async function putRevision(sessionId, index, source, meta = {}) {
-      // Stored as an ArrayBuffer rather than the Blob/File itself -- Safari
-      // (particularly in Private Browsing) is known to fail to structured-clone
-      // Blob values into IndexedDB, which silently drops the write. A plain
-      // ArrayBuffer clones reliably everywhere.
-      const buffer = await source.arrayBuffer();
-      const db = await openRevisionDb();
+    // Starts a version write: opens the DB (if not already open), then --
+    // synchronously, no await in between -- opens one readwrite transaction
+    // across all three stores and calls put() on each, plus deletes any
+    // rows already stored above `index` (a version written after an
+    // undo/redo can reuse an index that used to have a since-abandoned
+    // future above it; those rows are now orphaned and would leak
+    // otherwise). The synchronous part matters: `put()` structured-clones
+    // its value the instant it's called, so as long as it runs before
+    // `arrayBuffer` is handed to pdf.js (which transfers/detaches it), the
+    // stored copy is unaffected by that transfer -- but if anything async
+    // ran in between, the caller could race ahead and transfer the buffer
+    // before put() ever captured it.
+    //
+    // Returns a promise for the transaction's actual completion, to be
+    // joined *later* (like a caller's own pendingVersionWrite already is) --
+    // awaiting the returned promise from beginVersionWrite() itself only
+    // waits for put() to have been queued, not for the write to have
+    // reached disk, so the caller can safely move on to the pdf.js load
+    // immediately after.
+    async function beginVersionWrite(sessionId, index, arrayBuffer, meta) {
+      const db = await openVersionDb();
+      const now = Date.now();
+
+      const tx = db.transaction([VERSION_META_STORE, VERSION_BYTES_STORE, VERSION_SESSIONS_STORE], 'readwrite');
+      const metaStore = tx.objectStore(VERSION_META_STORE);
+      const bytesStore = tx.objectStore(VERSION_BYTES_STORE);
+      const sessionsStore = tx.objectStore(VERSION_SESSIONS_STORE);
+
+      bytesStore.put({ sessionId, index, buffer: arrayBuffer });
+      metaStore.put({
+        sessionId, index, versionKey: meta.versionKey, savedAt: now,
+        source: meta.source, saveKind: meta.saveKind,
+        byteLength: arrayBuffer.byteLength,
+        // Every write is a full copy for now -- delta storage (storage:
+        // 'delta', baseKey pointing at the version it extends) lands in a
+        // later commit; the columns exist now so that commit doesn't need
+        // its own schema migration.
+        storage: 'full', baseKey: null, summary: null,
+      });
+      // savedAt here backs sweepStaleVersionSessions() below -- a session
+      // with no writes for a long time is one whose tab was closed (or
+      // crashed) without ever getting a chance to clean up after itself.
+      sessionsStore.put({ sessionId, lastSavedAt: now });
+
+      const orphanedAbove = IDBKeyRange.bound([sessionId, index + 1], [sessionId, Infinity]);
+      metaStore.delete(orphanedAbove);
+      bytesStore.delete(orphanedAbove);
+
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
-        // savedAt backs sweepStaleRevisionSessions() below -- a session with
-        // no writes for a long time is one whose tab was closed (or crashed)
-        // without ever getting a chance to clean up after itself.
-        tx.objectStore(REVISION_STORE_NAME).put({
-          sessionId, index, buffer, savedAt: Date.now(), source: meta.source, saveKind: meta.saveKind,
-        });
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('Could not store the revision locally.'));
+        tx.onabort = () => reject(tx.error || new Error('Could not save this version locally -- the browser may be low on storage space.'));
+        tx.onerror = () => reject(tx.error || new Error('Could not save this version locally.'));
       });
     }
 
-    function revisionToBlob(rev) {
-      return new Blob([rev.buffer], { type: 'application/pdf' });
+    // Surfaces a version write's eventual failure (most commonly a storage
+    // quota error) instead of letting it disappear silently -- the document
+    // itself is fine either way (this only affects local version history),
+    // but the user should know a version wasn't actually saved.
+    function reportVersionWriteFailure(err) {
+      showNotification(`Could not save this version locally: ${err.message}`, 'error', 8000);
     }
 
-    // Deletes every stored revision for `sessionId` above `keepIndex` --
-    // used to bring local storage back to a known-consistent state (just
-    // the current file at index 1) if hydration fails partway through.
-    async function truncateRevisionsAbove(sessionId, keepIndex) {
-      if (!sessionId) return;
-      const db = await openRevisionDb();
+    function versionBytesRowToBlob(row) {
+      return new Blob([row.buffer], { type: 'application/pdf' });
+    }
+
+    async function getVersionBytesRow(sessionId, index) {
+      const db = await openVersionDb();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
-        const idx = tx.objectStore(REVISION_STORE_NAME).index('bySession');
-        const cursorReq = idx.openCursor(IDBKeyRange.only(sessionId));
-        cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
-          if (!cursor) return;
-          if (cursor.value.index > keepIndex) cursor.delete();
-          cursor.continue();
-        };
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('Could not truncate local revisions.'));
+        const tx = db.transaction(VERSION_BYTES_STORE, 'readonly');
+        const req = tx.objectStore(VERSION_BYTES_STORE).get([sessionId, index]);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error || new Error('Could not read a local version.'));
       });
     }
 
-    async function deleteRevision(sessionId, index) {
-      if (!sessionId) return;
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
-        tx.objectStore(REVISION_STORE_NAME).delete([sessionId, index]);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('Could not remove that local revision.'));
-      });
+    // Feeds uploads and downloads -- a Blob, so its bytes never have to sit
+    // in this function's own memory as a standalone array.
+    async function getVersionBlob(sessionId, index) {
+      const row = await getVersionBytesRow(sessionId, index);
+      return row ? versionBytesRowToBlob(row) : null;
     }
 
-    async function listRevisionsForSession(sessionId) {
+    // Feeds pdf.js, which wants an ArrayBuffer/TypedArray for `data`, not a
+    // Blob.
+    async function getVersionBytes(sessionId, index) {
+      const row = await getVersionBytesRow(sessionId, index);
+      return row ? row.buffer : null;
+    }
+
+    // Meta rows only (no PDF bytes) for every version in `sessionId`, oldest
+    // first -- cheap enough to read on every panel check, unlike a scan that
+    // would also pull each version's full buffer out of versionBytes.
+    async function listVersionMetaForSession(sessionId) {
       if (!sessionId) return [];
-      const db = await openRevisionDb();
+      const db = await openVersionDb();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).index('bySession').getAll(IDBKeyRange.only(sessionId));
+        const tx = db.transaction(VERSION_META_STORE, 'readonly');
+        const range = IDBKeyRange.bound([sessionId, 0], [sessionId, Infinity]);
+        const req = tx.objectStore(VERSION_META_STORE).getAll(range);
         req.onsuccess = () => resolve((req.result || []).sort((a, b) => a.index - b.index));
-        req.onerror = () => reject(req.error || new Error('Could not read local revisions.'));
+        req.onerror = () => reject(req.error || new Error('Could not read local versions.'));
       });
     }
 
-    // Cheap sibling of listRevisionsForSession -- reads just the (sessionId, index) keys
-    // via getAllKeys, without pulling every revision's full ArrayBuffer into memory just to
-    // find out which indices exist. Used by loadRevisionsIfNeeded so that a document with many
-    // revisions doesn't load N full PDF buffers on every re-check, only the ones actually
-    // missing from revisionSummaryCache.
-    async function listRevisionIndicesForSession(sessionId) {
-      if (!sessionId) return [];
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).index('bySession').getAllKeys(IDBKeyRange.only(sessionId));
-        req.onsuccess = () => resolve((req.result || []).map((key) => key[1]).sort((a, b) => a - b));
-        req.onerror = () => reject(req.error || new Error('Could not read local revisions.'));
-      });
-    }
-
-    // Sibling of listRevisionIndicesForSession that also pulls each entry's
-    // `source`/`saveKind` (for badging) via a cursor, still without loading
-    // any of the full PDF buffers.
-    async function listRevisionMetaForSession(sessionId) {
-      if (!sessionId) return [];
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const idx = tx.objectStore(REVISION_STORE_NAME).index('bySession');
-        const cursorReq = idx.openCursor(IDBKeyRange.only(sessionId));
-        const result = [];
-        cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
-          if (cursor) {
-            const { index, source, saveKind } = cursor.value;
-            result.push({ index, source, saveKind });
-            cursor.continue();
-          } else {
-            resolve(result.sort((a, b) => a.index - b.index));
-          }
-        };
-        cursorReq.onerror = () => reject(cursorReq.error || new Error('Could not read local revisions.'));
-      });
-    }
-
-    async function getRevisionRecord(sessionId, index) {
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).get([sessionId, index]);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => reject(req.error || new Error('Could not read a local revision.'));
-      });
-    }
-
-    async function getRevision(sessionId, index) {
-      const db = await openRevisionDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).get([sessionId, index]);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => reject(req.error || new Error('Could not read that revision.'));
-      });
-    }
-
-    async function clearRevisionSession(sessionId) {
+    // Deletes exactly one stored version -- used to undo a speculative write
+    // when the load/edit that produced it ultimately fails.
+    async function deleteVersion(sessionId, index) {
       if (!sessionId) return;
-      const db = await openRevisionDb();
+      const db = await openVersionDb();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(REVISION_STORE_NAME);
-        const idx = store.index('bySession');
-        const cursorReq = idx.openCursor(IDBKeyRange.only(sessionId));
-        cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
-          if (cursor) {
-            cursor.delete();
-            cursor.continue();
-          }
-        };
+        const tx = db.transaction([VERSION_META_STORE, VERSION_BYTES_STORE], 'readwrite');
+        tx.objectStore(VERSION_META_STORE).delete([sessionId, index]);
+        tx.objectStore(VERSION_BYTES_STORE).delete([sessionId, index]);
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('Could not clear local revisions.'));
+        tx.onerror = () => reject(tx.error || new Error('Could not remove that local version.'));
+      });
+    }
+
+    async function clearVersionSession(sessionId) {
+      if (!sessionId) return;
+      const db = await openVersionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([VERSION_META_STORE, VERSION_BYTES_STORE, VERSION_SESSIONS_STORE], 'readwrite');
+        const range = IDBKeyRange.bound([sessionId, 0], [sessionId, Infinity]);
+        tx.objectStore(VERSION_META_STORE).delete(range);
+        tx.objectStore(VERSION_BYTES_STORE).delete(range);
+        tx.objectStore(VERSION_SESSIONS_STORE).delete(sessionId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('Could not clear local versions.'));
       });
     }
 
@@ -1845,40 +1904,32 @@
     // newest row is older than STALE_SESSION_MS and deletes it, so storage
     // doesn't grow forever across browser/tab restarts.
     const STALE_SESSION_MS = 6 * 60 * 60 * 1000; // 6 hours
-    async function sweepStaleRevisionSessions() {
-      const db = await openRevisionDb();
-      const lastSavedBySession = await new Promise((resolve, reject) => {
-        const tx = db.transaction(REVISION_STORE_NAME, 'readonly');
-        const req = tx.objectStore(REVISION_STORE_NAME).openCursor();
-        const result = new Map();
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (cursor) {
-            const { sessionId, savedAt } = cursor.value;
-            const prev = result.get(sessionId) || 0;
-            if ((savedAt || 0) > prev) result.set(sessionId, savedAt || 0);
-            cursor.continue();
-          } else {
-            resolve(result);
-          }
-        };
-        req.onerror = () => reject(req.error || new Error('Could not scan local revisions.'));
-      }).catch(() => new Map());
+    async function sweepStaleVersionSessions() {
+      const db = await openVersionDb();
+      // Reads versionSessions only -- one small row per session, never a
+      // full versionBytes buffer -- so this costs nothing proportional to
+      // how much history is actually stored.
+      const sessions = await new Promise((resolve, reject) => {
+        const tx = db.transaction(VERSION_SESSIONS_STORE, 'readonly');
+        const req = tx.objectStore(VERSION_SESSIONS_STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error || new Error('Could not scan local versions.'));
+      }).catch(() => []);
 
       const cutoff = Date.now() - STALE_SESSION_MS;
-      const staleSessions = Array.from(lastSavedBySession.entries())
-        .filter(([, savedAt]) => savedAt < cutoff)
-        .map(([sessionId]) => sessionId);
-      for (const sessionId of staleSessions) {
-        await clearRevisionSession(sessionId).catch(() => {});
+      const staleSessionIds = sessions
+        .filter((s) => (s.lastSavedAt || 0) < cutoff)
+        .map((s) => s.sessionId);
+      for (const sessionId of staleSessionIds) {
+        await clearVersionSession(sessionId).catch(() => {});
       }
     }
-    sweepStaleRevisionSessions().catch(() => {});
+    sweepStaleVersionSessions().catch(() => {});
 
     // Best-effort: attempt to clear the active session's data the moment
     // this tab is closed/navigated away from or the browser quits. Not
     // guaranteed to finish (the page can be torn down mid-transaction) --
-    // sweepStaleRevisionSessions() above is the reliable backstop for
+    // sweepStaleVersionSessions() above is the reliable backstop for
     // whatever this doesn't catch in time.
     window.addEventListener('pagehide', (e) => {
       // e.persisted means the page is going into the back-forward cache, not
@@ -1886,7 +1937,7 @@
       // back, so clearing local storage here would delete a session the user
       // is about to keep working in.
       if (e.persisted) return;
-      if (documentSessionId) clearRevisionSession(documentSessionId).catch(() => {});
+      if (documentSessionId) clearVersionSession(documentSessionId).catch(() => {});
     });
 
     // Client-side counterpart to hydrateEmbeddedRevisions below, for a P2P-received
@@ -1903,21 +1954,25 @@
     // the last are tagged 'imported' (they came from the file's own embedded
     // history, not an edit made in this browser); the last keeps its real
     // classification but is tagged 'upload' since it's the file the user just
-    // opened. Returns the number of versions actually stored.
+    // opened. Returns the stored count and the final entry's versionKey (the
+    // caller's new activeVersionKey).
     async function storeHydratedVersionChain(sessionId, buffersInOrder) {
       let prevBytes = null;
       let storedIndex = 0;
+      let versionKey = null;
       for (let i = 0; i < buffersInOrder.length; i++) {
         const currBytes = buffersInOrder[i];
         const saveKind = classifySave(prevBytes, currBytes);
         if (saveKind === 'identical') continue;
         storedIndex += 1;
         const isFinal = i === buffersInOrder.length - 1;
-        const blob = new Blob([currBytes], { type: 'application/pdf' });
-        await putRevision(sessionId, storedIndex, blob, { source: isFinal ? 'upload' : 'imported', saveKind });
+        versionKey = createSessionId();
+        await beginVersionWrite(sessionId, storedIndex, currBytes.buffer, {
+          source: isFinal ? 'upload' : 'imported', saveKind, versionKey,
+        }).catch(reportVersionWriteFailure);
         prevBytes = currBytes;
       }
-      return storedIndex;
+      return { count: storedIndex, versionKey };
     }
 
     async function hydrateEmbeddedRevisionsFromPdfDoc(pdfJsDoc, file, sessionId) {
@@ -1941,7 +1996,9 @@
       const buffers = sorted.slice(0, -1).map((entry) => base64ToBytes(entry.bytes));
       buffers.push(new Uint8Array(await file.arrayBuffer()));
       if (sessionId !== documentSessionId) return;
-      documentRevisionCount = await storeHydratedVersionChain(sessionId, buffers);
+      const hydrated = await storeHydratedVersionChain(sessionId, buffers);
+      documentRevisionCount = hydrated.count;
+      activeVersionKey = hydrated.versionKey;
     }
 
     // Unpacks a PDF's embedded revision chain (see /api/revisions/embedded)
@@ -1962,7 +2019,9 @@
       const buffers = sorted.slice(0, -1).map((entry) => base64ToBytes(entry.bytes));
       buffers.push(new Uint8Array(await file.arrayBuffer()));
       if (sessionId !== documentSessionId) return;
-      documentRevisionCount = await storeHydratedVersionChain(sessionId, buffers);
+      const hydrated = await storeHydratedVersionChain(sessionId, buffers);
+      documentRevisionCount = hydrated.count;
+      activeVersionKey = hydrated.versionKey;
     }
 
     // ---------------------------------------------------------------
@@ -2989,10 +3048,15 @@
           if (sessionId !== documentSessionId || activeFile !== file) return;
           // A partial hydration can't be trusted -- leave local storage in a
           // known-consistent state (just the current file, at index 1)
-          // instead of however far it got.
-          await putRevision(sessionId, 1, file, { source: 'upload', saveKind: 'initial' }).catch(() => {});
-          await truncateRevisionsAbove(sessionId, 1).catch(() => {});
+          // instead of however far it got. beginVersionWrite's own
+          // orphaned-rows cleanup (anything above the index it just wrote)
+          // takes care of the truncation.
+          const versionKey = createSessionId();
+          await beginVersionWrite(sessionId, 1, await file.arrayBuffer(), {
+            source: 'upload', saveKind: 'initial', versionKey,
+          }).catch(reportVersionWriteFailure);
           documentRevisionCount = 1;
+          activeVersionKey = versionKey;
         }
         if (sessionId !== documentSessionId || activeFile !== file) return;
         revisionsData = null;
@@ -3084,6 +3148,7 @@
         revisionsLoadedForFile,
         documentSessionId,
         documentRevisionCount,
+        activeVersionKey,
       } : null;
       // The pdf.js document this load is replacing, if any. Ownership of it
       // transfers to this function: it's kept alive (not destroyed) until the
@@ -3106,6 +3171,13 @@
       document.getElementById('pdfContainer').style.display = 'inline-block';
       showDocumentLoadingOverlay();
 
+      // Read the file's bytes once, shared by classification below, the
+      // local version write, and pdf.js further down -- getDocument()
+      // transfers (detaches) this same buffer, so nothing after that point
+      // can read it again.
+      const arrayBuffer = await file.arrayBuffer();
+      if (!isCurrentLoad()) return; // superseded while reading; nothing was written yet, nothing to clean up
+
       // Track this file as a local revision snapshot. An edit (isEdit)
       // appends to the current session; anything else (a fresh upload,
       // base64 paste, or an incoming P2P share) starts a new one and
@@ -3117,18 +3189,20 @@
       // session) as a permanent orphan, since nothing else ever references
       // it again once the in-memory state rolls back.
       let pendingRevisionCleanup = null;
-      // Initial files do not need their local snapshot before pdf.js can show
-      // the first page. Keep the write in flight and join it only after the
-      // visible document is ready, so IndexedDB throughput is off the critical
+      // The in-flight version write's actual-completion promise (put()
+      // itself has already been called synchronously by the time this is
+      // assigned -- see beginVersionWrite). Joined later, once the visible
+      // document is ready, so IndexedDB throughput is off the critical
       // upload path.
-      let initialRevisionWrite = null;
+      let pendingVersionWrite = null;
       const cleanupPendingRevision = () => {
         if (pendingRevisionCleanup?.type !== 'session') return;
-        const cleanup = () => clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
+        const cleanup = () => clearVersionSession(pendingRevisionCleanup.sessionId).catch(() => {});
         // A clear issued before IndexedDB finishes its put could let the put
         // land afterwards and leave an orphaned snapshot. Chain the cleanup
-        // behind the write whenever this initial load is abandoned.
-        if (initialRevisionWrite) initialRevisionWrite.then(cleanup);
+        // behind the write (regardless of whether it succeeds or fails)
+        // whenever this initial load is abandoned.
+        if (pendingVersionWrite) pendingVersionWrite.then(cleanup, cleanup);
         else cleanup();
       };
       // The old session isn't dropped until this new load actually
@@ -3138,26 +3212,37 @@
       // puts the old document itself right back on screen.
       let previousSessionIdToClear = null;
       if (isEdit && documentSessionId) {
-        const prevRecord = await getRevisionRecord(documentSessionId, documentRevisionCount).catch(() => null);
-        const prevBytes = prevRecord ? new Uint8Array(prevRecord.buffer) : null;
-        const currBytes = new Uint8Array(await file.arrayBuffer());
-        const saveKind = classifySave(prevBytes, currBytes);
+        const currBytes = new Uint8Array(arrayBuffer);
+        // Classified against the outgoing file (captured above, before
+        // activeFile was reassigned) rather than a stored copy -- no
+        // IndexedDB read needed just to classify this save.
+        const saveKind = await classifySaveAgainstBlob(previousDocumentState?.file ?? null, currBytes);
         if (saveKind === 'identical') {
           // Nothing effective changed (e.g. the edit round-tripped back to
           // the same bytes) -- don't grow the version history over it.
           pendingRevisionCleanup = null;
         } else {
           documentRevisionCount += 1;
+          const versionKey = createSessionId();
+          activeVersionKey = versionKey;
           pendingRevisionCleanup = { type: 'index', sessionId: documentSessionId, index: documentRevisionCount };
           dropStaleRedoEntries(documentRevisionCount);
-          await putRevision(documentSessionId, documentRevisionCount, file, { source: 'edit', saveKind }).catch(() => {});
+          // Awaited so put() is guaranteed queued before arrayBuffer is
+          // handed to pdf.js below -- see beginVersionWrite for why.
+          pendingVersionWrite = await beginVersionWrite(documentSessionId, documentRevisionCount, arrayBuffer, {
+            source: 'edit', saveKind, versionKey,
+          });
         }
       } else {
         previousSessionIdToClear = documentSessionId;
         documentSessionId = createSessionId();
         documentRevisionCount = 1;
+        const versionKey = createSessionId();
+        activeVersionKey = versionKey;
         pendingRevisionCleanup = { type: 'session', sessionId: documentSessionId };
-        initialRevisionWrite = putRevision(documentSessionId, 1, file, { source: 'upload', saveKind: 'initial' }).catch(() => {});
+        pendingVersionWrite = await beginVersionWrite(documentSessionId, 1, arrayBuffer, {
+          source: 'upload', saveKind: 'initial', versionKey,
+        });
       }
 
       // The async IndexedDB work above may have yielded to a newer selection.
@@ -3171,7 +3256,7 @@
       revisionsLoadedForFile = null;
       revisionsLoading = false;
       resetRevisionsDiffState();
-      if (!initialRevisionWrite && document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
+      if (!pendingVersionWrite && document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
         loadRevisionsIfNeeded();
       }
 
@@ -3219,7 +3304,6 @@
             return null;
           })
           : null;
-        const arrayBufferPromise = file.arrayBuffer();
 
         // A received P2P file must not be sent back to the server merely to
         // populate metadata. Local preview remains fully browser-side.
@@ -3230,8 +3314,8 @@
         documentOverview = null;
         documentMetaLoadedFor = null;
 
-        // 2. Render PDF
-        const arrayBuffer = await arrayBufferPromise;
+        // 2. Render PDF -- `arrayBuffer` was already read once, above, and
+        // shared with the version write that just happened.
         if (!isCurrentLoad()) {
           cleanupPendingRevision();
           return;
@@ -3313,11 +3397,14 @@
         // valid document back) had already wiped that document's history.
         if (!isEdit) resetFieldHistory();
 
-        // Make sure the initial snapshot exists before importing a bundled
-        // chain on top of it or refreshing the Revisions panel. This wait is
-        // deliberately after the first visible page and field overlays.
-        if (initialRevisionWrite) {
-          await initialRevisionWrite;
+        // Make sure the version write actually landed before importing a
+        // bundled chain on top of it or refreshing the Revisions panel. This
+        // wait is deliberately after the first visible page and field
+        // overlays. A failure here (most likely a storage quota error)
+        // doesn't roll back the document -- it's still fine -- but the user
+        // should know this version wasn't actually saved locally.
+        if (pendingVersionWrite) {
+          await pendingVersionWrite.catch(reportVersionWriteFailure);
           if (!isCurrentLoad()) return;
           if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
             loadRevisionsIfNeeded();
@@ -3336,7 +3423,7 @@
         // previous document's local history actually unreachable -- safe
         // to drop it.
         if (previousSessionIdToClear) {
-          clearRevisionSession(previousSessionIdToClear).catch(() => {});
+          clearVersionSession(previousSessionIdToClear).catch(() => {});
           if (revisionSummaryCacheSessionId === previousSessionIdToClear) {
             revisionSummaryCache = new Map();
             revisionSummaryCacheSessionId = null;
@@ -3364,13 +3451,13 @@
           activeDocumentFieldsRequest = null;
         }
         hideDocumentLoadingOverlay();
-        if (initialRevisionWrite) await initialRevisionWrite;
+        if (pendingVersionWrite) await pendingVersionWrite.catch(() => {});
         if (pendingRevisionCleanup) {
           if (pendingRevisionCleanup.type === 'session') {
-            clearRevisionSession(pendingRevisionCleanup.sessionId).catch(() => {});
+            clearVersionSession(pendingRevisionCleanup.sessionId).catch(() => {});
             if (revisionSummaryCacheSessionId === pendingRevisionCleanup.sessionId) revisionSummaryCache.clear();
           } else {
-            deleteRevision(pendingRevisionCleanup.sessionId, pendingRevisionCleanup.index).catch(() => {});
+            deleteVersion(pendingRevisionCleanup.sessionId, pendingRevisionCleanup.index).catch(() => {});
             // That index number can be reused by the next edit attempt (documentRevisionCount
             // is rolled back below) -- drop any cached summary for it so a retry doesn't serve
             // a stale result computed from the failed attempt's bytes.
@@ -3403,6 +3490,7 @@
           revisionsLoadedForFile = previousDocumentState.revisionsLoadedForFile;
           documentSessionId = previousDocumentState.documentSessionId;
           documentRevisionCount = previousDocumentState.documentRevisionCount;
+          activeVersionKey = previousDocumentState.activeVersionKey;
           updatePendingChangesUi();
           renderMetaTree();
           renderMetaOverview();
@@ -3433,6 +3521,7 @@
           documentMetaLoadedFor = null;
           documentSessionId = null;
           documentRevisionCount = 0;
+          activeVersionKey = null;
           renderMetaTree();
           renderMetaOverview();
           updateViewerControlsState();
@@ -5834,6 +5923,7 @@
         fieldsBaseline: cloneFields(fieldsBaseline),
         documentSessionId,
         documentRevisionCount,
+        activeVersionKey,
       };
     }
 
@@ -5921,6 +6011,7 @@
       fieldsBaseline = snapshot.fieldsBaseline;
       documentSessionId = snapshot.documentSessionId;
       documentRevisionCount = snapshot.documentRevisionCount;
+      activeVersionKey = snapshot.activeVersionKey;
 
       deselectActiveField();
       clearPendingField();
@@ -6453,14 +6544,16 @@
       // Without this, bundling while hydration is still writing prior
       // versions produces an export missing whatever it hadn't stored yet.
       await ensureRevisionHydration();
-      const localRevisions = await listRevisionsForSession(documentSessionId);
-      const priorRevisions = localRevisions.filter((rev) => rev.index < documentRevisionCount);
+      const priorMetas = (await listVersionMetaForSession(documentSessionId))
+        .filter((meta) => meta.index < documentRevisionCount);
+      const priorBlobs = await Promise.all(priorMetas.map((meta) => getVersionBlob(documentSessionId, meta.index)));
 
       const formData = new FormData();
       formData.append('pdfDocument', activeFile);
-      for (const rev of priorRevisions) {
-        formData.append('priorRevisions', revisionToBlob(rev), `revision-${rev.index}.pdf`);
-      }
+      priorMetas.forEach((meta, i) => {
+        const blob = priorBlobs[i];
+        if (blob) formData.append('priorRevisions', blob, `revision-${meta.index}.pdf`);
+      });
 
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -8692,7 +8785,10 @@ async function loadRevisionsIfNeeded() {
     return;
   }
 
-  const cacheKey = `${documentSessionId}:${documentRevisionCount}`;
+  // Keyed by activeVersionKey rather than documentRevisionCount -- an
+  // undo/redo/certificate-modify sequence can reuse an index for genuinely
+  // different bytes, which a count alone can't tell apart.
+  const cacheKey = `${documentSessionId}:${activeVersionKey}`;
   if (revisionsLoadedForFile === cacheKey && revisionsData) {
     loadingState.hidden = true;
     renderRevisionsTimeline(revisionsData);
@@ -8720,7 +8816,7 @@ async function loadRevisionsIfNeeded() {
   loadingState.hidden = false;
 
   try {
-    const metas = await listRevisionMetaForSession(requestedSessionId);
+    const metas = await listVersionMetaForSession(requestedSessionId);
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
     if (!metas.length) {
       throw new Error(
@@ -8786,11 +8882,11 @@ async function loadRevisionSummary(index) {
   if (cached && cached.loaded) return cached;
 
   const requestedSessionId = documentSessionId;
-  const record = await getRevisionRecord(requestedSessionId, index);
-  if (!record) throw new Error('Local revision snapshot not found.');
+  const blob = await getVersionBlob(requestedSessionId, index);
+  if (!blob) throw new Error('Local revision snapshot not found.');
 
   const formData = new FormData();
-  formData.append('pdfDocument', revisionToBlob(record), `revision-${index}.pdf`);
+  formData.append('pdfDocument', blob, `revision-${index}.pdf`);
   const res = await fetch('/api/revisions', { method: 'POST', body: formData });
   let data;
   try {
@@ -8824,13 +8920,13 @@ async function loadAllRevisionSummaries(requestedSessionId, revisions) {
   const pending = revisions.filter((rev) => !rev.loaded);
   if (!pending.length) return;
 
-  const records = await Promise.all(pending.map((rev) => getRevisionRecord(requestedSessionId, rev.index)));
+  const blobs = await Promise.all(pending.map((rev) => getVersionBlob(requestedSessionId, rev.index)));
   if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
 
   const formData = new FormData();
   pending.forEach((rev, i) => {
-    const record = records[i];
-    if (record) formData.append('pdfDocument', revisionToBlob(record), `revision-${rev.index}.pdf`);
+    const blob = blobs[i];
+    if (blob) formData.append('pdfDocument', blob, `revision-${rev.index}.pdf`);
   });
   if (![...formData.keys()].length) return;
 
@@ -9163,9 +9259,9 @@ async function renderRevisionViewPage(num) {
 
 async function downloadRevisionFile(revIndex) {
   try {
-    const rev = await getRevision(documentSessionId, revIndex);
-    if (!rev) throw new Error(`Version ${revIndex} is not available locally.`);
-    const url = URL.createObjectURL(revisionToBlob(rev));
+    const blob = await getVersionBlob(documentSessionId, revIndex);
+    if (!blob) throw new Error(`Version ${revIndex} is not available locally.`);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     const baseName = (activeFile.name || 'document.pdf').replace(/\.pdf$/i, '');
@@ -10348,16 +10444,16 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
   }
 
   try {
-    const [fromRev, toRev] = await Promise.all([
-      getRevision(requestedSessionId, from),
-      getRevision(requestedSessionId, to),
+    const [fromBlob, toBlob] = await Promise.all([
+      getVersionBlob(requestedSessionId, from),
+      getVersionBlob(requestedSessionId, to),
     ]);
-    if (!fromRev || !toRev) throw new Error('One of the selected revisions is not available locally.');
+    if (!fromBlob || !toBlob) throw new Error('One of the selected revisions is not available locally.');
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
 
     const formData = new FormData();
-    formData.append('from', revisionToBlob(fromRev), `revision-${from}.pdf`);
-    formData.append('to', revisionToBlob(toRev), `revision-${to}.pdf`);
+    formData.append('from', fromBlob, `revision-${from}.pdf`);
+    formData.append('to', toBlob, `revision-${to}.pdf`);
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
     const res = await fetch('/api/revisions/diff', { method: 'POST', body: formData });
     let data;
@@ -10409,9 +10505,9 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
 // ---------------------------------------------------------------
 
 async function fetchRevisionPdfDoc(revisionIndex, sessionId = documentSessionId) {
-  const rev = await getRevision(sessionId, revisionIndex);
-  if (!rev) throw new Error(`Could not load snapshot for revision ${revisionIndex}`);
-  return await pdfjsLib.getDocument({ data: rev.buffer, worker: getDiffPdfWorker() }).promise;
+  const bytes = await getVersionBytes(sessionId, revisionIndex);
+  if (!bytes) throw new Error(`Could not load snapshot for revision ${revisionIndex}`);
+  return await pdfjsLib.getDocument({ data: bytes, worker: getDiffPdfWorker() }).promise;
 }
 
 // Re-acquire whichever comparison snapshots aren't currently open. Both are
