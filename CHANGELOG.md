@@ -1,3 +1,10 @@
+## [1.7.4](https://github.com/Marbulinek/pdf-seal/compare/v1.7.3...v1.7.4) (2026-09-19)
+
+
+### Bug Fixes
+
+* performance improvements ([#62](https://github.com/Marbulinek/pdf-seal/issues/62)) ([9e39e64](https://github.com/Marbulinek/pdf-seal/commit/9e39e647576e1c70265fafc801ec728ccd0d02f6))
+
 ## [1.7.3](https://github.com/Marbulinek/pdf-seal/compare/v1.7.2...v1.7.3) (2026-09-17)
 
 
