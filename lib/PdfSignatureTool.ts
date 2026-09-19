@@ -1005,6 +1005,70 @@ class PdfSignatureTool {
     pdfDoc.context.delete(field.ref);
   }
 
+  /**
+   * Apply a batch of add/edit/remove field operations in one pass, then
+   * bump the modification date and strip any embedded revision-history
+   * chain -- the shared implementation behind `/api/apply-changes`, kept
+   * here so it has unit coverage independent of the route.
+   *
+   * @param {any[]} ops
+   */
+  applyFieldOps(ops: any[]) {
+    for (const op of ops) {
+      if (!op || typeof op !== 'object') continue;
+
+      if (op.op === 'add') {
+        const page = parseInt(op.page, 10) || 0;
+        const name = String(op.name || `SigField_${Date.now()}`);
+        const fieldOptions = {
+          x: parseFloat(op.x) || 50,
+          y: parseFloat(op.y) || 50,
+          width: parseFloat(op.width) || 200,
+          height: parseFloat(op.height) || 60,
+          required: op.required === true || op.required === 'true',
+        };
+        if (op.type === 'text') {
+          this.addTextField(page, name, { ...fieldOptions, multiline: op.multiline === true || op.multiline === 'true' });
+        } else {
+          this.addSignatureField(page, name, fieldOptions);
+        }
+      } else if (op.op === 'edit') {
+        const originalName = String(op.originalName || '');
+        const newName = String(op.name || originalName);
+        if (!originalName) throw new Error('Field name is required.');
+
+        if (originalName !== newName) {
+          this.renameField(originalName, newName);
+        }
+
+        const x = parseFloat(op.x);
+        const y = parseFloat(op.y);
+        const width = parseFloat(op.width);
+        const height = parseFloat(op.height);
+        if ([x, y, width, height].every((value) => Number.isFinite(value))) {
+          this.setFieldRect(newName, { x, y, width, height });
+        }
+
+        this.setFieldRequired(newName, op.required === true || op.required === 'true');
+        if (op.multiline !== undefined) {
+          const fieldInfo = this.listFields().find((f: any) => f.name === newName);
+          if (fieldInfo?.type === 'TextField') {
+            this.setFieldMultiline(newName, op.multiline === true || op.multiline === 'true');
+          }
+        }
+      } else if (op.op === 'remove') {
+        const name = String(op.name || '');
+        if (!name) throw new Error('Field name is required.');
+        this.removeField(name);
+      } else {
+        throw new Error(`Unknown operation "${op.op}".`);
+      }
+    }
+
+    this.setMetadata({ modificationDate: new Date() });
+    this.clearRevisionSnapshotChain();
+  }
+
   // ---------------------------------------------------------------------
   // Stamp annotations (read-only detection)
   // ---------------------------------------------------------------------

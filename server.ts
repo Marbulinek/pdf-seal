@@ -14,6 +14,7 @@ import { parseCertificateFile, parseCertificate } from "./lib/CertificateModel";
 import { applyCertificateOperation, CertificateModificationError } from "./lib/PdfCertificateModifier";
 import { checkCertificate, checkLink, buildChain } from "./lib/CertificateChain";
 import { simulateTrust } from "./lib/TrustSimulation";
+import { encodeMultipart } from "./lib/MultipartResponse";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -370,6 +371,12 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
   if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   let outputPath: string | null = null;
+  // Ask for the updated field list alongside the PDF, in one response, so
+  // the client doesn't have to re-upload the file to /api/info just to
+  // learn what it already just told the server to create. Best-effort: a
+  // client that doesn't ask for it, or a listFields() failure below, both
+  // fall back to the plain PDF download every caller already handles.
+  const withFields = req.query.withFields === "true";
 
   try {
     const safePath = resolveUploadPath(file.path);
@@ -385,59 +392,38 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
       throw new Error("No changes to apply.");
     }
 
-    for (const op of ops) {
-      if (!op || typeof op !== "object") continue;
+    tool.applyFieldOps(ops);
 
-      if (op.op === "add") {
-        const page = parseInt(op.page, 10) || 0;
-        const name = String(op.name || `SigField_${Date.now()}`);
-        const fieldOptions = {
-          x: parseFloat(op.x) || 50,
-          y: parseFloat(op.y) || 50,
-          width: parseFloat(op.width) || 200,
-          height: parseFloat(op.height) || 60,
-          required: op.required === true || op.required === "true",
-        };
-        if (op.type === "text") {
-          tool.addTextField(page, name, { ...fieldOptions, multiline: op.multiline === true || op.multiline === "true" });
-        } else {
-          tool.addSignatureField(page, name, fieldOptions);
-        }
-      } else if (op.op === "edit") {
-        const originalName = String(op.originalName || "");
-        const newName = String(op.name || originalName);
-        if (!originalName) throw new Error("Field name is required.");
-
-        if (originalName !== newName) {
-          tool.renameField(originalName, newName);
-        }
-
-        const x = parseFloat(op.x);
-        const y = parseFloat(op.y);
-        const width = parseFloat(op.width);
-        const height = parseFloat(op.height);
-        if ([x, y, width, height].every((value) => Number.isFinite(value))) {
-          tool.setFieldRect(newName, { x, y, width, height });
-        }
-
-        tool.setFieldRequired(newName, op.required === true || op.required === "true");
-        if (op.multiline !== undefined) {
-          const fieldInfo = tool.listFields().find((f: any) => f.name === newName);
-          if (fieldInfo?.type === "TextField") {
-            tool.setFieldMultiline(newName, op.multiline === true || op.multiline === "true");
-          }
-        }
-      } else if (op.op === "remove") {
-        const name = String(op.name || "");
-        if (!name) throw new Error("Field name is required.");
-        tool.removeField(name);
-      } else {
-        throw new Error(`Unknown operation "${op.op}".`);
+    if (withFields) {
+      // pdf-lib's save() adds appearance objects in memory, so the field
+      // list has to be read back *after* toBytes(), not before it.
+      let bytes: Uint8Array | null = null;
+      let fields: any[] | null = null;
+      try {
+        bytes = await tool.toBytes();
+        fields = tool.listFields();
+      } catch (_e) {
+        bytes = null;
+        fields = null;
       }
+      if (bytes && fields) {
+        const multipart = encodeMultipart([
+          { name: "pdfDocument", filename: "signed-document.pdf", contentType: "application/pdf", data: Buffer.from(bytes) },
+          { name: "fields", contentType: "application/json", data: Buffer.from(JSON.stringify(fields)) },
+        ]);
+        res.setHeader("Content-Type", `multipart/form-data; boundary=${multipart.boundary}`);
+        res.setHeader("Content-Length", String(multipart.body.length));
+        // This response is generated fresh from the just-applied edit, never
+        // a cached representation of anything -- res.send()'s automatic ETag
+        // would just spend time hashing a body nothing will ever revalidate.
+        res.setHeader("Cache-Control", "no-store");
+        res.end(multipart.body);
+        cleanupFiles(file.path, null);
+        return;
+      }
+      // listFields() (or toBytes()) failed -- fall through to the plain
+      // download below, the same response a client without the flag gets.
     }
-
-    tool.setMetadata({ modificationDate: new Date() });
-    tool.clearRevisionSnapshotChain();
 
     outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
     await tool.save(outputPath, { baseDir: UPLOADS_DIR });

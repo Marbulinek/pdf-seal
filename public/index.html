@@ -3056,6 +3056,12 @@
       const preservePage = Boolean(options.preservePage);
       const skipServerInfo = Boolean(options.skipServerInfo);
       const transferredFields = Array.isArray(options.transferredFields) ? options.transferredFields : [];
+      // Fields the caller already has (e.g. from apply-changes's withFields
+      // response) -- distinct from skipServerInfo, which additionally means
+      // "P2P, never upload" and changes how hydration runs. A known-fields
+      // load still uploads normally for metadata/certificates/etc.; it just
+      // skips the redundant /api/info round trip purely for field data.
+      const knownFields = Array.isArray(options.knownFields) ? options.knownFields : null;
       const targetPage = preservePage && Number.isInteger(pageNum) && pageNum > 0 ? pageNum : 1;
 
       if (viewerDiffActive) exitDiffViewMode();
@@ -3178,8 +3184,8 @@
 
       // A brand new document means any previous pending placement/selection is stale
       resetPanelsForNewDocument(isEdit);
-      if (skipServerInfo) {
-        documentFields = transferredFields;
+      if (skipServerInfo || knownFields) {
+        documentFields = skipServerInfo ? transferredFields : knownFields;
         documentFields.forEach((f) => { f.__baselineName = f.name; });
         fieldsBaseline = cloneFields(documentFields);
         updatePendingChangesUi();
@@ -3202,7 +3208,7 @@
           setDocumentLoadingProgress(progressHighWaterMark);
         };
         let fieldsRequestError = null;
-        const fieldsRequest = skipServerInfo
+        const fieldsRequest = (skipServerInfo || knownFields)
           ? null
           : loadDocumentFields(file, setLoadingProgress);
         activeDocumentFieldsRequest = fieldsRequest;
@@ -3271,7 +3277,9 @@
 
         // Let the first page appear before waiting for the server-side field
         // scan. Once it returns, lay the real field overlays over the page.
-        if (!skipServerInfo) {
+        // Skipped whenever there's no fieldsPromise to wait on at all --
+        // skipServerInfo (P2P) or knownFields (already have them) alike.
+        if (fieldsPromise) {
           const data = await fieldsPromise;
           if (!isCurrentLoad()) {
             // Adoption already happened above, so `outgoing` is displaced
@@ -5728,11 +5736,37 @@
         const response = await fetch(endpoint, { method: 'POST', body: formData });
         if (!response.ok) throw new Error(await extractErrorMessage(response));
 
-        // Get updated PDF as a Blob and convert back to File object
-        const blob = await response.blob();
-        const updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
+        const contentType = response.headers.get('content-type') || '';
+        let updatedFile;
+        let knownFields = null;
 
-        await processNewFile(updatedFile, { preservePage: true, isEdit: true });
+        if (contentType.startsWith('multipart/form-data')) {
+          // apply-changes's withFields response: the PDF and its
+          // already-recomputed field list in one body, so processNewFile
+          // doesn't have to re-upload and re-scan the file just to get the
+          // fields back. new Response(...).formData() is the standard way
+          // to parse a multipart body outside of an actual request.
+          const blob = await response.blob();
+          const parsedForm = await new Response(blob, { headers: { 'Content-Type': contentType } }).formData();
+          const pdfPart = parsedForm.get('pdfDocument');
+          if (!(pdfPart instanceof Blob)) throw new Error('Could not read the server response.');
+          updatedFile = new File([pdfPart], activeFile.name || 'document.pdf', { type: 'application/pdf' });
+          try {
+            const fieldsPart = parsedForm.get('fields');
+            if (typeof fieldsPart === 'string') knownFields = JSON.parse(fieldsPart);
+          } catch (_err) {
+            // The fields part didn't parse -- fall back to the normal fields
+            // request inside processNewFile rather than failing the apply
+            // over what's still a perfectly good PDF.
+            knownFields = null;
+          }
+        } else {
+          // Get updated PDF as a Blob and convert back to File object
+          const blob = await response.blob();
+          updatedFile = new File([blob], activeFile.name || 'document.pdf', { type: 'application/pdf' });
+        }
+
+        await processNewFile(updatedFile, { preservePage: true, isEdit: true, knownFields });
         loadingToast?.dismissNotification();
         showNotification(successMessage, 'success');
         return true;
@@ -6287,7 +6321,10 @@
       // the server only needs the actual op fields.
       formData.append('ops', JSON.stringify(ops, (key, value) => (key.startsWith('_') ? undefined : value)));
       const label = ops.length === 1 ? '1 change' : `${ops.length} changes`;
-      const success = await handleApiUpdate('/api/apply-changes', formData, `Applied ${label}.`);
+      // withFields asks the server to return the updated field list along
+      // with the PDF in one response, so this Apply costs one upload
+      // instead of one upload plus a second round trip to re-fetch fields.
+      const success = await handleApiUpdate('/api/apply-changes?withFields=true', formData, `Applied ${label}.`);
       if (success) commitFieldHistorySnapshot(preApplySnapshot);
       return success;
     }
