@@ -32,7 +32,7 @@
     "@tsconfig/node24": "^24.0.5",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.6.2",
     "@types/ws": "^8.5.14",
     "@vitest/coverage-v8": "^5.0.1",
     "esbuild": "^0.28.2",
