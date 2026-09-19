@@ -1592,6 +1592,12 @@
     const VERSION_BYTES_STORE = 'versionBytes';
     const VERSION_SESSIONS_STORE = 'versionSessions';
     let versionDbPromise = null;
+    // The most recently started version write's completion promise (set by
+    // beginVersionWrite, regardless of caller) -- consulted before building
+    // a delta against activeVersionKey, so a delta is only ever based on a
+    // write actually confirmed to have landed, never one still in flight or
+    // one that failed.
+    let lastVersionWriteCompletion = null;
 
     function openVersionDb() {
       if (versionDbPromise) return versionDbPromise;
@@ -1687,6 +1693,41 @@
       return currBytes.length === prevBlob.size ? 'identical' : 'incremental';
     }
 
+    // Decides how to store one save: as a delta (just the appended bytes,
+    // plus which prior version they extend) when possible, otherwise the
+    // full file. Mirrors lib/VersionHistory.ts's planVersionStorage -- see
+    // there for the full rationale.
+    function planVersionStorage(prior, saveKind, bytes) {
+      if (saveKind === 'incremental' && prior && prior.byteLength <= bytes.length) {
+        return { storage: 'delta', baseKey: prior.versionKey, data: bytes.slice(prior.byteLength) };
+      }
+      return { storage: 'full', baseKey: null, data: bytes };
+    }
+
+    // Which stored rows must be fetched (base first) to reconstruct the
+    // version at `index` -- walking backward through delta rows until a
+    // full row is found. Throws rather than silently assembling wrong bytes
+    // if a baseKey doesn't match the row immediately before it. Mirrors
+    // lib/VersionHistory.ts's versionReadPlan -- see there for the full
+    // rationale.
+    function versionReadPlan(metas, index) {
+      const byIndex = new Map(metas.map((meta) => [meta.index, meta]));
+      const target = byIndex.get(index);
+      if (!target) throw new Error(`Version ${index} is not available locally.`);
+
+      const chain = [target];
+      let current = target;
+      while (current.storage === 'delta') {
+        const base = byIndex.get(current.index - 1);
+        if (!base || base.versionKey !== current.baseKey) {
+          throw new Error(`Version ${index} is not available locally.`);
+        }
+        chain.push(base);
+        current = base;
+      }
+      return chain.reverse();
+    }
+
     const VERSION_SAVE_KIND_BADGE = {
       incremental: { label: 'Incremental update', tone: 'positive' },
       rewrite: { label: 'Full rewrite', tone: 'neutral' },
@@ -1769,10 +1810,16 @@
     // future above it; those rows are now orphaned and would leak
     // otherwise). The synchronous part matters: `put()` structured-clones
     // its value the instant it's called, so as long as it runs before
-    // `arrayBuffer` is handed to pdf.js (which transfers/detaches it), the
+    // `dataBuffer` is handed to pdf.js (which transfers/detaches it), the
     // stored copy is unaffected by that transfer -- but if anything async
     // ran in between, the caller could race ahead and transfer the buffer
     // before put() ever captured it.
+    //
+    // `dataBuffer` is whatever bytes actually get stored -- the full file
+    // for `meta.storage === 'full'`, or just the appended delta for
+    // 'delta' (see planVersionStorage) -- which can be smaller than
+    // `meta.byteLength`, the *reconstructed* version's full size, needed
+    // so a later delta knows where to slice its own base.
     //
     // Returns a promise for the transaction's actual completion, to be
     // joined *later* (like a caller's own pendingVersionWrite already is) --
@@ -1780,7 +1827,7 @@
     // waits for put() to have been queued, not for the write to have
     // reached disk, so the caller can safely move on to the pdf.js load
     // immediately after.
-    async function beginVersionWrite(sessionId, index, arrayBuffer, meta) {
+    async function beginVersionWrite(sessionId, index, dataBuffer, meta) {
       const db = await openVersionDb();
       const now = Date.now();
 
@@ -1789,16 +1836,12 @@
       const bytesStore = tx.objectStore(VERSION_BYTES_STORE);
       const sessionsStore = tx.objectStore(VERSION_SESSIONS_STORE);
 
-      bytesStore.put({ sessionId, index, buffer: arrayBuffer });
+      bytesStore.put({ sessionId, index, buffer: dataBuffer });
       metaStore.put({
         sessionId, index, versionKey: meta.versionKey, savedAt: now,
         source: meta.source, saveKind: meta.saveKind,
-        byteLength: arrayBuffer.byteLength,
-        // Every write is a full copy for now -- delta storage (storage:
-        // 'delta', baseKey pointing at the version it extends) lands in a
-        // later commit; the columns exist now so that commit doesn't need
-        // its own schema migration.
-        storage: 'full', baseKey: null, summary: null,
+        byteLength: meta.byteLength,
+        storage: meta.storage, baseKey: meta.baseKey, summary: null,
       });
       // savedAt here backs sweepStaleVersionSessions() below -- a session
       // with no writes for a long time is one whose tab was closed (or
@@ -1809,11 +1852,13 @@
       metaStore.delete(orphanedAbove);
       bytesStore.delete(orphanedAbove);
 
-      return new Promise((resolve, reject) => {
+      const completion = new Promise((resolve, reject) => {
         tx.oncomplete = () => resolve();
         tx.onabort = () => reject(tx.error || new Error('Could not save this version locally -- the browser may be low on storage space.'));
         tx.onerror = () => reject(tx.error || new Error('Could not save this version locally.'));
       });
+      lastVersionWriteCompletion = completion;
+      return completion;
     }
 
     // Surfaces a version write's eventual failure (most commonly a storage
@@ -1822,10 +1867,6 @@
     // but the user should know a version wasn't actually saved.
     function reportVersionWriteFailure(err) {
       showNotification(`Could not save this version locally: ${err.message}`, 'error', 8000);
-    }
-
-    function versionBytesRowToBlob(row) {
-      return new Blob([row.buffer], { type: 'application/pdf' });
     }
 
     async function getVersionBytesRow(sessionId, index) {
@@ -1838,18 +1879,33 @@
       });
     }
 
-    // Feeds uploads and downloads -- a Blob, so its bytes never have to sit
-    // in this function's own memory as a standalone array.
+    // Reconstructs the version at `index` as a Blob: its own bytes directly
+    // if stored in full, or its base's bytes followed by each delta's bytes
+    // in order (versionReadPlan walks that chain, base first) if not.
+    // Concatenating as a Blob -- rather than copying into one combined
+    // buffer -- means the pieces are only actually joined by the browser
+    // when something reads the result, not up front here. Returns null for
+    // anything not cleanly reconstructable (a missing row, or a broken
+    // baseKey link) rather than throwing -- callers already treat a null
+    // result as "not available locally".
     async function getVersionBlob(sessionId, index) {
-      const row = await getVersionBytesRow(sessionId, index);
-      return row ? versionBytesRowToBlob(row) : null;
+      let chain;
+      try {
+        const metas = await listVersionMetaForSession(sessionId);
+        chain = versionReadPlan(metas, index);
+      } catch (_err) {
+        return null;
+      }
+      const rows = await Promise.all(chain.map((meta) => getVersionBytesRow(sessionId, meta.index)));
+      if (rows.some((row) => !row)) return null;
+      return new Blob(rows.map((row) => row.buffer), { type: 'application/pdf' });
     }
 
     // Feeds pdf.js, which wants an ArrayBuffer/TypedArray for `data`, not a
     // Blob.
     async function getVersionBytes(sessionId, index) {
-      const row = await getVersionBytesRow(sessionId, index);
-      return row ? row.buffer : null;
+      const blob = await getVersionBlob(sessionId, index);
+      return blob ? await blob.arrayBuffer() : null;
     }
 
     // Meta rows only (no PDF bytes) for every version in `sessionId`, oldest
@@ -1967,8 +2023,13 @@
         storedIndex += 1;
         const isFinal = i === buffersInOrder.length - 1;
         versionKey = createSessionId();
+        // Always a full copy for now -- hydrated entries are decoded from
+        // base64 one at a time (see storeHydratedVersionChain's own
+        // doc-comment above), not read incrementally, so there's no natural
+        // "previous write" to slice a delta against here yet.
         await beginVersionWrite(sessionId, storedIndex, currBytes.buffer, {
           source: isFinal ? 'upload' : 'imported', saveKind, versionKey,
+          storage: 'full', baseKey: null, byteLength: currBytes.byteLength,
         }).catch(reportVersionWriteFailure);
         prevBytes = currBytes;
       }
@@ -3052,8 +3113,10 @@
           // orphaned-rows cleanup (anything above the index it just wrote)
           // takes care of the truncation.
           const versionKey = createSessionId();
-          await beginVersionWrite(sessionId, 1, await file.arrayBuffer(), {
+          const recoveryBuffer = await file.arrayBuffer();
+          await beginVersionWrite(sessionId, 1, recoveryBuffer, {
             source: 'upload', saveKind: 'initial', versionKey,
+            storage: 'full', baseKey: null, byteLength: recoveryBuffer.byteLength,
           }).catch(reportVersionWriteFailure);
           documentRevisionCount = 1;
           activeVersionKey = versionKey;
@@ -3224,13 +3287,31 @@
         } else {
           documentRevisionCount += 1;
           const versionKey = createSessionId();
-          activeVersionKey = versionKey;
           pendingRevisionCleanup = { type: 'index', sessionId: documentSessionId, index: documentRevisionCount };
           dropStaleRedoEntries(documentRevisionCount);
+
+          // A delta needs its base's write to be confirmed landed --
+          // otherwise (still in flight, or it failed) there's nothing
+          // trustworthy to slice against, so the full file is stored
+          // instead. `prior`'s versionKey is read from activeVersionKey
+          // *before* it's reassigned to this new version's key below.
+          const priorWriteLanded = lastVersionWriteCompletion
+            ? await lastVersionWriteCompletion.then(() => true, () => false)
+            : true;
+          const prior = (priorWriteLanded && previousDocumentState)
+            ? { versionKey: activeVersionKey, byteLength: previousDocumentState.file.size }
+            : null;
+          const plan = planVersionStorage(prior, saveKind, currBytes);
+
+          activeVersionKey = versionKey;
           // Awaited so put() is guaranteed queued before arrayBuffer is
-          // handed to pdf.js below -- see beginVersionWrite for why.
-          pendingVersionWrite = await beginVersionWrite(documentSessionId, documentRevisionCount, arrayBuffer, {
+          // handed to pdf.js below -- see beginVersionWrite for why. A
+          // delta write stores only plan.data (a fresh, independent copy --
+          // see planVersionStorage), so arrayBuffer itself is untouched by
+          // it either way.
+          pendingVersionWrite = await beginVersionWrite(documentSessionId, documentRevisionCount, plan.data.buffer, {
             source: 'edit', saveKind, versionKey,
+            storage: plan.storage, baseKey: plan.baseKey, byteLength: currBytes.byteLength,
           });
         }
       } else {
@@ -3240,8 +3321,11 @@
         const versionKey = createSessionId();
         activeVersionKey = versionKey;
         pendingRevisionCleanup = { type: 'session', sessionId: documentSessionId };
+        // Always a full copy -- a fresh upload starts a new session, so
+        // there's no prior version in it to delta against.
         pendingVersionWrite = await beginVersionWrite(documentSessionId, 1, arrayBuffer, {
           source: 'upload', saveKind: 'initial', versionKey,
+          storage: 'full', baseKey: null, byteLength: arrayBuffer.byteLength,
         });
       }
 
