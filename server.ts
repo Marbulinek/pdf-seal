@@ -491,7 +491,12 @@ app.post("/api/revisions/embedded", uploadLimiter, upload.single("pdfDocument"),
 // embedding them in the PDF, so this takes N independent PDF buffers --
 // oldest first -- and summarizes each one. Stateless like every other route
 // here: nothing is persisted or correlated across requests.
-app.post("/api/revisions", uploadLimiter, upload.array("pdfDocument"), async (req: Request, res: Response) => {
+// Capped at 16 files -- the client sends sequential batches of at most 8
+// (see batchBySize in lib/VersionHistory.ts), so this is headroom, not the
+// expected size; it exists so this route can't be made to accept an
+// unbounded multipart body just because the byte-size cap alone wouldn't
+// catch a huge number of tiny files.
+app.post("/api/revisions", uploadLimiter, upload.array("pdfDocument", 16), async (req: Request, res: Response) => {
   const files = Array.isArray(req.files) ? req.files : [];
   if (!files.length) return res.status(400).json({ error: "No files uploaded" });
 

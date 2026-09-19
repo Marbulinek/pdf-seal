@@ -1438,16 +1438,20 @@
     try {
       onlyIncrementalVersionsFilter = localStorage.getItem('pdfseal-only-incremental-versions') === '1';
     } catch { /* localStorage unavailable (private mode, storage blocked) -- default to off */ }
-    // Per-revision summary cache, keyed by revision index, for revisionSummaryCacheSessionId.
     // summarizeSnapshot() (server-side) computes each revision's summary purely from that
     // revision's own bytes -- nothing about it depends on any other revision -- so once a
-    // given index has been summarized it never needs to be re-uploaded or re-parsed, even
-    // though loadRevisionsIfNeeded() re-runs on every edit while the panel is open. Without
-    // this, opening the Revisions panel on a document with N revisions re-uploads and
-    // re-parses all N of them on every single field edit (O(N) work, and O(N) full PDF
-    // copies in flight at once, per edit -- O(N^2) over a session).
-    let revisionSummaryCache = new Map();
-    let revisionSummaryCacheSessionId = null;
+    // given version has been summarized it never needs to be re-uploaded or re-parsed, even
+    // though loadRevisionsIfNeeded() re-runs on every edit while the panel is open. The
+    // computed summary is persisted into that version's own versionMeta row (see
+    // saveVersionSummary), so it survives a reload too, not just the rest of this session.
+    //
+    // This map covers only the narrower window while a fetch is actually in flight: it's
+    // keyed by versionKey (unique per stored version, immune to index reuse) and holds each
+    // in-flight fetch's promise, so a version already being fetched -- solo, from expanding
+    // its card, or as part of a background batch -- is never uploaded a second time by
+    // whichever path asks for it later. Entries remove themselves once their fetch settles;
+    // after that, the persisted versionMeta.summary is what a re-check finds.
+    let revisionSummaryPromises = new Map();
     // Indices whose card is currently expanded, so a re-render (after a
     // lazy detail fetch finishes) can restore what the user had open
     // instead of collapsing every card back down.
@@ -1728,6 +1732,30 @@
       return chain.reverse();
     }
 
+    // Splits `items` into sequential batches, each capped at `maxBytes`
+    // total and `maxCount` items -- whichever limit a batch hits first ends
+    // it. An item larger than maxBytes on its own still gets a
+    // (single-item) batch rather than being dropped or split. Mirrors
+    // lib/VersionHistory.ts's batchBySize -- see there for the full
+    // rationale.
+    function batchBySize(items, maxBytes, maxCount) {
+      const batches = [];
+      let current = [];
+      let currentBytes = 0;
+      for (const item of items) {
+        const wouldOverflow = current.length > 0 && (current.length >= maxCount || currentBytes + item.byteLength > maxBytes);
+        if (wouldOverflow) {
+          batches.push(current);
+          current = [];
+          currentBytes = 0;
+        }
+        current.push(item);
+        currentBytes += item.byteLength;
+      }
+      if (current.length) batches.push(current);
+      return batches;
+    }
+
     const VERSION_SAVE_KIND_BADGE = {
       incremental: { label: 'Incremental update', tone: 'positive' },
       rewrite: { label: 'Full rewrite', tone: 'neutral' },
@@ -1920,6 +1948,29 @@
         const req = tx.objectStore(VERSION_META_STORE).getAll(range);
         req.onsuccess = () => resolve((req.result || []).sort((a, b) => a.index - b.index));
         req.onerror = () => reject(req.error || new Error('Could not read local versions.'));
+      });
+    }
+
+    // Persists a computed summary into that version's own versionMeta row,
+    // but only if its versionKey still matches -- if the index has since
+    // been overwritten by different bytes (a redo-then-diverge, or a
+    // truncated delta chain), this summary no longer describes what's
+    // actually stored there, and writing it would mislabel that row.
+    async function saveVersionSummary(sessionId, index, versionKey, summary) {
+      const db = await openVersionDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(VERSION_META_STORE, 'readwrite');
+        const store = tx.objectStore(VERSION_META_STORE);
+        const req = store.get([sessionId, index]);
+        req.onsuccess = () => {
+          const row = req.result;
+          if (row && row.versionKey === versionKey) {
+            row.summary = summary;
+            store.put(row);
+          }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error("Could not save this version's summary."));
       });
     }
 
@@ -3508,10 +3559,6 @@
         // to drop it.
         if (previousSessionIdToClear) {
           clearVersionSession(previousSessionIdToClear).catch(() => {});
-          if (revisionSummaryCacheSessionId === previousSessionIdToClear) {
-            revisionSummaryCache = new Map();
-            revisionSummaryCacheSessionId = null;
-          }
         }
 
         documentLoadInFlight = false;
@@ -3539,15 +3586,13 @@
         if (pendingRevisionCleanup) {
           if (pendingRevisionCleanup.type === 'session') {
             clearVersionSession(pendingRevisionCleanup.sessionId).catch(() => {});
-            if (revisionSummaryCacheSessionId === pendingRevisionCleanup.sessionId) revisionSummaryCache.clear();
           } else {
+            // That index number can be reused by the next edit attempt
+            // (documentRevisionCount is rolled back below), but this
+            // attempt's versionKey never is -- summaries are keyed by
+            // versionKey (see revisionSummaryPromises), so there's nothing
+            // to invalidate for a retry to collide with.
             deleteVersion(pendingRevisionCleanup.sessionId, pendingRevisionCleanup.index).catch(() => {});
-            // That index number can be reused by the next edit attempt (documentRevisionCount
-            // is rolled back below) -- drop any cached summary for it so a retry doesn't serve
-            // a stale result computed from the failed attempt's bytes.
-            if (revisionSummaryCacheSessionId === pendingRevisionCleanup.sessionId) {
-              revisionSummaryCache.delete(pendingRevisionCleanup.index);
-            }
           }
         }
         // This load is being abandoned in favor of restoring the previous
@@ -8908,24 +8953,23 @@ async function loadRevisionsIfNeeded() {
       );
     }
 
-    if (revisionSummaryCacheSessionId !== requestedSessionId) {
-      revisionSummaryCache = new Map();
-      revisionSummaryCacheSessionId = requestedSessionId;
-    }
-
     // Build the list from what's already known locally first -- index,
-    // source and saveKind cost nothing to read from IndexedDB (a cursor over
-    // small fields, no PDF bytes pulled in) -- so the panel paints instantly.
-    // The heavier per-revision summary (parses the PDF server-side for
-    // metadata/fields/signatures/change counts) is then fetched in the
-    // background for every revision (see loadAllRevisionSummaries() below)
-    // so signed status shows up front without expanding each card;
-    // expanding a card just displays what's already cached instead of
-    // firing its own request.
-    revisionsData = metas.map(({ index, source, saveKind }) => ({
-      ...(revisionSummaryCache.get(index) || { index, loaded: false }),
-      source,
-      saveKind,
+    // source, saveKind and byteLength cost nothing to read from IndexedDB (a
+    // getAll over small fields, no PDF bytes pulled in) -- so the panel
+    // paints instantly. A version summarized in an earlier visit already
+    // has its summary sitting in meta.summary (see saveVersionSummary), so
+    // it renders fully loaded with no fetch at all; only genuinely
+    // never-summarized versions are fetched in the background (see
+    // loadAllRevisionSummaries() below) so signed status shows up front
+    // without expanding each card -- expanding one just displays what's
+    // already loaded/cached instead of firing its own request.
+    revisionsData = metas.map((meta) => ({
+      ...(meta.summary ? { ...meta.summary, loaded: true } : { loaded: false }),
+      index: meta.index,
+      versionKey: meta.versionKey,
+      byteLength: meta.byteLength,
+      source: meta.source,
+      saveKind: meta.saveKind,
     }));
     revisionsData.forEach((rev, i) => { rev.isFinal = i === revisionsData.length - 1; });
     revisionsLoadedForFile = cacheKey;
@@ -8957,82 +9001,119 @@ async function loadRevisionsIfNeeded() {
   }
 }
 
-// Fetches and caches the full summary (metadata/fields/signatures/change
-// counts -- requires the server to actually parse this revision's PDF)
-// for exactly one revision. Called on demand when a revision card is
-// expanded, not up front for the whole panel.
+// Uploads and summarizes exactly the revisions in `revs` that aren't
+// already fetched elsewhere (server parses each PDF for
+// metadata/fields/signatures/change counts), persists each result into its
+// own versionMeta row, and applies it back onto the matching object in
+// `revs` (mutated in place). Shared by loadRevisionSummary() (a single-item
+// `revs`, for an on-demand card expand) and loadAllRevisionSummaries()
+// (a whole batch) -- either way, a revision already being fetched by the
+// *other* path is left to that in-flight promise instead of being uploaded
+// a second time (see revisionSummaryPromises above).
+async function ensureSummariesLoaded(requestedSessionId, revs) {
+  const need = revs.filter((rev) => !rev.loaded);
+  if (!need.length) return;
+
+  const fresh = need.filter((rev) => !revisionSummaryPromises.has(rev.versionKey));
+  if (fresh.length) {
+    const batchPromise = (async () => {
+      const blobs = await Promise.all(fresh.map((rev) => getVersionBlob(requestedSessionId, rev.index)));
+      const included = [];
+      const formData = new FormData();
+      fresh.forEach((rev, i) => {
+        const blob = blobs[i];
+        if (blob) {
+          formData.append('pdfDocument', blob, `revision-${rev.index}.pdf`);
+          included.push(rev);
+        }
+      });
+      if (!included.length) return new Map();
+
+      const res = await fetch('/api/revisions', { method: 'POST', body: formData });
+      let data;
+      try {
+        data = await res.json();
+      } catch (_e) {
+        throw new Error(`Server returned status ${res.status}.`);
+      }
+      if (!res.ok) throw new Error(data?.error || 'Could not read these revisions.');
+
+      // The server tags each summary with its position within this one
+      // batch (index 1..N / isFinal) -- neither means anything here, so
+      // drop them and let each revision's own index (already correct from
+      // the local list) stand.
+      const rawRevisions = Array.isArray(data.revisions) ? data.revisions : [];
+      const results = new Map();
+      included.forEach((rev, i) => {
+        const raw = rawRevisions[i];
+        if (!raw) return;
+        const { index: _ignoredIndex, isFinal: _ignoredIsFinal, ...summary } = raw;
+        results.set(rev.versionKey, summary);
+      });
+      await Promise.all(included.map((rev) => {
+        const summary = results.get(rev.versionKey);
+        return summary ? saveVersionSummary(requestedSessionId, rev.index, rev.versionKey, summary).catch(() => {}) : null;
+      }));
+      return results;
+    })();
+
+    fresh.forEach((rev) => {
+      const perItem = batchPromise.then((results) => results.get(rev.versionKey));
+      revisionSummaryPromises.set(rev.versionKey, perItem);
+      // Removes itself once settled, success or failure -- but only if this
+      // is still the registered promise for that versionKey (a later
+      // request for the same key, started after this one already cleaned
+      // up, shouldn't have its own entry evicted by this stale handler).
+      perItem.finally(() => {
+        if (revisionSummaryPromises.get(rev.versionKey) === perItem) revisionSummaryPromises.delete(rev.versionKey);
+      }).catch(() => {});
+    });
+  }
+
+  await Promise.all(need.map(async (rev) => {
+    const promise = revisionSummaryPromises.get(rev.versionKey);
+    if (!promise) return; // loaded (or abandoned) by the time we got here
+    const summary = await promise.catch(() => null);
+    if (summary) Object.assign(rev, summary, { index: rev.index, loaded: true });
+  }));
+}
+
+// Fetches and caches the full summary for exactly one revision. Called on
+// demand when a revision card is expanded, not up front for the whole
+// panel.
 async function loadRevisionSummary(index) {
-  const cached = revisionSummaryCache.get(index);
-  if (cached && cached.loaded) return cached;
-
   const requestedSessionId = documentSessionId;
-  const blob = await getVersionBlob(requestedSessionId, index);
-  if (!blob) throw new Error('Local revision snapshot not found.');
+  const meta = (await listVersionMetaForSession(requestedSessionId)).find((m) => m.index === index);
+  if (!meta) throw new Error('Local revision snapshot not found.');
 
-  const formData = new FormData();
-  formData.append('pdfDocument', blob, `revision-${index}.pdf`);
-  const res = await fetch('/api/revisions', { method: 'POST', body: formData });
-  let data;
-  try {
-    data = await res.json();
-  } catch (_e) {
-    throw new Error(`Server returned status ${res.status}.`);
+  const rev = meta.summary
+    ? { ...meta.summary, index, loaded: true }
+    : { index, versionKey: meta.versionKey, loaded: false };
+  if (!rev.loaded) {
+    await ensureSummariesLoaded(requestedSessionId, [rev]);
+    if (requestedSessionId !== documentSessionId) throw new Error('Document changed.');
+    if (!rev.loaded) throw new Error('Could not read this revision.');
   }
-  if (!res.ok) throw new Error(data?.error || 'Could not read this revision.');
-  if (requestedSessionId !== documentSessionId) throw new Error('Document changed.');
-
-  // The server tags the single summary it returns with index 1 / isFinal
-  // true (its position within this one-file batch) -- neither means
-  // anything here, so drop them and let the caller's own index/isFinal
-  // (already correct from the local list) stand.
-  const raw = (data.revisions && data.revisions[0]) || {};
-  const { index: _ignoredIndex, isFinal: _ignoredIsFinal, ...summary } = raw;
-  const result = { ...summary, index, loaded: true };
-  if (revisionSummaryCacheSessionId === requestedSessionId) {
-    revisionSummaryCache.set(index, result);
-  }
-  return result;
+  return rev;
 }
 
 // Background counterpart to loadRevisionSummary(): fetches full summaries
-// for every not-yet-loaded revision in one batched request (the /api/revisions
-// route already accepts multiple files), so signed status can be shown on
-// every card without the user having to expand each one first. Mutates the
-// entries in `revisions` in place and re-renders once, rather than one
-// render per revision.
+// for every not-yet-loaded revision, in sequential batches of at most 8MB
+// and 8 files (see batchBySize in lib/VersionHistory.ts), re-rendering
+// after each batch lands so cards fill in progressively -- "Signed" status
+// shows up without the user having to expand each one first, without
+// holding every revision's bytes in flight to the server at once.
 async function loadAllRevisionSummaries(requestedSessionId, revisions) {
   const pending = revisions.filter((rev) => !rev.loaded);
   if (!pending.length) return;
 
-  const blobs = await Promise.all(pending.map((rev) => getVersionBlob(requestedSessionId, rev.index)));
-  if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
-
-  const formData = new FormData();
-  pending.forEach((rev, i) => {
-    const blob = blobs[i];
-    if (blob) formData.append('pdfDocument', blob, `revision-${rev.index}.pdf`);
-  });
-  if (![...formData.keys()].length) return;
-
-  const res = await fetch('/api/revisions', { method: 'POST', body: formData });
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data) return;
-  if (requestedSessionId !== documentSessionId) return;
-
-  const rawRevisions = Array.isArray(data.revisions) ? data.revisions : [];
-  let rawI = 0;
-  pending.forEach((rev, i) => {
-    if (!records[i]) return; // record vanished locally between listing and fetch; leave unloaded
-    const raw = rawRevisions[rawI++] || {};
-    const { index: _ignoredIndex, isFinal: _ignoredIsFinal, ...summary } = raw;
-    const result = { ...summary, index: rev.index, loaded: true };
-    if (revisionSummaryCacheSessionId === requestedSessionId) {
-      revisionSummaryCache.set(rev.index, result);
-    }
-    Object.assign(rev, result);
-  });
-
-  if (revisionsData === revisions) renderRevisionsTimeline(revisions);
+  const batches = batchBySize(pending, 8 * 1024 * 1024, 8);
+  for (const batch of batches) {
+    if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
+    await ensureSummariesLoaded(requestedSessionId, batch).catch(() => {});
+    if (requestedSessionId !== documentSessionId) return;
+    if (revisionsData === revisions) renderRevisionsTimeline(revisions);
+  }
 }
 
 const TAG_LABEL_CLASS = {
