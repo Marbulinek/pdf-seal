@@ -1,7 +1,7 @@
 'use strict';
 
 import { createHash } from 'node:crypto';
-import PdfSignatureTool from './PdfSignatureTool';
+import PdfSignatureTool, { truncateLongStrings } from './PdfSignatureTool';
 
 /**
  * PdfRevisionTool
@@ -364,6 +364,11 @@ interface RawObjectPreview {
 const MAX_SOURCE_KEYS = 40;
 const MAX_SOURCE_ARRAY = 24;
 const MAX_SOURCE_DEPTH = 4;
+// Same cap PdfSignatureTool.getDocumentInfoSummary() applies to rawInfo/
+// rawObjects -- a leaf string here (e.g. this app's own embedded
+// PdfSealRevisionChainV1 JSON, which inlines every prior revision's bytes
+// as base64) can be just as enormous as anything getFullRawDump() returns.
+const MAX_SOURCE_STRING_LENGTH = 64 * 1024;
 
 /** Bound a pdfValueToPlain()-shaped node for shipping to the client: caps dict keys, array entries, and nesting depth, replacing overflow with a "… +N more" marker. Returns whether anything was actually elided. */
 function capSourceNode(node: any, depth: number = 0): { node: any; truncated: boolean } {
@@ -400,6 +405,11 @@ function capSourceNode(node: any, depth: number = 0): { node: any; truncated: bo
       truncated = true;
     }
     return { node: out, truncated };
+  }
+
+  if (typeof node === 'string') {
+    const capped = truncateLongStrings(node, MAX_SOURCE_STRING_LENGTH);
+    return { node: capped, truncated: capped !== node };
   }
 
   return { node, truncated: false };

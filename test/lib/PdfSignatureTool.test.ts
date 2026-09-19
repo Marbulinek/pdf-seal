@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PDFArray, PDFHexString, PDFName, PDFString } from 'pdf-lib';
-import PdfSignatureTool from '../../lib/PdfSignatureTool';
+import PdfSignatureTool, { truncateLongStrings } from '../../lib/PdfSignatureTool';
 import { buildSignedPdfFixture } from './helpers/pdfSigner';
 import { mintStandardChain } from './helpers/certificateFactory';
 
@@ -871,6 +871,42 @@ describe('applyFieldOps', () => {
 
     expect(fields.map((f: any) => f.name).sort()).toEqual(['ExtraField', 'SignedField']);
     expect(fields.find((f: any) => f.name === 'SignedField')?.signed).toBe(true);
+  });
+});
+
+describe('truncateLongStrings', () => {
+  it('leaves strings at or under the limit untouched', () => {
+    expect(truncateLongStrings('short', 10)).toBe('short');
+    expect(truncateLongStrings('exactlyten', 10)).toBe('exactlyten');
+  });
+
+  it('truncates a string over the limit and notes how much was cut', () => {
+    const result = truncateLongStrings('a'.repeat(20), 10);
+    expect(result).toBe(`${'a'.repeat(10)}… [truncated, 10 more chars]`);
+  });
+
+  it('recurses into nested objects and arrays, truncating only their string leaves', () => {
+    const input = {
+      short: 'ok',
+      long: 'b'.repeat(20),
+      nested: { deeper: ['c'.repeat(20), 'ok'] },
+      number: 42,
+      nil: null,
+    };
+    const result = truncateLongStrings(input, 10);
+    expect(result.short).toBe('ok');
+    expect(result.long).toBe(`${'b'.repeat(10)}… [truncated, 10 more chars]`);
+    expect(result.nested.deeper[0]).toBe(`${'c'.repeat(10)}… [truncated, 10 more chars]`);
+    expect(result.nested.deeper[1]).toBe('ok');
+    expect(result.number).toBe(42);
+    expect(result.nil).toBeNull();
+  });
+
+  it('does not mutate the input', () => {
+    const input = { long: 'd'.repeat(20) };
+    const result = truncateLongStrings(input, 10);
+    expect(result).not.toBe(input);
+    expect(input.long).toBe('d'.repeat(20));
   });
 });
 

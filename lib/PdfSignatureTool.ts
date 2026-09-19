@@ -166,6 +166,38 @@ function pdfValueToInfoString(value: any): string {
   return String(value);
 }
 
+/**
+ * Recursively truncates any string longer than `maxLength` characters
+ * within a plain JSON-shaped value (as produced by pdfValueToPlain()/
+ * getRawInfoDict()), replacing the overflow with a short marker. Array/
+ * object structure and non-string values pass through untouched.
+ *
+ * Exists because a handful of legitimate PDF Info-dictionary/object values
+ * can be enormous plain strings rather than binary streams -- most notably
+ * this app's own embedded revision-chain JSON (PdfSealRevisionChainV1),
+ * which inlines every prior revision's bytes as base64 -- and those would
+ * otherwise pass through getFullRawDump()/getRawInfoDict() uncapped into
+ * the Metadata raw tree and the Details tab's PDF source inspector, each
+ * one turning into a multi-megabyte DOM subtree for a single leaf value.
+ */
+// Cap applied to rawInfo/rawObjects in getDocumentInfoSummary() -- see
+// truncateLongStrings() below.
+const MAX_RAW_STRING_LENGTH = 64 * 1024;
+
+export function truncateLongStrings(value: any, maxLength: number): any {
+  if (typeof value === 'string') {
+    if (value.length <= maxLength) return value;
+    return `${value.slice(0, maxLength)}… [truncated, ${value.length - maxLength} more chars]`;
+  }
+  if (Array.isArray(value)) return value.map((item) => truncateLongStrings(item, maxLength));
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [key, entry] of Object.entries(value)) out[key] = truncateLongStrings(entry, maxLength);
+    return out;
+  }
+  return value;
+}
+
 // Common page sizes in points, compared orientation-agnostically (each
 // entry's short/long edge) with a small tolerance for rounding drift.
 const KNOWN_PAGE_SIZES: Array<{ name: string; width: number; height: number }> = [
@@ -1659,10 +1691,12 @@ class PdfSignatureTool {
     }
     return {
       metadata: this.getMetadata(),
-      rawInfo: this.getRawInfoDict(),
+      // Capped -- see truncateLongStrings()'s doc comment for why a plain
+      // Info-dict/object value can legitimately be megabytes long.
+      rawInfo: truncateLongStrings(this.getRawInfoDict(), MAX_RAW_STRING_LENGTH),
       fields: this.listFields(),
       stamps: this.listStamps(),
-      rawObjects: this.getFullRawDump(),
+      rawObjects: truncateLongStrings(this.getFullRawDump(), MAX_RAW_STRING_LENGTH),
       overview: this.getMetadataOverview(options),
     };
   }

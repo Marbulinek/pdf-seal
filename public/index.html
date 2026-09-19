@@ -36,59 +36,11 @@
     .viewer-diff-banner[hidden] { display: none !important; }
     .viewer-diff-banner button { flex-shrink: 0; }
   </style>
-  <script src="/vendor/pdfjs/pdf.min.js"></script>
-  <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
-
-    // ONE pdf.js worker for the whole page, shared by every document we open
-    // (the live document, each revision snapshot, both sides of a diff).
-    //
-    // Without this, pdf.js spawns a *dedicated* Web Worker per getDocument()
-    // call -- each one re-parsing the 1 MB worker bundle and carrying its own
-    // JS heap plus its own copy of the PDF bytes. With several documents alive
-    // at once (live doc + diffDocA/diffDocB + revisionViewDoc + whatever the
-    // undo stack still pins) that was the single largest slice of this page's
-    // memory footprint.
-    //
-    // Passed per-call as `worker:` rather than set as
-    // GlobalWorkerOptions.workerPort: `workerPort` routes through
-    // PDFWorker.fromPort(), and PDFDocumentLoadingTask.destroy() flags that
-    // shared port with `_pendingDestroy`, after which every later getDocument()
-    // throws "the worker is being destroyed". An explicitly-passed worker is
-    // never assigned to `loadingTask._worker`, so destroy() leaves it alone --
-    // which is what we need, since this app destroys documents in a half-dozen
-    // places.
-    let sharedPdfWorker = null;
-    function getSharedPdfWorker() {
-      if (!sharedPdfWorker || sharedPdfWorker.destroyed) {
-        sharedPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-shared' });
-      }
-      return sharedPdfWorker;
-    }
-
-    // Revision/diff snapshots (diffDocA/diffDocB/revisionViewDoc) get their own
-    // worker, torn down and recreated every time exitDiffViewMode() releases
-    // those documents. They're loaded and destroy()ed far more often than the
-    // live document ever is -- every open/close of the Revisions panel's Visual
-    // Page Diff or single-revision view -- and a worker that has served a
-    // render for a document later destroy()ed while still in flight can be left
-    // unable to complete any later render, on any document, for the rest of
-    // the page's life. Isolating this churn onto a disposable worker (instead
-    // of the long-lived sharedPdfWorker above) means a bad state here can't
-    // wedge the live document view, and a fresh worker on every re-entry means
-    // it can't accumulate across visits either.
-    let diffPdfWorker = null;
-    function getDiffPdfWorker() {
-      if (!diffPdfWorker || diffPdfWorker.destroyed) {
-        diffPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-diff' });
-      }
-      return diffPdfWorker;
-    }
-    function resetDiffPdfWorker() {
-      if (diffPdfWorker) diffPdfWorker.destroy();
-      diffPdfWorker = null;
-    }
-  </script>
+  <!-- pdf.js itself isn't needed until the main script runs (just before </body>), but
+       the request should start as soon as possible -- preload it here so it's already
+       in flight/cached by the time the script tag below is reached, instead of only
+       starting a fetch once the parser gets that far down the page. -->
+  <link rel="preload" href="/vendor/pdfjs/pdf.min.js" as="script">
 </head>
 <body data-active-section="signatures">
 
@@ -678,6 +630,25 @@
           <div id="overlay-layer"></div>
           <div class="drop-replace-overlay" aria-hidden="true"></div>
         </div>
+
+        <!-- Cloned once per field by drawFieldOverlays() instead of building this
+             structure with createElement()/appendChild() calls every time -- see
+             the comment there. Everything event-driven is handled by delegated
+             listeners on #overlay-layer, not per-clone addEventListener calls. -->
+        <template id="fieldOverlayTemplate">
+          <div class="field-overlay">
+            <span class="field-overlay-icon" aria-hidden="true"></span>
+            <div class="field-invisible-pin" aria-hidden="true"><span class="icon icon-eye-off" aria-hidden="true"></span></div>
+            <div class="field-label">
+              <span class="field-label-name"></span>
+              <div class="field-label-tooltip field-label-invisible" hidden>Invisible field — no visible footprint on the page</div>
+              <div class="field-label-tooltip field-label-generic" hidden></div>
+            </div>
+            <div class="resize-handle"></div>
+            <div class="template-save-handle" draggable="true"><span class="icon icon-layers" aria-hidden="true"></span></div>
+            <button type="button" class="field-delete-handle" aria-label="Remove field"><span class="icon icon-close" aria-hidden="true"></span></button>
+          </div>
+        </template>
 
         <div class="document-loading-overlay" id="documentLoadingOverlay" hidden>
           <div class="document-loading-page" id="documentLoadingPage">
@@ -1361,6 +1332,59 @@
     })();
   </script>
 
+  <script src="/vendor/pdfjs/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
+
+    // ONE pdf.js worker for the whole page, shared by every document we open
+    // (the live document, each revision snapshot, both sides of a diff).
+    //
+    // Without this, pdf.js spawns a *dedicated* Web Worker per getDocument()
+    // call -- each one re-parsing the 1 MB worker bundle and carrying its own
+    // JS heap plus its own copy of the PDF bytes. With several documents alive
+    // at once (live doc + diffDocA/diffDocB + revisionViewDoc + whatever the
+    // undo stack still pins) that was the single largest slice of this page's
+    // memory footprint.
+    //
+    // Passed per-call as `worker:` rather than set as
+    // GlobalWorkerOptions.workerPort: `workerPort` routes through
+    // PDFWorker.fromPort(), and PDFDocumentLoadingTask.destroy() flags that
+    // shared port with `_pendingDestroy`, after which every later getDocument()
+    // throws "the worker is being destroyed". An explicitly-passed worker is
+    // never assigned to `loadingTask._worker`, so destroy() leaves it alone --
+    // which is what we need, since this app destroys documents in a half-dozen
+    // places.
+    let sharedPdfWorker = null;
+    function getSharedPdfWorker() {
+      if (!sharedPdfWorker || sharedPdfWorker.destroyed) {
+        sharedPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-shared' });
+      }
+      return sharedPdfWorker;
+    }
+
+    // Revision/diff snapshots (diffDocA/diffDocB/revisionViewDoc) get their own
+    // worker, torn down and recreated every time exitDiffViewMode() releases
+    // those documents. They're loaded and destroy()ed far more often than the
+    // live document ever is -- every open/close of the Revisions panel's Visual
+    // Page Diff or single-revision view -- and a worker that has served a
+    // render for a document later destroy()ed while still in flight can be left
+    // unable to complete any later render, on any document, for the rest of
+    // the page's life. Isolating this churn onto a disposable worker (instead
+    // of the long-lived sharedPdfWorker above) means a bad state here can't
+    // wedge the live document view, and a fresh worker on every re-entry means
+    // it can't accumulate across visits either.
+    let diffPdfWorker = null;
+    function getDiffPdfWorker() {
+      if (!diffPdfWorker || diffPdfWorker.destroyed) {
+        diffPdfWorker = new pdfjsLib.PDFWorker({ name: 'pdf-seal-diff' });
+      }
+      return diffPdfWorker;
+    }
+    function resetDiffPdfWorker() {
+      if (diffPdfWorker) diffPdfWorker.destroy();
+      diffPdfWorker = null;
+    }
+  </script>
   <script>
     // State variables
     let activeFile = null;
@@ -1465,6 +1489,11 @@
     let currentDiffFromRevIndex = null;
     let currentDiffToRevIndex = null;
     let currentDiffActiveTab = 'overview';
+    // Whether renderDiffDetails() has been run for the currently-held
+    // currentDiffResultData -- the Details tab's object chips are only built
+    // the first time that tab is actually opened (see switchDiffTab), not on
+    // every compare regardless of which tab the user lands on.
+    let diffDetailsRendered = false;
     let pendingDiffLandingTab = null; // which tab to switch to once the in-flight compare finishes (set by runQuickDiff)
     let viewerDiffActive = false; // true while the main viewer shows a revision snapshot/diff instead of the live document
     let hoveredDiffObjectKey = null;
@@ -2765,6 +2794,22 @@
     const uploadDropdownCtl = setupDropdown('uploadDropdown', 'btnUploadToggle');
     const downloadDropdownCtl = setupDropdown('downloadDropdown', 'btnDownloadToggle');
 
+    function isSectionOpen(sectionId) {
+      const el = document.getElementById(sectionId);
+      return !!el && !el.hidden;
+    }
+
+    // Set instead of calling renderTemplatesPanel() directly while the
+    // Signatures section is hidden (the panel has no per-document/per-file
+    // "loaded for" cache to key a lazy re-render off of, unlike Metadata/
+    // Certificates/Revisions) -- picked up and cleared by setupSectionNav's
+    // click handler the next time Signatures becomes active.
+    let templatesPanelDirty = false;
+    function markTemplatesPanelDirty() {
+      if (isSectionOpen('sectionSignatures')) renderTemplatesPanel();
+      else templatesPanelDirty = true;
+    }
+
     // ---------------------------------------------------------------
     // Section nav (MetaData / Signatures / Certificates / Revisions)
     // The PDF viewer on the left is always visible; only the right-hand
@@ -2814,6 +2859,10 @@
           if (target !== 'signatures' && activeField) deselectActiveField();
           if (target !== 'revisions') suspendRevisionsView();
           if (target !== 'certificates') { closeCertificateSheet(); closeCertificateModifySheet(); closeCertificateTimelineSheet(); }
+          if (target === 'signatures' && templatesPanelDirty) {
+            renderTemplatesPanel();
+            templatesPanelDirty = false;
+          }
           if (target === 'metadata') loadMetadataIfNeeded();
           if (target === 'revisions') {
             loadRevisionsIfNeeded();
@@ -3005,6 +3054,25 @@
       return { bytes, isPdf: header === '%PDF-' };
     }
 
+    // The live validity indicator (below) re-runs on a 200ms debounce while
+    // the user is still typing or right after a paste, so -- unlike
+    // analyzeBase64Pdf(), used once by the actual Load button -- it only
+    // decodes enough of the string to read the "%PDF-" magic bytes rather
+    // than the whole thing. A full decode+byte-array-build on every
+    // keystroke was wasted work for a PDF whose Base64 form can run into
+    // the tens of megabytes.
+    function quickCheckBase64Header(rawInput) {
+      const cleaned = stripSurroundingQuotes(rawInput.trim()).replace(/^data:application\/pdf;base64,/i, '').replace(/\s+/g, '');
+      // 12 chars is itself a multiple of 4 (atob needs a whole group to
+      // decode cleanly) and decodes to 9 bytes -- enough to cover the
+      // 5-byte "%PDF-" magic with room to spare. Floored to the input's own
+      // length while it's still shorter than that (e.g. mid-paste).
+      const headLen = Math.min(12, cleaned.length - (cleaned.length % 4));
+      if (headLen <= 0) return false;
+      const binary = atob(cleaned.slice(0, headLen));
+      return binary.slice(0, 5) === '%PDF-';
+    }
+
     let base64ValidityTimer = null;
     function checkBase64Validity() {
       const raw = base64Input.value;
@@ -3013,7 +3081,7 @@
         return;
       }
       try {
-        setBase64Validity(analyzeBase64Pdf(raw).isPdf ? 'valid' : 'invalid');
+        setBase64Validity(quickCheckBase64Header(raw) ? 'valid' : 'invalid');
       } catch (err) {
         setBase64Validity('invalid');
       }
@@ -3143,7 +3211,7 @@
       // The Templates panel has no overlay (templates are editable with no
       // document open) -- re-rendering it is what enables/disables placing and
       // row dragging as a document comes and goes.
-      renderTemplatesPanel();
+      markTemplatesPanelDirty();
       updateHistoryUi();
     }
 
@@ -3198,8 +3266,13 @@
       documentOverview = null;
       const metaSearchInput = document.getElementById('metaSearchInput');
       if (metaSearchInput) metaSearchInput.value = '';
-      renderMetaTree();
-      renderMetaOverview();
+      // Only worth painting the cleared state now if it's actually visible --
+      // loadMetadataIfNeeded() re-derives it correctly from documentMeta et
+      // al. (now null) whenever the MetaData section is next opened.
+      if (isSectionOpen('sectionMetaData')) {
+        renderMetaTree();
+        renderMetaOverview();
+      }
     }
 
     // Drives the growing-document loading overlay shown while a new file is
@@ -3607,14 +3680,11 @@
         // correctly once `pdfDoc` itself is assigned above -- doing this any
         // earlier left whichever right-hand section was already active (e.g.
         // MetaData) showing its stale "no document" state until the user
-        // clicked away to another section and back. The heavy metadata
-        // fetch itself only runs if that section is actually open right now.
-        if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
-          loadMetadataIfNeeded();
-        } else {
-          renderMetaTree();
-          renderMetaOverview();
-        }
+        // clicked away to another section and back. If MetaData isn't the
+        // open section, there's nothing to paint yet either way --
+        // loadMetadataIfNeeded() re-fetches correctly (documentMetaLoadedFor
+        // still points at the old file) whenever it's next opened.
+        if (isSectionOpen('sectionMetaData')) loadMetadataIfNeeded();
 
         document.getElementById('pageCount').textContent = pdfDoc.numPages;
         pageNum = Math.min(Math.max(targetPage, 1), pdfDoc.numPages);
@@ -3751,21 +3821,19 @@
           documentRevisionCount = previousDocumentState.documentRevisionCount;
           activeVersionKey = previousDocumentState.activeVersionKey;
           updatePendingChangesUi();
-          renderMetaTree();
-          renderMetaOverview();
           document.getElementById('pageCount').textContent = pdfDoc.numPages;
           updateViewerControlsState();
           await renderPage(pageNum);
           // The failed upload may have already fetched (and rendered) revision/
           // metadata data for the bad file before this rollback ran -- re-sync
           // the panel to the restored document instead of leaving it showing
-          // data for a file the viewer no longer displays.
+          // data for a file the viewer no longer displays. If MetaData isn't
+          // open, this is also what (re-)renders it correctly once it is --
+          // there's no separate render call above for that reason.
           if (document.getElementById('sectionRevisions') && !document.getElementById('sectionRevisions').hidden) {
             loadRevisionsIfNeeded();
           }
-          if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
-            loadMetadataIfNeeded();
-          }
+          if (isSectionOpen('sectionMetaData')) loadMetadataIfNeeded();
         } else {
           activeFile = null;
           pdfDoc = null;
@@ -3781,8 +3849,10 @@
           documentSessionId = null;
           documentRevisionCount = 0;
           activeVersionKey = null;
-          renderMetaTree();
-          renderMetaOverview();
+          // No render call here either -- loadMetadataIfNeeded()'s
+          // documentMetaLoadedFor === activeFile check (both null now) takes
+          // its cheap early-return path and paints the cleared state
+          // correctly whenever MetaData is next opened.
           updateViewerControlsState();
           document.getElementById('pdfContainer').style.display = 'none';
           document.getElementById('emptyStateViewer').style.display = 'flex';
@@ -3830,14 +3900,27 @@
       return Math.max(0.1, scale);
     }
 
+    // Bumped on every renderPage() call, and checked after each await inside
+    // it -- rapid paging (holding down Next, or a programmatic jump landing
+    // mid-flight of a previous one) can have an older call's getPage()/
+    // render() still resolving after a newer call has already started. The
+    // per-render pdf.js cancellation (currentRenderTask.cancel(), below)
+    // stops the older call's *canvas paint*, but renderPage() itself has no
+    // other way to know it's now stale -- without this it would still go on
+    // to overlay the *newer* viewport with the *older* page's fields and
+    // write the wrong page number into the UI.
+    let renderPageGeneration = 0;
+
     async function renderPage(num) {
       if (!pdfDoc) return;
+      const generation = ++renderPageGeneration;
 
       const page = await pdfDoc.getPage(num);
       // A diff view can claim the shared canvas while getPage() is pending --
       // it cancels render tasks, but this one does not exist yet. Bail before
       // creating it rather than painting the live document over the diff.
       if (viewerDiffActive) return;
+      if (generation !== renderPageGeneration) return;
 
       // Unless the user has explicitly zoomed in/out: scale the page to fit
       // the panel edge-to-edge (preserving aspect ratio).
@@ -3852,13 +3935,14 @@
       viewport.scaleX = currentScale;
       viewport.scaleY = currentScale;
 
-      await renderPageToSharedCanvas(page, viewport);
+      const rendered = await renderPageToSharedCanvas(page, viewport);
       // A revision snapshot or visual diff can claim the shared canvas while
       // this render is in flight (sizeCanvasForVisualDiff cancels it). Bail
       // rather than finish: everything below describes what's on screen --
       // page indicator, viewport, the live document's field overlays -- and
       // none of it is true of the diff that's actually there now.
       if (viewerDiffActive) return;
+      if (!rendered || generation !== renderPageGeneration) return;
 
       currentViewport = viewport;
       drawFieldOverlays(viewport);
@@ -3869,21 +3953,39 @@
       updateViewerControlsState();
     }
 
+    // Ceiling on the shared canvas's *backing-store* resolution, independent
+    // of viewport.width/height (its intended on-screen CSS size). Each
+    // dimension feeds the canvas's memory footprint multiplicatively (RGBA,
+    // 4 bytes/pixel), and an unusually large page -- well outside common
+    // paper sizes -- can reach that ceiling at even a modest zoom. Past it,
+    // the canvas rasterizes at a capped internal resolution and is scaled
+    // up in CSS to its intended size instead -- the same trick the visual
+    // diff view already uses for its own resolution ceiling.
+    const MAX_CANVAS_DIMENSION = 4096;
+
     async function renderPageToSharedCanvas(page, viewport) {
       if (currentRenderTask) {
         currentRenderTask.cancel();
         currentRenderTask = null;
       }
 
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      // The visual diff rasterizes below full zoom and scales the canvas up in
-      // CSS (see sizeCanvasForVisualDiff) -- clear that here so a normal render
-      // always presents at its natural pixel size.
-      canvas.style.width = '';
-      canvas.style.height = '';
+      const overscale = Math.max(1, viewport.width / MAX_CANVAS_DIMENSION, viewport.height / MAX_CANVAS_DIMENSION);
+      const renderViewport = overscale > 1 ? page.getViewport({ scale: viewport.scale / overscale }) : viewport;
 
-      const renderParams = { canvasContext: ctx, viewport };
+      canvas.height = renderViewport.height;
+      canvas.width = renderViewport.width;
+      if (overscale > 1) {
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+      } else {
+        // The visual diff rasterizes below full zoom and scales the canvas up in
+        // CSS (see sizeCanvasForVisualDiff) -- clear that here so a normal render
+        // always presents at its natural pixel size.
+        canvas.style.width = '';
+        canvas.style.height = '';
+      }
+
+      const renderParams = { canvasContext: ctx, viewport: renderViewport };
       const renderTask = page.render(renderParams);
       currentRenderTask = renderTask;
 
@@ -3906,10 +4008,27 @@
       return true;
     }
 
+    // div -> field for whichever field the div currently represents. A
+    // weak map so a discarded overlay (drawFieldOverlays rebuilds the whole
+    // layer on every render) never needs explicit cleanup here.
+    const fieldOverlayFields = new WeakMap();
+    const fieldOverlayTemplate = document.getElementById('fieldOverlayTemplate');
+
     function drawFieldOverlays(viewport) {
       // Build off-DOM, then swap the complete field layer in one operation.
       // Rendering a page with many form fields previously caused one layout-
       // visible insertion per field; a fragment keeps that work batched.
+      //
+      // Each field's DOM subtree is cloned from #fieldOverlayTemplate rather
+      // than built with createElement()/appendChild() calls, and none of it
+      // carries its own addEventListener -- every interaction (hover label,
+      // drag-to-move, resize, drag-to-template, delete) is handled once by
+      // delegated listeners on overlayLayer itself, set up below, that look
+      // up which field a div represents via fieldOverlayFields. A document
+      // with a couple hundred fields (large-images-200-fields.pdf, one of
+      // this repo's perf fixtures) used to mean a couple hundred fresh
+      // createElement() trees plus over a thousand fresh closures/listeners
+      // on every single render -- paging, zooming, undo/redo, all of it.
       const fieldLayer = document.createDocumentFragment();
       activeFieldDiv = null;
       const fieldsOnThisPage = documentFields.filter(f => f.page === (pageNum - 1));
@@ -3919,7 +4038,8 @@
         if (!field.rect) return;
 
         const isInvisible = isRectPracticallyInvisible(field.rect);
-        const div = document.createElement('div');
+        const div = fieldOverlayTemplate.content.firstElementChild.cloneNode(true);
+        fieldOverlayFields.set(div, field);
         div.className = `field-overlay${field.required ? ' required' : ''}${isFieldStaged(field) ? ' is-staged' : ''}${isInvisible ? ' is-invisible-field' : ''}`;
         // Lets other sections address one overlay by name -- the Certificates
         // panel jumps here to select the field a signature belongs to.
@@ -3928,34 +4048,26 @@
         div.title = field.signed === true
           ? `${field.name} — signed, so it cannot be moved or removed without breaking the signature${invisibleSuffix}`
           : (field.tooltip ? `${field.name} — ${field.tooltip}${invisibleSuffix}` : `${field.name || 'Signature field'}${invisibleSuffix}`);
-        div.innerHTML = field.signed === true
+        div.querySelector('.field-overlay-icon').innerHTML = field.signed === true
           ? ICONS.lock
           : (field.type === 'Signature' ? ICONS.pen : ICONS.fileText);
         applyRectToOverlay(div, field.rect);
-        if (isInvisible) {
-          const pin = document.createElement('div');
-          pin.className = 'field-invisible-pin';
-          pin.innerHTML = ICONS.eyeOff;
-          div.appendChild(pin);
-          invisibleFieldPins.push({ div, pin });
-        }
 
-        const label = document.createElement('div');
-        label.className = 'field-label';
-        label.textContent = field.name || 'Signature field';
-        if (isInvisible) {
-          const invisibleLine = document.createElement('div');
-          invisibleLine.className = 'field-label-tooltip field-label-invisible';
-          invisibleLine.textContent = 'Invisible field — no visible footprint on the page';
-          label.appendChild(invisibleLine);
-        }
-        if (field.tooltip) {
-          const tooltipLine = document.createElement('div');
-          tooltipLine.className = 'field-label-tooltip';
-          tooltipLine.textContent = field.tooltip;
-          label.appendChild(tooltipLine);
-        }
-        div.appendChild(label);
+        // The pin (like every other conditionally-shown part of this
+        // template) is always present in the clone -- an inline style,
+        // rather than the `hidden` attribute, is what actually hides it,
+        // since [hidden]'s default display:none loses the cascade to
+        // .field-invisible-pin's own unconditional `display: flex`.
+        const pin = div.querySelector('.field-invisible-pin');
+        pin.style.display = isInvisible ? '' : 'none';
+        if (isInvisible) invisibleFieldPins.push({ div, pin });
+
+        const label = div.querySelector('.field-label');
+        label.querySelector('.field-label-name').textContent = field.name || 'Signature field';
+        label.querySelector('.field-label-invisible').hidden = !isInvisible;
+        const tooltipLine = label.querySelector('.field-label-generic');
+        tooltipLine.hidden = !field.tooltip;
+        tooltipLine.textContent = field.tooltip || '';
 
         // A signed field's /Rect is inside the bytes its signature covers, so
         // moving, resizing or removing it corrupts that signature. Lock the
@@ -3964,145 +4076,25 @@
         const isSignedField = field.signed === true;
         if (isSignedField) div.classList.add('is-signed');
 
-        let handle = null;
-        if (!isSignedField) {
-          handle = document.createElement('div');
-          handle.className = 'resize-handle';
-          div.appendChild(handle);
-        }
+        // Same cascade note as the pin above: .resize-handle's CSS only
+        // shows it while the overlay is .active, but a *signed* field must
+        // never show it even then -- this inline style wins regardless.
+        div.querySelector('.resize-handle').style.display = isSignedField ? 'none' : '';
 
         // Saving a field into a signature template is a drag off the page and
         // into the Signature Templates panel. The overlay body already owns
         // mouse-dragging (repositioning), so the two gestures can't share an
-        // element -- this corner grip is the HTML5 drag source, and swallows
-        // its own mousedown so grabbing it never starts a reposition.
-        const templateGrip = document.createElement('div');
-        templateGrip.className = 'template-save-handle';
-        if (isSignedField) templateGrip.hidden = true;
-        templateGrip.draggable = true;
+        // element -- this corner grip is the HTML5 drag source.
+        const templateGrip = div.querySelector('.template-save-handle');
+        templateGrip.hidden = isSignedField;
         templateGrip.title = `Drag "${field.name || 'this field'}" into Signature Templates to save it`;
-        templateGrip.innerHTML = ICONS.layers;
-        templateGrip.addEventListener('mousedown', (e) => e.stopPropagation());
-        templateGrip.addEventListener('dragstart', (e) => beginDocumentFieldDrag(field, e));
-        templateGrip.addEventListener('dragend', endDocumentFieldDrag);
-        div.appendChild(templateGrip);
 
         // Delete straight from the overlay -- top-left corner, opposite the
         // save-to-template grip. Reuses the same confirmation modal as the
         // "Remove field" button in the Edit panel, keyed off the field name.
-        const deleteHandle = document.createElement('button');
-        deleteHandle.type = 'button';
-        deleteHandle.className = 'field-delete-handle';
+        const deleteHandle = div.querySelector('.field-delete-handle');
         deleteHandle.title = `Remove "${field.name || 'this field'}"`;
-        deleteHandle.setAttribute('aria-label', 'Remove field');
-        deleteHandle.innerHTML = ICONS.x;
-        if (isSignedField) deleteHandle.hidden = true;
-        deleteHandle.addEventListener('mousedown', (e) => e.stopPropagation());
-        deleteHandle.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (!activeFile) return;
-          selectFieldOverlay(div, field);
-          openRemoveFieldModal(field.name);
-        });
-        div.appendChild(deleteHandle);
-
-        div.addEventListener('mouseenter', () => {
-          overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
-            if (el !== div) {
-              const label = el.querySelector('.field-label');
-              if (label) label.style.display = 'none';
-            }
-          });
-          const label = div.querySelector('.field-label');
-          if (label) {
-            label.style.display = 'block';
-            positionFieldLabel(div, label);
-          }
-        });
-
-        div.addEventListener('mouseleave', () => {
-          if (!div.classList.contains('active')) {
-            const label = div.querySelector('.field-label');
-            if (label) label.style.display = 'none';
-          }
-        });
-
-        // Drag the body to reposition. A plain click (no movement) on a field
-        // that's already selected toggles it off instead of re-selecting it.
-        div.addEventListener('mousedown', (e) => {
-          // Outside Signatures, overlays keep pointer-events on only so hover
-          // can show the name/tooltip label -- they must stay non-interactive.
-          if (document.body.dataset.activeSection !== 'signatures') return;
-          if (handle && e.target === handle) return;
-          if (isPanning) return; // let the pointerdown bubble up to the pan handler instead
-          e.preventDefault();
-          const wasActive = activeField === field;
-          selectFieldOverlay(div, field);
-          // Selectable so its properties can be read, but not draggable: the
-          // /Rect is inside the bytes the signature covers.
-          if (isSignedField) return;
-
-          const startX = e.clientX, startY = e.clientY;
-          const startLeft = parseFloat(div.style.left);
-          const startTop = parseFloat(div.style.top);
-          let moved = false;
-
-          function onMove(ev) {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
-            let newLeft = startLeft + dx;
-            let newTop = startTop + dy;
-            newLeft = Math.max(0, Math.min(newLeft, canvas.width - div.offsetWidth));
-            newTop = Math.max(0, Math.min(newTop, canvas.height - div.offsetHeight));
-            div.style.left = `${newLeft}px`;
-            div.style.top = `${newTop}px`;
-          }
-          function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            if (moved) {
-              commitOverlayToField(div, field);
-            } else if (wasActive) {
-              deselectActiveField();
-            }
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
-
-        // Drag the handle to resize. Signed fields have no handle -- resizing
-        // rewrites the /Rect the signature covers.
-        handle?.addEventListener('mousedown', (e) => {
-          if (isPanning) return;
-          e.preventDefault();
-          e.stopPropagation();
-          selectFieldOverlay(div, field);
-
-          const startX = e.clientX, startY = e.clientY;
-          const startWidth = parseFloat(div.style.width);
-          const startHeight = parseFloat(div.style.height);
-          const left = parseFloat(div.style.left);
-          const top = parseFloat(div.style.top);
-
-          function onMove(ev) {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            let newWidth = Math.max(20, startWidth + dx);
-            let newHeight = Math.max(20, startHeight + dy);
-            newWidth = Math.min(newWidth, canvas.width - left);
-            newHeight = Math.min(newHeight, canvas.height - top);
-            div.style.width = `${newWidth}px`;
-            div.style.height = `${newHeight}px`;
-          }
-          function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            commitOverlayToField(div, field);
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
+        deleteHandle.hidden = isSignedField;
 
         if (activeField === field) {
           div.classList.add('active');
@@ -4118,6 +4110,162 @@
 
       if (invisibleFieldPins.length) layoutInvisibleFieldPins(invisibleFieldPins);
     }
+
+    // One-time delegated listeners for every field overlay drawFieldOverlays()
+    // draws, present or future -- see its comment for why. Each handler
+    // resolves e.target back to the .field-overlay div (and from there, via
+    // fieldOverlayFields, back to the field it represents) instead of relying
+    // on a per-element closure.
+    let hoveredFieldOverlayDiv = null;
+
+    // mouseenter/mouseleave don't bubble, so a real per-overlay enter/leave
+    // is synthesized from mouseover/mouseout (which do) -- entering/leaving
+    // a *child* of the same overlay (the label, a handle) doesn't count,
+    // which is what the hoveredFieldOverlayDiv/relatedTarget checks below
+    // are for.
+    overlayLayer.addEventListener('mouseover', (e) => {
+      const div = e.target.closest('.field-overlay');
+      if (!div || div === hoveredFieldOverlayDiv) return;
+      hoveredFieldOverlayDiv = div;
+      overlayLayer.querySelectorAll('.field-overlay').forEach(el => {
+        if (el !== div) {
+          const label = el.querySelector('.field-label');
+          if (label) label.style.display = 'none';
+        }
+      });
+      const label = div.querySelector('.field-label');
+      if (label) {
+        label.style.display = 'block';
+        positionFieldLabel(div, label);
+      }
+    });
+
+    overlayLayer.addEventListener('mouseout', (e) => {
+      const div = e.target.closest('.field-overlay');
+      if (!div || div.contains(e.relatedTarget)) return;
+      if (div === hoveredFieldOverlayDiv) hoveredFieldOverlayDiv = null;
+      if (!div.classList.contains('active')) {
+        const label = div.querySelector('.field-label');
+        if (label) label.style.display = 'none';
+      }
+    });
+
+    overlayLayer.addEventListener('mousedown', (e) => {
+      const div = e.target.closest('.field-overlay');
+      if (!div) return;
+      const field = fieldOverlayFields.get(div);
+      if (!field) return;
+
+      // The template-save-handle and delete-handle each own their own
+      // gesture (drag-to-template below; delete-click below) -- neither
+      // should also start the overlay's reposition drag underneath it.
+      if (e.target.closest('.template-save-handle') || e.target.closest('.field-delete-handle')) return;
+
+      const isSignedField = div.classList.contains('is-signed');
+      const handle = div.querySelector('.resize-handle');
+
+      // Drag the handle to resize. Signed fields' handle is display:none
+      // (see drawFieldOverlays), so this can never match for one.
+      if (handle && e.target.closest('.resize-handle') === handle) {
+        if (isPanning) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectFieldOverlay(div, field);
+
+        const startX = e.clientX, startY = e.clientY;
+        const startWidth = parseFloat(div.style.width);
+        const startHeight = parseFloat(div.style.height);
+        const left = parseFloat(div.style.left);
+        const top = parseFloat(div.style.top);
+
+        function onMove(ev) {
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          let newWidth = Math.max(20, startWidth + dx);
+          let newHeight = Math.max(20, startHeight + dy);
+          newWidth = Math.min(newWidth, canvas.width - left);
+          newHeight = Math.min(newHeight, canvas.height - top);
+          div.style.width = `${newWidth}px`;
+          div.style.height = `${newHeight}px`;
+        }
+        function onUp() {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          commitOverlayToField(div, field);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+        return;
+      }
+
+      // Drag the body to reposition. A plain click (no movement) on a field
+      // that's already selected toggles it off instead of re-selecting it.
+      //
+      // Outside Signatures, overlays keep pointer-events on only so hover
+      // can show the name/tooltip label -- they must stay non-interactive.
+      if (document.body.dataset.activeSection !== 'signatures') return;
+      if (isPanning) return; // let the pointerdown bubble up to the pan handler instead
+      e.preventDefault();
+      const wasActive = activeField === field;
+      selectFieldOverlay(div, field);
+      // Selectable so its properties can be read, but not draggable: the
+      // /Rect is inside the bytes the signature covers.
+      if (isSignedField) return;
+
+      const startX = e.clientX, startY = e.clientY;
+      const startLeft = parseFloat(div.style.left);
+      const startTop = parseFloat(div.style.top);
+      let moved = false;
+
+      function onMove(ev) {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+        let newLeft = startLeft + dx;
+        let newTop = startTop + dy;
+        newLeft = Math.max(0, Math.min(newLeft, canvas.width - div.offsetWidth));
+        newTop = Math.max(0, Math.min(newTop, canvas.height - div.offsetHeight));
+        div.style.left = `${newLeft}px`;
+        div.style.top = `${newTop}px`;
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (moved) {
+          commitOverlayToField(div, field);
+        } else if (wasActive) {
+          deselectActiveField();
+        }
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    overlayLayer.addEventListener('click', (e) => {
+      const deleteHandle = e.target.closest('.field-delete-handle');
+      if (!deleteHandle) return;
+      const div = deleteHandle.closest('.field-overlay');
+      const field = div && fieldOverlayFields.get(div);
+      if (!field) return;
+      e.stopPropagation();
+      if (!activeFile) return;
+      selectFieldOverlay(div, field);
+      openRemoveFieldModal(field.name);
+    });
+
+    overlayLayer.addEventListener('dragstart', (e) => {
+      const grip = e.target.closest('.template-save-handle');
+      if (!grip) return;
+      const div = grip.closest('.field-overlay');
+      const field = div && fieldOverlayFields.get(div);
+      if (!field) return;
+      beginDocumentFieldDrag(field, e);
+    });
+
+    overlayLayer.addEventListener('dragend', (e) => {
+      if (!e.target.closest('.template-save-handle')) return;
+      endDocumentFieldDrag();
+    });
 
     // Invisible-field pins are fixed-size, so a field parked hard against a
     // page edge/corner (their most common spot) would otherwise have its pin
@@ -4139,9 +4287,17 @@
       const clampY = (y) => Math.min(Math.max(y, minY), maxY);
       const SPACING = PIN_RADIUS * 2 + 4; // center-to-center gap that keeps neighboring pins from touching
 
+      // Read pass: every entry's current field rect, gathered up front. The
+      // placement math below only touches these plain numbers -- reading a
+      // fresh getBoundingClientRect() for pin N *after* pin N-1's style
+      // writes have already landed would force a synchronous layout
+      // recalculation per pin, which is the real cost on a document with
+      // many invisible fields (a multi-signer PDF can easily have a dozen).
+      const fieldRects = entries.map(({ div }) => div.getBoundingClientRect());
+
       const placedCenters = [];
-      entries.forEach(({ div, pin }) => {
-        const fieldRect = div.getBoundingClientRect();
+      const placements = entries.map(({ div, pin }, i) => {
+        const fieldRect = fieldRects[i];
         const anchorX = fieldRect.left + fieldRect.width / 2;
         const anchorY = fieldRect.top + fieldRect.height / 2;
 
@@ -4179,6 +4335,15 @@
         // relative to div's box -- not the viewport.
         const localX = cx - fieldRect.left;
         const localY = cy - fieldRect.top;
+        const dx = anchorX - cx;
+        const dy = anchorY - cy;
+        const dist = Math.hypot(dx, dy);
+        return { div, pin, localX, localY, dist, angle: Math.atan2(dy, dx) };
+      });
+
+      // Write pass: no geometry reads below this point, so none of these
+      // style/dataset/DOM writes can trigger a layout recalc mid-loop.
+      placements.forEach(({ div, pin, localX, localY, dist, angle }) => {
         pin.style.left = `${localX}px`;
         pin.style.top = `${localY}px`;
         // Read by positionInvisibleFieldLabel() so the hover label anchors
@@ -4187,9 +4352,6 @@
         div.dataset.pinLocalX = String(localX);
         div.dataset.pinLocalY = String(localY);
 
-        const dx = anchorX - cx;
-        const dy = anchorY - cy;
-        const dist = Math.hypot(dx, dy);
         let leader = div.querySelector('.field-invisible-pin-leader');
         if (dist > 3) {
           if (!leader) {
@@ -4200,7 +4362,7 @@
           leader.style.left = `${localX}px`;
           leader.style.top = `${localY}px`;
           leader.style.width = `${dist}px`;
-          leader.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+          leader.style.transform = `rotate(${angle}rad)`;
         } else if (leader) {
           leader.remove();
         }
@@ -4954,7 +5116,7 @@
           showNotification('Could not save templates to this browser. Changes will be lost on reload.', 'error');
         }
       }
-      renderTemplatesPanel();
+      markTemplatesPanelDirty();
       updateTemplatesBackupUi();
     }
 
@@ -6291,12 +6453,7 @@
       documentRawObjects = null;
       documentOverview = null;
       documentMetaLoadedFor = null;
-      if (document.getElementById('sectionMetaData') && !document.getElementById('sectionMetaData').hidden) {
-        loadMetadataIfNeeded();
-      } else {
-        renderMetaTree();
-        renderMetaOverview();
-      }
+      if (isSectionOpen('sectionMetaData')) loadMetadataIfNeeded();
 
       revisionsData = null;
       revisionsLoadedForFile = null;
@@ -6629,12 +6786,25 @@
     // before the element leaves the layout.
     let pendingDetailsHideTimer = null;
 
+    // updatePendingChangesUi() runs on every field add/move/resize/rename --
+    // including continuously while dragging -- but its DOM-building row list
+    // (renderPendingChangesDetails) only matters while the "View changes"
+    // popover is actually open, which is rare. While it's closed, that build
+    // is skipped and just flagged dirty here; togglePendingChangesDetails()
+    // catches up on it the moment the popover opens.
+    let pendingChangesDetailsDirty = true;
+    let lastPendingChangeOps = [];
+
     function togglePendingChangesDetails() {
       const details = document.getElementById('pendingChangesDetails');
       const toggle = document.getElementById('pendingChangesToggle');
       if (!details || !toggle) return;
       clearTimeout(pendingDetailsHideTimer);
       if (details.hidden) {
+        if (pendingChangesDetailsDirty) {
+          renderPendingChangesDetails(lastPendingChangeOps);
+          pendingChangesDetailsDirty = false;
+        }
         details.hidden = false;
         void details.offsetWidth; // restart the enter transition from its closed state
         details.classList.add('is-open');
@@ -6650,12 +6820,19 @@
       const bar = document.getElementById('pendingChangesBar');
       if (!bar) return;
       const ops = computeFieldOps();
+      lastPendingChangeOps = ops;
       const count = ops.length;
       const label = document.getElementById('pendingChangesLabel');
       if (label) label.textContent = `${count} unsaved change${count === 1 ? '' : 's'}`;
       const description = document.getElementById('pendingChangesDescription');
       if (description) description.textContent = describePendingFieldChanges(ops);
-      renderPendingChangesDetails(ops);
+      const detailsEl = document.getElementById('pendingChangesDetails');
+      if (detailsEl && !detailsEl.hidden) {
+        renderPendingChangesDetails(ops);
+        pendingChangesDetailsDirty = false;
+      } else {
+        pendingChangesDetailsDirty = true;
+      }
       if (count === 0) {
         hidePendingChangesBar(pendingChangesHideReason);
         pendingChangesHideReason = null;
@@ -7539,14 +7716,30 @@ function metaEntriesOf(node) {
   return Array.isArray(node) ? node.map((v, i) => [`[${i}]`, v]) : Object.entries(node);
 }
 
+// Holds the not-yet-rendered children of a collapsed <details data-lazy-id>
+// branch, keyed by that id -- see the delegated 'toggle' listener below.
+// Cleared at the start of every fresh tree render (renderMetaTree,
+// renderRawObjectSourceTree); a hydrated branch removes its own entry.
+const metaTreeLazyRegistry = new Map();
+let metaTreeLazySeq = 0;
+
+// Scoped cleanup for one container's worth of lazy entries -- called right
+// before that container's HTML is replaced. Not a blanket registry clear:
+// renderRawObjectSourceTree renders two sibling containers (before/after)
+// back to back through this same registry, and clearing all of it while
+// building the second would orphan the lazy ids already handed to the
+// first, which is sitting in the DOM by then with no way to re-render.
+function clearLazyMetaEntriesIn(container) {
+  container.querySelectorAll('[data-lazy-id]').forEach((el) => {
+    metaTreeLazyRegistry.delete(el.getAttribute('data-lazy-id'));
+  });
+}
+
 function renderMetaTreeNode(key, value, depth, term, forceOpen) {
   const keyHtml = highlightMetaTerm(String(key), term);
 
   if (isExpandableMetaValue(value)) {
     const entries = metaEntriesOf(value);
-    const childrenHtml = entries.length
-      ? entries.map(([k, v]) => renderMetaTreeNode(k, v, depth + 1, term, forceOpen)).join('')
-      : '<div class="meta-leaf"><span class="meta-value">Empty</span></div>';
     // Only the top couple of levels open automatically on a search. Opening
     // *every* matching branch meant a search laid out the entire filtered
     // object table at once; collapsed <details> children cost nothing to lay
@@ -7554,9 +7747,34 @@ function renderMetaTreeNode(key, value, depth, term, forceOpen) {
     const shouldOpen = Boolean(forceOpen)
       || (Boolean(term) && depth < 2)
       || (depth === 0 && key === 'Document Metadata');
-    return `<details class="meta-branch" data-depth="${depth}"${shouldOpen ? ' open' : ''}>
+
+    if (!entries.length) {
+      return `<details class="meta-branch" data-depth="${depth}"${shouldOpen ? ' open' : ''}>
+        <summary><span class="meta-key">${keyHtml}</span><span class="meta-count">0</span></summary>
+        <div class="meta-branch-body"><div class="meta-leaf"><span class="meta-value">Empty</span></div></div>
+      </details>`;
+    }
+
+    // A branch that opens automatically needs its children rendered now (a
+    // search result must be visible immediately). Everything else -- the
+    // overwhelming majority of branches, especially each of up to 500
+    // objects under "All PDF Objects (raw)" -- defers building its subtree
+    // (recursively, string-by-string) until the user actually opens it, since
+    // a collapsed <details> not laying its content out doesn't stop this
+    // function from having already built and parsed that content into DOM.
+    if (shouldOpen) {
+      const childrenHtml = entries.map(([k, v]) => renderMetaTreeNode(k, v, depth + 1, term, forceOpen)).join('');
+      return `<details class="meta-branch" data-depth="${depth}" open>
+        <summary><span class="meta-key">${keyHtml}</span><span class="meta-count">${entries.length}</span></summary>
+        <div class="meta-branch-body">${childrenHtml}</div>
+      </details>`;
+    }
+
+    const lazyId = `mtl${++metaTreeLazySeq}`;
+    metaTreeLazyRegistry.set(lazyId, { entries, depth, term, forceOpen });
+    return `<details class="meta-branch" data-depth="${depth}" data-lazy-id="${lazyId}">
       <summary><span class="meta-key">${keyHtml}</span><span class="meta-count">${entries.length}</span></summary>
-      <div class="meta-branch-body">${childrenHtml}</div>
+      <div class="meta-branch-body"></div>
     </details>`;
   }
 
@@ -7567,6 +7785,26 @@ function renderMetaTreeNode(key, value, depth, term, forceOpen) {
     <span class="meta-value">${valueHtml}</span>
   </div>`;
 }
+
+// Delegated on the document (capture phase, since 'toggle' does not bubble)
+// so it covers every <details class="meta-branch"> regardless of which
+// container rendered it -- the Document Info tab's tree and the raw-object
+// inspector modal's before/after trees alike.
+document.addEventListener('toggle', (e) => {
+  const details = e.target;
+  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS' || !details.open) return;
+  const lazyId = details.getAttribute('data-lazy-id');
+  if (!lazyId) return;
+  const entry = metaTreeLazyRegistry.get(lazyId);
+  metaTreeLazyRegistry.delete(lazyId);
+  details.removeAttribute('data-lazy-id');
+  if (!entry) return;
+  const body = details.querySelector(':scope > .meta-branch-body');
+  if (!body) return;
+  body.innerHTML = entry.entries
+    .map(([k, v]) => renderMetaTreeNode(k, v, entry.depth + 1, entry.term, entry.forceOpen))
+    .join('');
+}, true);
 
 // Keep only the branches/leaves whose key or value matches the search term.
 // Works on both plain objects and arrays.
@@ -7689,6 +7927,14 @@ function renderMetaTree() {
   const container = document.getElementById('metaTreeContainer');
   const clearBtn = document.getElementById('metaSearchClearBtn');
   if (!container) return;
+
+  // This is about to discard every <details> currently in the container, so
+  // any lazy-children entries still pending for them would otherwise sit in
+  // the registry forever, unreachable but still holding their (possibly
+  // large) raw object data. Scoped to this container's own elements, not a
+  // blanket registry clear -- renderRawObjectSourceTree renders two other
+  // containers (before/after) through the same registry.
+  clearLazyMetaEntriesIn(container);
 
   const rawTerm = (document.getElementById('metaSearchInput')?.value || '').trim();
   const term = rawTerm.toLowerCase();
@@ -9737,6 +9983,7 @@ function resetRevisionsDiffState() {
   currentDiffFromRevIndex = null;
   currentDiffToRevIndex = null;
   currentDiffActiveTab = 'overview';
+  diffDetailsRendered = false;
   diffCurrentPage = 1;
   pendingDiffLandingTab = null;
   suspendedRevisionsView = null;
@@ -10244,6 +10491,7 @@ function whereItIsHtml(item) {
 function renderRawObjectSourceTree(containerId, node, term) {
   const container = document.getElementById(containerId);
   if (!container) return;
+  clearLazyMetaEntriesIn(container);
   if (node === null || node === undefined || typeof node !== 'object') {
     container.innerHTML = '<p class="diff-empty-note">Not present on this side.</p>';
     return;
@@ -10763,7 +11011,14 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
     currentDiffResultData = data.diff;
 
     renderDiffOverview(data.diff);
-    renderDiffDetails(data.diff, from, to);
+    // The Details tab's object chips are the most expensive thing this
+    // panel builds (one card per changed object, each with badges/meta rows/
+    // dictionary-change lists) -- skip building them until that tab is
+    // actually the one being shown. switchDiffTab() builds them lazily on
+    // first visit; this covers the case where the compare already landed on
+    // Details (e.g. via pendingDiffLandingTab from a cross-link).
+    diffDetailsRendered = currentDiffActiveTab === 'details';
+    if (diffDetailsRendered) renderDiffDetails(data.diff, from, to);
     renderCompareVerdict(data.diff);
     viewTabs.hidden = false;
     // Reveal whichever tab is current -- everything above rendered hidden.
@@ -10902,6 +11157,11 @@ function switchDiffTab(targetTab) {
   if (!DIFF_TAB_PANELS[targetTab]) targetTab = 'overview';
   currentDiffActiveTab = targetTab;
   markActiveDiffTab(targetTab);
+
+  if (targetTab === 'details' && !diffDetailsRendered && currentDiffResultData) {
+    renderDiffDetails(currentDiffResultData, currentDiffFromRevIndex, currentDiffToRevIndex);
+    diffDetailsRendered = true;
+  }
 
   Object.entries(DIFF_TAB_PANELS).forEach(([tab, id]) => {
     const panel = document.getElementById(id);
