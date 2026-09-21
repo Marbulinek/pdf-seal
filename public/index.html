@@ -418,6 +418,26 @@
     </div>
   </div>
 
+  <!-- Close-document confirmation modal -->
+  <div class="modal-backdrop" id="closeDocumentModal" aria-hidden="true">
+    <div class="modal-box remove-field-modal-box" role="dialog" aria-modal="true" aria-labelledby="closeDocumentModalTitle">
+      <div class="modal-header">
+        <h3 id="closeDocumentModalTitle">Close Document</h3>
+        <button type="button" class="modal-close" id="closeCloseDocumentModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <div class="remove-field-body">
+        <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <div class="remove-field-text">
+          <p class="modal-hint remove-field-hint">Nothing is saved on a server — all changes will be lost.</p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelCloseDocumentBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmCloseDocumentBtn">Close Document</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Name a signature template (create + rename). Fields aren't edited here:
        they're captured by dragging real, already-placed fields off the page
        and into the panel, so a template only ever needs a name. -->
@@ -575,6 +595,9 @@
           <span id="viewerFileName" class="viewer-file-name" title="">
             <span class="viewer-file-name-icon icon-file-simple" aria-hidden="true"></span>
             <span class="viewer-file-name-text"></span>
+            <button type="button" id="btnCloseDocument" class="viewer-file-close-btn" aria-label="Close document" title="Close document">
+              <span class="icon icon-close" aria-hidden="true"></span>
+            </button>
           </span>
           <div class="viewer-controls-row" id="viewerControlsRow">
             <!-- Page/pan/zoom show as normal, always-open pill groups here.
@@ -1282,7 +1305,7 @@
         <div class="footer-brand-row">
           <img class="footer-logo" src="/assets/logo_app.png" alt="PDF Seal">
         </div>
-        <p class="footer-tagline">Manage signature fields, inspect metadata, and compare version history — entirely in your browser, nothing is stored on a server.</p>
+        <p class="footer-tagline">Manage signature fields, inspect metadata, verify certificates, and compare version history — entirely in your browser, nothing is stored on a server.</p>
       </div>
 
       <div class="footer-col">
@@ -1818,10 +1841,13 @@
         const digitsStart = pos;
         while (pos < bytes.length && bytes[pos] >= 0x30 && bytes[pos] <= 0x39) pos++;
         if (pos === digitsStart) continue;
+        let xrefOffset = 0;
+        for (let d = digitsStart; d < pos; d++) xrefOffset = xrefOffset * 10 + (bytes[d] - 0x30);
 
         while (pos < bytes.length && isRevisionBoundaryWhitespace(bytes[pos])) pos++;
 
         if (!bytesMatchAt(bytes, pos, EOF_MARKER_BYTES)) continue;
+        if (xrefOffset === 0) continue; // linearization first-page trailer, not a real revision
         offsets.push(pos + EOF_MARKER_BYTES.length);
       }
       return offsets;
@@ -3274,6 +3300,65 @@
         renderMetaOverview();
       }
     }
+
+    // Discards the loaded document with no replacement -- unlike a new
+    // upload (processNewFile), there's nothing to roll back to, so every
+    // section's cached "loaded for this file" state is cleared and each of
+    // Metadata/Revisions/Certificates is re-driven through its normal
+    // loadXIfNeeded() so it repaints its own empty state, regardless of
+    // which section is currently visible.
+    function closeActiveDocument() {
+      if (!activeFile && !pdfDoc) return;
+      const sessionToClear = documentSessionId;
+      if (pdfDoc) pdfDoc.destroy();
+      activeFile = null;
+      pdfDoc = null;
+      documentFields = [];
+      fieldsBaseline = [];
+      resetFieldHistory();
+      updatePendingChangesUi();
+      resetPanelsForNewDocument();
+      resetRevisionsDiffState();
+      revisionsData = null;
+      revisionsLoadedForFile = null;
+      documentSessionId = null;
+      documentRevisionCount = 0;
+      activeVersionKey = null;
+      resetCertificatesState();
+      updateViewerControlsState();
+      document.getElementById('pdfContainer').style.display = 'none';
+      document.getElementById('emptyStateViewer').style.display = 'flex';
+      document.getElementById('navBtnSignatures')?.click();
+      loadMetadataIfNeeded();
+      loadRevisionsIfNeeded();
+      loadCertificatesIfNeeded();
+      if (sessionToClear) clearVersionSession(sessionToClear).catch(() => {});
+    }
+    const closeDocumentModal = document.getElementById('closeDocumentModal');
+    function openCloseDocumentModal() {
+      closeDocumentModal.classList.add('is-open');
+      closeDocumentModal.setAttribute('aria-hidden', 'false');
+    }
+    function closeCloseDocumentModal() {
+      closeDocumentModal.classList.remove('is-open');
+      closeDocumentModal.setAttribute('aria-hidden', 'true');
+    }
+    document.getElementById('btnCloseDocument')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCloseDocumentModal();
+    });
+    document.getElementById('confirmCloseDocumentBtn').addEventListener('click', () => {
+      closeCloseDocumentModal();
+      closeActiveDocument();
+    });
+    document.getElementById('closeCloseDocumentModalBtn').addEventListener('click', closeCloseDocumentModal);
+    document.getElementById('cancelCloseDocumentBtn').addEventListener('click', closeCloseDocumentModal);
+    closeDocumentModal.addEventListener('click', (e) => {
+      if (e.target === closeDocumentModal) closeCloseDocumentModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && closeDocumentModal.classList.contains('is-open')) closeCloseDocumentModal();
+    });
 
     // Drives the growing-document loading overlay shown while a new file is
     // being read/analyzed/rendered (see processNewFile below). The "page"
@@ -7237,10 +7322,23 @@
       const fileNameEl = document.getElementById('viewerFileName');
       const controlsRow = document.getElementById('viewerControlsRow');
       const inline = document.getElementById('viewerControlsInline');
+      const fileNameTextEl = fileNameEl?.querySelector('.viewer-file-name-text');
       if (!fileNameEl || !controlsRow || !inline || !viewerTools || !viewerToolsMenu) return;
 
-      const collapse = () => {
+      let collapseTimer = null;
+      const cancelPendingCollapse = () => {
+        if (collapseTimer !== null) {
+          clearTimeout(collapseTimer);
+          collapseTimer = null;
+        }
+      };
+
+      const doCollapse = () => {
+        collapseTimer = null;
         if (controlsRow.hidden || inline.classList.contains('is-collapsed')) return;
+        // Name may no longer be truncated (or the pointer already left) by the
+        // time the delay elapses -- re-check rather than trusting the schedule.
+        if (!fileNameTextEl || fileNameTextEl.scrollWidth <= fileNameTextEl.clientWidth) return;
         inline.style.width = inline.getBoundingClientRect().width + 'px';
         inline.getBoundingClientRect(); // force reflow so the width above applies before collapsing
         inline.classList.add('is-collapsed');
@@ -7248,7 +7346,18 @@
         while (inline.firstElementChild) viewerToolsMenu.appendChild(inline.firstElementChild);
         viewerTools.classList.add('is-visible');
       };
-      const expand = restoreViewerControlsInline;
+      // Only the wrench swap is worth the truncated-name fix, so skip it (and
+      // its delay) entirely when the name already fits -- an untruncated title
+      // has no reason to lose its page/zoom controls.
+      const collapse = () => {
+        if (!fileNameTextEl || fileNameTextEl.scrollWidth <= fileNameTextEl.clientWidth) return;
+        cancelPendingCollapse();
+        collapseTimer = setTimeout(doCollapse, 1800);
+      };
+      const expand = () => {
+        cancelPendingCollapse();
+        restoreViewerControlsInline();
+      };
 
       fileNameEl.addEventListener('mouseenter', collapse);
       fileNameEl.addEventListener('mouseleave', expand);
@@ -10194,7 +10303,7 @@ function objectChipsHtml(label, entries, cls, revisionIndex) {
             ${dictionaryChangesHtml(item.dictionaryChanges)}
             <p class="diff-object-preview-status" hidden></p>
             <div class="diff-object-actions">
-              ${canShowOnPage ? `<button type="button" class="btn btn-ghost btn-sm diff-object-action-preview" data-preview-mode="${escapeHtml(item.previewMode)}" data-preview-page="${item.page ?? ''}" data-preview-rects="${escapeHtml(rects)}"${showTitle ? ` title="${escapeHtml(showTitle)}"` : ''}>${escapeHtml(showLabel)}</button>` : ''}
+              ${canShowOnPage ? `<button type="button" class="btn btn-ghost btn-sm diff-object-action-preview" data-preview-mode="${escapeHtml(item.previewMode)}" data-preview-page="${item.page ?? ''}" data-preview-rects="${escapeHtml(rects)}" data-preview-side="${cls === 'chip-removed' ? 'from' : 'to'}"${showTitle ? ` title="${escapeHtml(showTitle)}"` : ''}>${escapeHtml(showLabel)}</button>` : ''}
               <button type="button" class="btn btn-ghost btn-sm diff-object-action-source">PDF source</button>
             </div>
           </div>`;
@@ -10381,6 +10490,7 @@ function attachDiffObjectPreviewHandlers(container) {
       const previewMode = btn.getAttribute('data-preview-mode') || 'none';
       const pageIndex = Number.parseInt(btn.getAttribute('data-preview-page') || '', 10);
       const pdfRects = parsePreviewRects(btn.getAttribute('data-preview-rects') || '');
+      const side = btn.getAttribute('data-preview-side') || 'to';
       if (!Number.isInteger(pageIndex)) return;
 
       const isCurrentlyActive = chip.classList.contains('is-hovered') && hoveredDiffObjectKey === objectKey;
@@ -10406,7 +10516,7 @@ function attachDiffObjectPreviewHandlers(container) {
                 : `${markCount} visible change${markCount === 1 ? '' : 's'} marked on page ${pageIndex + 1}.`,
             );
           })
-        : renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects);
+        : renderHoveredDiffObjectPreview(objectKey, pageIndex, pdfRects, side);
       renderPreview.catch(() => {
         chip.classList.remove('is-hovered');
       });
@@ -11034,10 +11144,9 @@ document.getElementById('btnCompareRevisions').addEventListener('click', async (
       renderCurrentDiffTabView();
     } catch (_e) {
       if (requestedSessionId !== documentSessionId) return;
-      if (diffDocA) diffDocA.destroy();
-      if (diffDocB) diffDocB.destroy();
-      diffDocA = null;
-      diffDocB = null;
+      // loadDiffDocs() already kept whichever side loaded -- still render it
+      // rather than discarding it too.
+      renderCurrentDiffTabView();
     }
   } catch (err) {
     if (requestedSessionId !== documentSessionId) return; // a newer upload superseded this request
@@ -11125,8 +11234,13 @@ async function loadDiffDocs() {
   }
 
   if (resultA.status === 'rejected' || resultB.status === 'rejected') {
-    if (docA && docA !== diffDocA) docA.destroy();
-    if (docB && docB !== diffDocB) docB.destroy();
+    // Keep whichever side loaded rather than discarding it too -- the plain
+    // and visual diff views already fall back to a single doc when the other
+    // is missing, so the good side stays paginable and locatable.
+    const changed = docA !== diffDocA || docB !== diffDocB;
+    diffDocA = docA;
+    diffDocB = docB;
+    if (changed) resetVisualDiffPixelCache();
     throw resultA.status === 'rejected' ? resultA.reason : resultB.reason;
   }
 
@@ -11251,8 +11365,11 @@ async function renderVisualDiffView() {
     try {
       await ensureDiffDocs();
     } catch (_e) {
-      setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — snapshots unavailable.`);
-      return;
+      // One side may still have loaded -- only give up if neither did.
+      if (!diffDocA && !diffDocB) {
+        setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — snapshots unavailable.`);
+        return;
+      }
     }
     if (generation !== visualDiffGeneration) return;
     if (!diffDocA && !diffDocB) return;
@@ -11308,8 +11425,11 @@ async function renderDiffPlainView() {
     try {
       await ensureDiffDocs();
     } catch (_e) {
-      setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — snapshot unavailable.`);
-      return;
+      // One side may still have loaded -- only give up if neither did.
+      if (!diffDocA && !diffDocB) {
+        setDiffBannerText(`Comparing Version ${fromLabel} → ${toLabel} — snapshot unavailable.`);
+        return;
+      }
     }
     if (generation !== visualDiffGeneration) return;
     if (!diffDocA && !diffDocB) return;

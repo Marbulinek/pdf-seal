@@ -835,6 +835,22 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   white-space: nowrap;
   min-width: 0;
 }
+.viewer-file-close-btn {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--navy);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.viewer-file-close-btn .icon { width: 11px; height: 11px; }
+.viewer-file-close-btn:hover { background: var(--coral); color: #fff; }
 @media (max-width: 640px) {
   /* Too narrow for one strip: the name gets its own line again, but as plain
      text rather than the full-width pill it used to be. Touch has no real

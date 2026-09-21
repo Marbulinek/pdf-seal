@@ -19,6 +19,14 @@ describe('PdfRevisionTool.findRevisionBoundaries', () => {
   it('returns an empty array when there is no boundary at all', () => {
     expect(PdfRevisionTool.findRevisionBoundaries(Buffer.from('not a pdf'))).toEqual([]);
   });
+
+  it('skips a linearization first-page trailer (startxref 0), keeping only real revisions', () => {
+    const text = '%PDF-1.7\nstartxref\n0\n%%EOF\nmore bytes\nstartxref\n123\n%%EOF\ntrailing';
+    const bytes = Buffer.from(text, 'latin1');
+    const boundaries = PdfRevisionTool.findRevisionBoundaries(bytes);
+    expect(boundaries).toHaveLength(1);
+    expect(boundaries[0]).toMatchObject({ index: 1, xrefOffset: 123 });
+  });
 });
 
 describe('PdfRevisionTool.summarizeIndependentSnapshots', () => {
