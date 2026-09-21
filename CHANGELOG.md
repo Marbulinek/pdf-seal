@@ -1,3 +1,10 @@
+## [1.7.5](https://github.com/Marbulinek/pdf-seal/compare/v1.7.4...v1.7.5) (2026-09-21)
+
+
+### Bug Fixes
+
+* fixed moving to pages in version details, added close document ([#63](https://github.com/Marbulinek/pdf-seal/issues/63)) ([0f5ef61](https://github.com/Marbulinek/pdf-seal/commit/0f5ef61dcb819716cd974a801406beca448b5eba))
+
 ## [1.7.4](https://github.com/Marbulinek/pdf-seal/compare/v1.7.3...v1.7.4) (2026-09-19)
 
 
