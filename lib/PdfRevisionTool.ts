@@ -53,9 +53,11 @@ function findRevisionBoundaries(bytes: Uint8Array): RevisionBoundary[] {
   let match: RegExpExecArray | null;
   REVISION_BOUNDARY_PATTERN.lastIndex = 0;
   while ((match = REVISION_BOUNDARY_PATTERN.exec(text)) !== null) {
+    const xrefOffset = parseInt(match[1], 10);
+    if (xrefOffset === 0) continue; // linearization first-page trailer, not a real revision
     boundaries.push({
       index: boundaries.length + 1,
-      xrefOffset: parseInt(match[1], 10),
+      xrefOffset,
       endOffset: match.index + match[0].length,
     });
   }

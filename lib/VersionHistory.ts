@@ -240,10 +240,13 @@ export function findRevisionEndOffsets(bytes: Uint8Array): number[] {
     const digitsStart = pos;
     while (pos < bytes.length && bytes[pos] >= 0x30 && bytes[pos] <= 0x39) pos++;
     if (pos === digitsStart) continue; // \d+ needs at least one
+    let xrefOffset = 0;
+    for (let d = digitsStart; d < pos; d++) xrefOffset = xrefOffset * 10 + (bytes[d] - 0x30);
 
     while (pos < bytes.length && isRevisionBoundaryWhitespace(bytes[pos])) pos++; // \s*
 
     if (!bytesMatchAt(bytes, pos, EOF_MARKER_BYTES)) continue;
+    if (xrefOffset === 0) continue; // linearization first-page trailer, not a real revision
     offsets.push(pos + EOF_MARKER_BYTES.length);
   }
 

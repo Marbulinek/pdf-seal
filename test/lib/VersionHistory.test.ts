@@ -239,6 +239,14 @@ describe('findRevisionEndOffsets', () => {
     expect(findRevisionEndOffsets(new TextEncoder().encode('startxref%%EOF'))).toEqual([]);
     expect(findRevisionEndOffsets(new TextEncoder().encode('startxref \n%%EOF'))).toEqual([]);
   });
+
+  it('skips a linearization first-page trailer (startxref 0), keeping only real revisions', () => {
+    const text = '%PDF-1.7\nstartxref\n0\n%%EOF\nmore bytes\nstartxref\n123\n%%EOF\ntrailing';
+    const raw = Buffer.from(text, 'latin1');
+    const expected = PdfRevisionTool.findRevisionBoundaries(raw).map((b: any) => b.endOffset);
+    expect(findRevisionEndOffsets(new Uint8Array(raw))).toEqual(expected);
+    expect(expected).toHaveLength(1);
+  });
 });
 
 describe('classifySaveAgainstBlob', () => {
