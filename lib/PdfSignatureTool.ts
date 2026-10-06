@@ -689,6 +689,13 @@ class PdfSignatureTool {
         tooltip: this._getRawString(field.acroField.dict, 'TU'),
         page: pageIndex,
         rect,
+        // Every widget after the first (radio groups have one per option, and
+        // any field can have several). View-only: lets the viewer mark them.
+        extraWidgets: widgets.slice(1).map((w: any) => {
+          let page = null;
+          try { page = pages.indexOf(form.findWidgetPage(w)); } catch (_e) { /* orphan widget */ }
+          return { page, rect: w.getRectangle() };
+        }),
         raw: this._getRawDictEntries(field.acroField.dict),
         objectRefs: Array.from(refs),
       };

@@ -2344,6 +2344,8 @@
       edit2: '<span class="icon icon-edit2" aria-hidden="true"></span>',
       eye: '<span class="icon icon-eye" aria-hidden="true"></span>',
       eyeOff: '<span class="icon icon-eye-off" aria-hidden="true"></span>',
+      checkSquare: '<span class="icon icon-check-square" aria-hidden="true"></span>',
+      radio: '<span class="icon icon-radio" aria-hidden="true"></span>',
       code: '<span class="icon icon-code" aria-hidden="true"></span>',
       stamp: '<span class="icon icon-stamp" aria-hidden="true"></span>',
     };
@@ -2355,9 +2357,17 @@
     // fixed-size marker/badge instead of rendering their true (invisible)
     // footprint.
     const INVISIBLE_FIELD_MAX_DIMENSION = 10; // PDF points
-    function isRectPracticallyInvisible(rect) {
+    const SMALL_FIELD_NO_DELETE_HANDLE = 20; // PDF points
+    // Checkboxes/radios are legitimately small (often 8-10pt), so for them
+    // only a truly ~zero-size rect counts as invisible.
+    // Distinct icon for checkbox/radio widgets (null for everything else).
+    function choiceFieldIcon(type) {
+      return type === 'CheckBox' ? ICONS.checkSquare : type === 'RadioGroup' ? ICONS.radio : null;
+    }
+    function isRectPracticallyInvisible(rect, type) {
       if (!rect) return false;
-      return rect.width < INVISIBLE_FIELD_MAX_DIMENSION || rect.height < INVISIBLE_FIELD_MAX_DIMENSION;
+      const max = type === 'CheckBox' || type === 'RadioGroup' ? 2 : INVISIBLE_FIELD_MAX_DIMENSION;
+      return rect.width < max || rect.height < max;
     }
 
     const canvas = document.getElementById('pdf-canvas');
@@ -4122,7 +4132,7 @@
       fieldsOnThisPage.forEach(field => {
         if (!field.rect) return;
 
-        const isInvisible = isRectPracticallyInvisible(field.rect);
+        const isInvisible = isRectPracticallyInvisible(field.rect, field.type);
         const div = fieldOverlayTemplate.content.firstElementChild.cloneNode(true);
         fieldOverlayFields.set(div, field);
         div.className = `field-overlay${field.required ? ' required' : ''}${isFieldStaged(field) ? ' is-staged' : ''}${isInvisible ? ' is-invisible-field' : ''}`;
@@ -4135,7 +4145,7 @@
           : (field.tooltip ? `${field.name} — ${field.tooltip}${invisibleSuffix}` : `${field.name || 'Signature field'}${invisibleSuffix}`);
         div.querySelector('.field-overlay-icon').innerHTML = field.signed === true
           ? ICONS.lock
-          : (field.type === 'Signature' ? ICONS.pen : ICONS.fileText);
+          : (choiceFieldIcon(field.type) || (field.type === 'Signature' ? ICONS.pen : ICONS.fileText));
         applyRectToOverlay(div, field.rect);
 
         // The pin (like every other conditionally-shown part of this
@@ -4145,6 +4155,7 @@
         // .field-invisible-pin's own unconditional `display: flex`.
         const pin = div.querySelector('.field-invisible-pin');
         pin.style.display = isInvisible ? '' : 'none';
+        if (isInvisible && choiceFieldIcon(field.type)) pin.innerHTML = choiceFieldIcon(field.type);
         if (isInvisible) invisibleFieldPins.push({ div, pin });
 
         const label = div.querySelector('.field-label');
@@ -4179,7 +4190,9 @@
         // "Remove field" button in the Edit panel, keyed off the field name.
         const deleteHandle = div.querySelector('.field-delete-handle');
         deleteHandle.title = `Remove "${field.name || 'this field'}"`;
-        deleteHandle.hidden = isSignedField;
+        // Too small to host the red cross without covering the field itself
+        // (checkboxes/radios, invisible pins): removal stays in the Edit panel.
+        deleteHandle.hidden = isSignedField || Math.min(field.rect.width, field.rect.height) < SMALL_FIELD_NO_DELETE_HANDLE;
 
         if (activeField === field) {
           div.classList.add('active');
@@ -4193,7 +4206,31 @@
       // cannot remove their markers.
       overlayLayer.replaceChildren(fieldLayer);
 
-      if (invisibleFieldPins.length) layoutInvisibleFieldPins(invisibleFieldPins);
+      // Checkbox/radio options beyond the first widget: view-only markers
+      // (same look as the diff hover overlay), never editable fields.
+      const extraPins = [];
+      documentFields.forEach((field) => {
+        if (field.type !== 'CheckBox' && field.type !== 'RadioGroup') return;
+        (field.extraWidgets || []).forEach((w) => {
+          if (w.page !== pageNum - 1 || !w.rect) return;
+          const marker = document.createElement('div');
+          const isInvisible = isRectPracticallyInvisible(w.rect, field.type);
+          marker.className = `diff-object-hover-overlay${isInvisible ? ' is-invisible-field' : ''}`;
+          marker.style.pointerEvents = 'none';
+          marker.title = field.name || '';
+          applyRectToOverlay(marker, w.rect);
+          if (isInvisible) {
+            const pin = document.createElement('div');
+            pin.className = 'field-invisible-pin';
+            pin.innerHTML = choiceFieldIcon(field.type);
+            marker.appendChild(pin);
+            extraPins.push({ div: marker, pin });
+          }
+          overlayLayer.appendChild(marker);
+        });
+      });
+
+      if (invisibleFieldPins.length || extraPins.length) layoutInvisibleFieldPins([...invisibleFieldPins, ...extraPins]);
     }
 
     // One-time delegated listeners for every field overlay drawFieldOverlays()
