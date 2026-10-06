@@ -82,6 +82,8 @@
 .icon-list { -webkit-mask-image: url(/assets/images/icons/list.svg); mask-image: url(/assets/images/icons/list.svg); }
 .icon-eye { -webkit-mask-image: url(/assets/images/icons/eye.svg); mask-image: url(/assets/images/icons/eye.svg); }
 .icon-eye-off { -webkit-mask-image: url(/assets/images/icons/eye-off.svg); mask-image: url(/assets/images/icons/eye-off.svg); }
+.icon-check-square { -webkit-mask-image: url(/assets/images/icons/check-square.svg); mask-image: url(/assets/images/icons/check-square.svg); }
+.icon-radio { -webkit-mask-image: url(/assets/images/icons/radio.svg); mask-image: url(/assets/images/icons/radio.svg); }
 .icon-stamp { -webkit-mask-image: url(/assets/images/icons/stamp.svg); mask-image: url(/assets/images/icons/stamp.svg); }
 .icon-repeat { -webkit-mask-image: url(/assets/images/icons/repeat.svg); mask-image: url(/assets/images/icons/repeat.svg); }
 .icon-undo { -webkit-mask-image: url(/assets/images/icons/undo.svg); mask-image: url(/assets/images/icons/undo.svg); }
@@ -1886,6 +1888,7 @@ body.hide-signature-templates-panel .field-overlay .template-save-handle { displ
 .field-delete-handle:hover { background: var(--coral-dark); }
 .field-overlay:hover .field-delete-handle,
 .field-overlay.active .field-delete-handle { display: flex; }
+.field-overlay .field-delete-handle[hidden] { display: none !important; }
 
 @media (max-width: 960px) {
   .tools-panel { width: 100%; }
