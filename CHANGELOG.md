@@ -1,3 +1,10 @@
+## [1.7.7](https://github.com/Marbulinek/pdf-seal/compare/v1.7.6...v1.7.7) (2026-10-06)
+
+
+### Bug Fixes
+
+* fixed radioboxes and checkboxes in pdf viewer ([#66](https://github.com/Marbulinek/pdf-seal/issues/66)) ([267b199](https://github.com/Marbulinek/pdf-seal/commit/267b199d4f720527e98aaa445bd5f4a0a5b2be37))
+
 ## [1.7.6](https://github.com/Marbulinek/pdf-seal/compare/v1.7.5...v1.7.6) (2026-09-29)
 
 
