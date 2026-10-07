@@ -4273,10 +4273,18 @@
     });
 
     overlayLayer.addEventListener('mousedown', (e) => {
-      const div = e.target.closest('.field-overlay');
+      let div = e.target.closest('.field-overlay');
       if (!div) return;
       const field = fieldOverlayFields.get(div);
       if (!field) return;
+
+      // preventDefault() below suppresses the name input's blur, so commit a
+      // pending rename now. It redraws the overlays, orphaning the clicked div.
+      commitEditName();
+      if (!div.isConnected) {
+        div = [...overlayLayer.querySelectorAll('.field-overlay')].find((el) => fieldOverlayFields.get(el) === field);
+        if (!div) return;
+      }
 
       // The template-save-handle and delete-handle each own their own
       // gesture (drag-to-template below; delete-click below) -- neither
@@ -4663,7 +4671,7 @@
     // dragging/resizing, there's no separate "Update Field" step. Name
     // commits on blur (not every keystroke) so a field isn't flagged as a
     // duplicate while only half-typed.
-    document.getElementById('editName').addEventListener('blur', () => {
+    function commitEditName() {
       if (!activeField) return;
       const editNameInput = document.getElementById('editName');
       const newName = editNameInput.value.trim();
@@ -4681,7 +4689,8 @@
       document.getElementById('editOriginalName').value = newName;
       if (currentViewport) drawFieldOverlays(currentViewport);
       updatePendingChangesUi();
-    });
+    }
+    document.getElementById('editName').addEventListener('blur', commitEditName);
 
     document.getElementById('editRequired').addEventListener('change', () => {
       if (!activeField) return;
