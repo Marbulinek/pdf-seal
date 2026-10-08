@@ -1316,7 +1316,7 @@
         </a>
         <a class="footer-link" href="https://github.com/marbulinek/pdf-seal/issues/new" target="_blank" rel="noopener noreferrer">
           <span class="footer-link-icon" aria-hidden="true"><span class="icon icon-chat"></span></span>
-          Report an Issue
+          Report an Issue or Suggest a Feature
         </a>
       </div>
 
@@ -3162,6 +3162,17 @@
       setBase64ModalStatus('Loading document...', 'success');
       closeBase64Modal();
       processNewFile(file);
+    });
+
+    // Browser extension hand-off (extension/background.js): same-window, same-origin only.
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (event.source !== window || event.origin !== location.origin || msg?.type !== 'pdfseal:import') return;
+      try {
+        const result = analyzeBase64Pdf(String(msg.base64));
+        if (!result.isPdf) return;
+        processNewFile(new File([result.bytes], msg.name || 'document.pdf', { type: 'application/pdf' }));
+      } catch (err) { /* not valid Base64 */ }
     });
 
     function updateViewerControlsState() {
