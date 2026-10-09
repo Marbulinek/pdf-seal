@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PDF Seal Portal",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "description": "Send the PDF document directly to PDF Seal.",
   "action": {
     "default_popup": "popup.html",
