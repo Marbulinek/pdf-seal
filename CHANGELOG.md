@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/Marbulinek/pdf-seal/compare/v1.8.0...v1.8.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* showing extension modal only for the chrome browser ([#72](https://github.com/Marbulinek/pdf-seal/issues/72)) ([5f1c827](https://github.com/Marbulinek/pdf-seal/commit/5f1c82760459510a24d381368c6983887e43dfd0))
+
 # [1.8.0](https://github.com/Marbulinek/pdf-seal/compare/v1.7.9...v1.8.0) (2026-10-09)
 
 
