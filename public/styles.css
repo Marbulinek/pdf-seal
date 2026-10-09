@@ -2544,6 +2544,37 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 }
 .footer-badge .icon { color: var(--ice); flex-shrink: 0; }
 
+.footer-ext-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  padding: 5px 6px 5px 10px;
+  border-radius: var(--radius-s);
+  background: rgba(168, 218, 220, 0.28);
+  color: var(--ocean-dark);
+  font-size: 0.83rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+.footer-ext-badge .icon { color: var(--ocean); flex-shrink: 0; }
+.footer-ext-badge:hover { background: rgba(168, 218, 220, 0.5); color: var(--navy); transform: translateX(2px); }
+
+.footer-new-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--coral);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+}
+
 .footer-col-love {
   align-items: flex-start;
   justify-content: flex-start;
@@ -5339,3 +5370,10 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
   .tour-popover-spinner::after, .tour-popover-switching .tour-popover-title::before { animation: none; }
   .section-nav-btn.tour-nav-flash { animation: none; box-shadow: 0 0 0 3px rgba(69, 123, 157, 0.4); }
 }
+
+/* ---------- Extension news modal ---------- */
+.ext-modal-box { width: min(440px, 100%); text-align: center; }
+.ext-modal-box .modal-header { justify-content: space-between; }
+.ext-modal-img { display: block; width: 100%; max-height: 220px; object-fit: contain; margin: 4px 0 14px; }
+.ext-modal-box .modal-actions { justify-content: center; flex-wrap: wrap; }
+.ext-modal-box a.btn { text-decoration: none; }

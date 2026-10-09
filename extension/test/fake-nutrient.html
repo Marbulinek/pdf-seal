@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fake Nutrient viewer</title>
+</head>
+<body>
+  <h1>Fake Nutrient viewer</h1>
+  <p>Serve from the repo root (<code>python3 -m http.server 8081</code>), open
+    <code>http://localhost:8081/extension/test/fake-nutrient.html</code> with <code>http://localhost/*</code>
+    whitelisted, then click "Send via PDF Seal Portal" in the extension popup.
+    <a href="?bundled">?bundled</a> simulates an SDK bundled through npm (e.g. an Angular app).</p>
+  <p id="hook"></p>
+  <script>
+    // ?bundled: the SDK is never on window (npm/ESM bundle); the only trace is the
+    // document transferred to its WASM worker, which page/hook.js copies on the way in.
+    if (location.search.includes('bundled')) (async () => {
+      const bytes = await fetch('/public/assets/demo/pdf-seal-sample.pdf').then((r) => r.arrayBuffer());
+      await new Promise((r) => setTimeout(r, 300)); // let the fetch capture land, then drop it
+      if (window.__pdfSealCaptured) window.__pdfSealCaptured.length = 0;
+      const worker = new Worker(URL.createObjectURL(new Blob(['onmessage = () => {}'], { type: 'text/javascript' })));
+      worker.postMessage({ action: 'openDocument', args: [bytes] }, [bytes]);
+      await new Promise((r) => setTimeout(r, 300));
+      document.getElementById('hook').textContent = window.__pdfSealCaptured?.some((c) => c.label === 'PDF viewer')
+        ? 'Hook captured the PDF posted to the worker. Ready to send.'
+        : 'Hook did NOT capture the worker PDF: is this origin whitelisted, and was the page reloaded after saving?';
+    })();
+    else {
+    // Assigned the way the SDK's UMD bundle does it, *after* page/hook.js ran
+    // at document_start -- exercises the window.NutrientViewer setter trap.
+    // Deliberately no window.instance, so a successful export proves the hook.
+    window.NutrientViewer = {
+      load: async () => ({
+        exportPDF: () => fetch('/public/assets/demo/pdf-seal-sample.pdf').then((r) => r.arrayBuffer()),
+      }),
+    };
+    NutrientViewer.load({ container: '#viewer', document: 'sample.pdf' }).then(() => {
+      const captured = window.__pdfSealInstances?.length ?? 0;
+      document.getElementById('hook').textContent = captured
+        ? `Hook captured ${captured} instance(s). Ready to send.`
+        : 'Hook did NOT capture the instance: is this origin whitelisted, and was the page reloaded after saving?';
+    });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+name: Extension CI
+
+on:
+  push:
+    branches-ignore: [main]
+    paths: ["extension/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-extension:
+    name: Build Extension
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+
+      - name: Validate manifest
+        run: node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json'))"
+
+      - name: Build zip
+        run: npm run build:extension
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-seal-extension
+          path: dist/pdf-seal-extension.zip

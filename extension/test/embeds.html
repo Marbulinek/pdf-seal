@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PDF embeds fixture</title>
+  <style>embed, object, iframe { width: 160px; height: 100px; } section { margin: 8px 0; }</style>
+</head>
+<body>
+  <h1>PDF embeds fixture</h1>
+  <p>Serve from the repo root (<code>python3 -m http.server 8081</code>), open
+    <code>http://localhost:8081/extension/test/embeds.html</code> with <code>http://localhost/*</code>
+    whitelisted (needed for the "Script" cases), reload, then open the extension popup:
+    every case below should be listed, and sending any of them should open the sample in pdfSeal.</p>
+  <p id="state">Building cases…</p>
+
+  <section>embed without type: <embed src="/public/assets/demo/pdf-seal-sample.pdf"></section>
+  <section>object data: <object data="/public/assets/demo/pdf-seal-sample.pdf?object"></object></section>
+  <section>viewer-wrapped iframe: <iframe src="/extension/test/viewer.html?file=/public/assets/demo/pdf-seal-sample.pdf%3Fwrapped"></iframe></section>
+  <section>link: <a href="/public/assets/demo/pdf-seal-sample.pdf?link">Download the contract</a></section>
+  <section>invalid, must NOT be listed: <a href="/missing.pdf">404 link</a>,
+    <a href="data:application/pdf;base64,aGVsbG8gd29ybGQ=">PDF-typed data URI that isn't a PDF</a></section>
+  <section>GET form:
+    <form action="/public/assets/demo/pdf-seal-sample.pdf" method="get">
+      <input type="hidden" name="via" value="form"><button>Download PDF</button>
+    </form>
+  </section>
+  <section id="dynamic"></section>
+
+  <script>
+    (async () => {
+      const blob = await (await fetch('/public/assets/demo/pdf-seal-sample.pdf?fetched')).blob(); // Script: raw fetch
+      const base64 = new Uint8Array(await blob.arrayBuffer()).toBase64();
+      const dynamic = document.getElementById('dynamic');
+      const make = (html) => dynamic.insertAdjacentHTML('beforeend', `<section>${html}</section>`);
+
+      make(`data: URI iframe: <iframe src="data:application/pdf;base64,${base64}"></iframe>`);
+      make(`blob: iframe: <iframe src="${URL.createObjectURL(blob)}"></iframe>`);
+      make('hidden input (base64): <input type="hidden" name="signedPdf" id="hiddenB64">');
+      document.getElementById('hiddenB64').value = base64;
+      // Wrapped every 76 chars like a MIME body, to exercise whitespace stripping.
+      // Same bytes as the hidden input, so the popup lists the two as one entry.
+      make(`textarea (wrapped base64): <textarea rows="3">${base64.match(/.{1,76}/g).join('\n')}</textarea>`);
+
+      // Script: base64 inside a JSON API response, then a revoked object URL.
+      const json = await (await fetch(`data:application/json,${encodeURIComponent(JSON.stringify({ pdf: base64 }))}`)).json();
+      const url = URL.createObjectURL(new Blob([Uint8Array.fromBase64(json.pdf)], { type: 'application/pdf' }));
+      URL.revokeObjectURL(url);
+
+      document.getElementById('state').textContent = window.__pdfSealCaptured
+        ? `Ready. Hook captured ${window.__pdfSealCaptured.length} script PDF(s).`
+        : 'Ready, but the hook is not active (whitelist this origin and reload) -- the "Script" cases will be missing.';
+    })();
+  </script>
+</body>
+</html>

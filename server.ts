@@ -103,6 +103,18 @@ const generalLimiter = rateLimit({
 });
 app.use(generalLimiter);
 
+// Access log for every request that reaches the routes (static files are served earlier and not logged). No client identifiers.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    log(res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info", "http", `${req.method} ${req.path}`, {
+      status: res.statusCode,
+      ms: Date.now() - start,
+    });
+  });
+  next();
+});
+
 // Tighter limit for the endpoints that parse/rewrite PDFs -- these are the
 // most expensive requests to serve (disk I/O + PDF parsing), so they get a
 // stricter cap than everything else.
@@ -117,6 +129,7 @@ const uploadLimiter = rateLimit({
 app.get("/share/:sessionId", (req: Request, res: Response) => {
   const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
   if (!SESSION_ID_PATTERN.test(sessionId)) return res.status(404).send("Share session not found.");
+  log("info", "share", "page-opened", { sessionId });
   res.sendFile(path.resolve("public/index.html"));
 });
 
@@ -188,12 +201,19 @@ function cleanupFiles(...paths: Array<string | null | undefined>) {
   }
 }
 
+// One log format for the whole server: `<iso time> <level> [scope] event {details}`.
+function log(level: "info" | "warn" | "error", scope: string, event: string, details?: Record<string, unknown>, error?: unknown) {
+  const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${scope}] ${event}`;
+  const out = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+  out(line, ...(details ? [details] : []), ...(error === undefined ? [] : [error]));
+}
+
 function logShare(event: string, details?: Record<string, unknown>) {
-  console.log(`[share] ${event}`, details ?? {});
+  log("info", "share", event, details);
 }
 
 function logError(context: string, error: unknown, details?: Record<string, unknown>) {
-  console.error(`[error] ${context}`, details ?? {}, error);
+  log("error", context, "failed", details, error);
 }
 
 // --- API Endpoint: Get PDF Info ---
@@ -211,7 +231,9 @@ app.post("/api/info", uploadLimiter, upload.single("pdfDocument"), async (req: R
     }
     const fileBytes = fs.readFileSync(safePath);
     const incrementalUpdates = PdfRevisionTool.findRevisionBoundaries(fileBytes).length;
-    res.json(tool.getDocumentInfoSummary({ fileSize: file.size, incrementalUpdates }));
+    const summary = tool.getDocumentInfoSummary({ fileSize: file.size, incrementalUpdates });
+    log("info", "document", "opened");
+    res.json(summary);
   } catch (error: any) {
     logError("api-info", error, { filePath: file.path });
     res.status(500).json({ error: error?.message ?? "Unexpected error" });
@@ -1190,7 +1212,7 @@ function startServer(port: number, attempt = 1) {
   const onError = (error: NodeJS.ErrnoException) => {
     if (error.code === 'EADDRINUSE' && attempt < 6) {
       const nextPort = port + 1;
-      console.warn(`Port ${port} is already in use, retrying on ${nextPort}.`);
+      log("warn", "server", "port-in-use", { port, retry: nextPort });
       server.off('error', onError);
       startServer(nextPort, attempt + 1);
       return;
@@ -1201,8 +1223,7 @@ function startServer(port: number, attempt = 1) {
   server.once('error', onError);
   server.listen(port, () => {
     server.off('error', onError);
-    console.log(`Server is running at http://localhost:${port}`);
-    console.log({ maxShareBytes: MAX_SHARE_BYTES, maxShareSessionsMemoryBytes: SHARE_MAX_SESSIONS_MEMORY_BYTES });
+    log("info", "server", `listening at http://localhost:${port}`, { maxShareBytes: MAX_SHARE_BYTES, maxShareSessionsMemoryBytes: SHARE_MAX_SESSIONS_MEMORY_BYTES });
   });
 }
 

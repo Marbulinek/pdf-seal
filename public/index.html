@@ -158,6 +158,22 @@
     <div class="scan-divider" aria-hidden="true"><span class="scan-divider-glow"></span></div>
   </header>
 
+  <!-- PDF Seal Portal extension modal -->
+  <div class="modal-backdrop" id="extensionModal" aria-hidden="true">
+    <div class="modal-box ext-modal-box" role="dialog" aria-modal="true" aria-labelledby="extensionModalTitle">
+      <div class="modal-header">
+        <h3 id="extensionModalTitle">PDF Seal Portal is here!</h3>
+        <button type="button" class="modal-close" id="closeExtensionModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <img class="ext-modal-img" src="/assets/images/seal_news.png" alt="PDF Seal mascot with news">
+      <p class="modal-hint">Big news: PDF Seal now has a Chrome extension! <strong>PDF Seal Portal</strong> sends any PDF you open in the browser straight into PDF Seal, so you can add signature fields in one click, with no downloading and re-uploading.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelExtensionBtn">Maybe later</button>
+        <a class="btn btn-primary" href="https://chromewebstore.google.com/detail/pdf-seal-portal/aamkakilmifjonocbbfchhcbnbgajceh" target="_blank" rel="noopener noreferrer">Get it on Chrome Web Store</a>
+      </div>
+    </div>
+  </div>
+
   <!-- Upload as Base64 modal -->
   <div class="modal-backdrop" id="base64UploadModal">
     <div class="modal-box">
@@ -1317,6 +1333,11 @@
         <a class="footer-link" href="https://github.com/marbulinek/pdf-seal/issues/new" target="_blank" rel="noopener noreferrer">
           <span class="footer-link-icon" aria-hidden="true"><span class="icon icon-chat"></span></span>
           Report an Issue or Suggest a Feature
+        </a>
+        <a class="footer-ext-badge" id="footerExtLink" href="https://chromewebstore.google.com/detail/pdf-seal-portal/aamkakilmifjonocbbfchhcbnbgajceh" target="_blank" rel="noopener noreferrer">
+          <span class="icon icon-download" aria-hidden="true"></span>
+          PDF Seal Portal
+          <span class="footer-new-badge">NEW</span>
         </a>
       </div>
 
@@ -2963,6 +2984,24 @@
       processNewFile(file);
     }
 
+    // PDF Seal Portal extension hand-off (extension/background.js posts this
+    // into the main world). Same-window, same-origin messages only.
+    window.addEventListener('message', (e) => {
+      const d = e.data;
+      if (e.source !== window || e.origin !== location.origin || d?.type !== 'pdfseal:import') return;
+      console.log('[pdfseal:import] received', { name: d.name, base64Length: d.base64?.length });
+      try {
+        const bin = atob(d.base64);
+        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+        const name = /\.pdf$/i.test(d.name || '') ? d.name : `${d.name || 'document'}.pdf`;
+        console.log('[pdfseal:import] decoded', bytes.length, 'bytes as', name);
+        processNewFile(new File([bytes], name, { type: 'application/pdf' }));
+      } catch (err) {
+        console.error('[pdfseal:import] failed', err);
+        showNotification('Could not open the PDF sent from the extension.', 'error');
+      }
+    });
+
     function setDropZoneActive(target, active) {
       target.classList.toggle('drag-active', active);
     }
@@ -3061,6 +3100,24 @@
     function closeBase64Modal() {
       base64Modal.classList.remove('is-open');
     }
+
+    const extensionModal = document.getElementById('extensionModal');
+    const setExtensionModal = (open) => {
+      extensionModal.classList.toggle('is-open', open);
+      extensionModal.setAttribute('aria-hidden', String(!open));
+    };
+    // Auto-show once per browser; the footer link can still reopen it.
+    try {
+      if (!localStorage.getItem('pdfseal-ext-modal-seen')) {
+        setExtensionModal(true);
+        localStorage.setItem('pdfseal-ext-modal-seen', '1');
+      }
+    } catch (_) { /* storage blocked: skip auto-show */ }
+    document.getElementById('footerExtLink').addEventListener('click', (e) => { e.preventDefault(); setExtensionModal(true); });
+    document.getElementById('closeExtensionModalBtn').addEventListener('click', () => setExtensionModal(false));
+    document.getElementById('cancelExtensionBtn').addEventListener('click', () => setExtensionModal(false));
+    extensionModal.addEventListener('click', (e) => { if (e.target === extensionModal) setExtensionModal(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setExtensionModal(false); });
 
     document.getElementById('uploadBase64Btn').addEventListener('click', openBase64Modal);
     document.getElementById('emptyStateBase64Btn').addEventListener('click', openBase64Modal);
