@@ -1318,6 +1318,11 @@
           <span class="footer-link-icon" aria-hidden="true"><span class="icon icon-chat"></span></span>
           Report an Issue or Suggest a Feature
         </a>
+        <a class="footer-ext-badge" href="https://chromewebstore.google.com/detail/pdf-seal-portal/aamkakilmifjonocbbfchhcbnbgajceh" target="_blank" rel="noopener noreferrer">
+          <span class="icon icon-download" aria-hidden="true"></span>
+          PDF Seal Portal
+          <span class="footer-new-badge">NEW</span>
+        </a>
       </div>
 
       <div class="footer-col">
@@ -2962,6 +2967,24 @@
       }
       processNewFile(file);
     }
+
+    // PDF Seal Portal extension hand-off (extension/background.js posts this
+    // into the main world). Same-window, same-origin messages only.
+    window.addEventListener('message', (e) => {
+      const d = e.data;
+      if (e.source !== window || e.origin !== location.origin || d?.type !== 'pdfseal:import') return;
+      console.log('[pdfseal:import] received', { name: d.name, base64Length: d.base64?.length });
+      try {
+        const bin = atob(d.base64);
+        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+        const name = /\.pdf$/i.test(d.name || '') ? d.name : `${d.name || 'document'}.pdf`;
+        console.log('[pdfseal:import] decoded', bytes.length, 'bytes as', name);
+        processNewFile(new File([bytes], name, { type: 'application/pdf' }));
+      } catch (err) {
+        console.error('[pdfseal:import] failed', err);
+        showNotification('Could not open the PDF sent from the extension.', 'error');
+      }
+    });
 
     function setDropZoneActive(target, active) {
       target.classList.toggle('drag-active', active);

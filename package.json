@@ -15,6 +15,7 @@
     "build:bundle": "node esbuild.config.mjs",
     "start": "node dist/server.js",
     "dev": "tsx server.ts",
+    "build:extension": "mkdir -p dist && rm -f dist/pdf-seal-extension.zip && cd extension && zip -r ../dist/pdf-seal-extension.zip manifest.json background.js popup.html popup.css popup.js shared.js icons page -x '*.DS_Store'",
     "build:demo-sample": "tsx scripts/build-demo-sample.ts",
     "build:perf-fixtures": "tsx scripts/build-perf-fixtures.ts",
     "test": "vitest run",

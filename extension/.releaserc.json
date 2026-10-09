@@ -1,0 +1,36 @@
+{
+  "extends": "semantic-release-monorepo",
+  "branches": ["main"],
+  "tagFormat": "extension-v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md"
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "verifyConditionsCmd": "test -n \"$EXTENSION_ID\" && test -n \"$PUBLISHER_ID\" && test -n \"$CLIENT_ID\" && test -n \"$CLIENT_SECRET\" && test -n \"$REFRESH_TOKEN\"",
+        "prepareCmd": "sed -i -E 's/\"version\": \"[^\"]*\"/\"version\": \"${nextRelease.version}\"/' manifest.json && npm --prefix .. run build:extension",
+        "publishCmd": "npx --yes chrome-webstore-upload-cli@4 --source ../dist/pdf-seal-extension.zip"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["manifest.json", "CHANGELOG.md"],
+        "message": "chore(extension-release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [{ "path": "../dist/pdf-seal-extension.zip", "label": "Chrome extension (zip)" }]
+      }
+    ]
+  ]
+}

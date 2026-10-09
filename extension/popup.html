@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PDF Seal Portal</title>
+  <link rel="stylesheet" href="popup.css">
+  <script type="module" src="popup.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <img class="brand-logo" src="icons/logo.png" alt="PDF Seal Portal">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-document" aria-controls="panel-document" aria-selected="true">
+        <span class="icon icon-file-text" aria-hidden="true"></span>Document
+      </button>
+      <button role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false">
+        <span class="icon icon-settings-gear" aria-hidden="true"></span>Settings
+      </button>
+    </div>
+  </header>
+
+  <section role="tabpanel" id="panel-document" class="panel columns" aria-labelledby="tab-document">
+    <button id="sealBtn" class="seal" disabled>
+      <img src="icons/seal_portal.png" alt="" width="268" height="200">
+      <span class="seal-cta">Send via PDF Seal Portal<span class="icon icon-arrow-right" aria-hidden="true"></span></span>
+    </button>
+    <div class="column">
+      <span class="eyebrow">Current site</span>
+      <div id="site" class="site">
+        <span id="siteOrigin" class="site-origin"></span>
+        <span id="siteState" class="site-state"></span>
+      </div>
+      <p id="status" role="status"></p>
+      <div id="pdfList" class="pdf-list" role="group" aria-labelledby="status" hidden></div>
+      <p class="hint idle">Click <strong>Send via PDF Seal Portal</strong> to find the PDF on this page. One PDF is sent straight away; if there are several, you pick one here.</p>
+      <p class="target">Opens in <span id="target"></span></p>
+    </div>
+  </section>
+
+  <section role="tabpanel" id="panel-settings" class="panel columns" aria-labelledby="tab-settings" hidden>
+    <div class="column">
+      <label for="environment">PDF Seal Portal environment</label>
+      <select id="environment">
+        <option value="production">Production (pdf-seal-production.up.railway.app)</option>
+        <option value="local">Local (localhost:3000)</option>
+        <option value="custom">Custom…</option>
+      </select>
+      <input id="customUrl" type="url" placeholder="https://my-pdfseal.example.com" hidden>
+      <p class="hint">Where the PDF opens after you send it.</p>
+
+      <button id="saveBtn" class="primary">Save settings</button>
+      <p id="settingsStatus" role="status"></p>
+    </div>
+    <div class="column">
+      <label for="allowedDomains">Allowed domains</label>
+      <textarea id="allowedDomains" rows="9" spellcheck="false"></textarea>
+      <p class="hint">One match pattern per line, e.g. <code>https://app.example.com/*</code>. <code>http://localhost/*</code> covers every port. The PDF Seal Portal only works on these sites. Applied to open tabs on save; if a viewer was already loaded, reload that tab once.</p>
+    </div>
+  </section>
+
+  <p class="hint version-footer">PDF Seal Portal &middot; v<span id="version"></span></p>
+</body>
+</html>

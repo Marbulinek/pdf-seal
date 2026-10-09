@@ -2544,6 +2544,38 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 }
 .footer-badge .icon { color: var(--ice); flex-shrink: 0; }
 
+.footer-ext-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid var(--ice);
+  border-radius: 999px;
+  background: #f6f9fc;
+  color: var(--ocean-dark);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.footer-ext-badge .icon { color: var(--ocean); flex-shrink: 0; }
+.footer-ext-badge:hover { border-color: var(--ocean); box-shadow: 0 2px 8px rgba(31, 41, 55, 0.08); }
+
+.footer-new-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--ocean);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+}
+
 .footer-col-love {
   align-items: flex-start;
   justify-content: flex-start;

@@ -17,6 +17,7 @@ npm run build           # Compile TypeScript to dist/ (tsc)
 npm start               # Run the compiled server (node dist/server.js)
 npm run build:demo-sample     # Regenerate the bundled Help-tour sample PDF + demo root CA
 npm run build:perf-fixtures   # Regenerate public/perf-fixtures/ (gitignored) -- see docs/performance.md
+npm run build:extension       # Zip extension/ into dist/pdf-seal-extension.zip (Chrome Web Store upload) -- see extension/AGENTS.md
 ```
 
 There is no linter configured. Unit tests (Vitest) live under `test/`, mirroring the `lib/` layout (e.g. `test/lib/PdfSignatureTool.test.ts`). Run the full suite with `npm test`; run a single file with `npx vitest run test/lib/PdfSignatureTool.test.ts` or filter by name with `npx vitest run -t "some test name"`. Verify changes with `npm run build` (type checking), `npm test`, and manual testing against `http://localhost:3000`; add focused tests only for critical logic if needed.
