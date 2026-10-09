@@ -2559,6 +2559,7 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   white-space: nowrap;
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
+.footer-ext-badge[hidden] { display: none; }
 .footer-ext-badge .icon { color: var(--ocean); flex-shrink: 0; }
 .footer-ext-badge:hover { background: rgba(168, 218, 220, 0.5); color: var(--navy); transform: translateX(2px); }
 

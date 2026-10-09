@@ -3106,9 +3106,14 @@
       extensionModal.classList.toggle('is-open', open);
       extensionModal.setAttribute('aria-hidden', String(!open));
     };
+    // The extension is Chrome-only: Edge/Opera/Firefox/Safari get neither the modal nor the footer link.
+    const isGoogleChrome = navigator.userAgentData
+      ? navigator.userAgentData.brands.some((b) => b.brand === 'Google Chrome')
+      : /Chrome\//.test(navigator.userAgent) && !/Edg\/|OPR\/|Firefox\//.test(navigator.userAgent);
+    if (!isGoogleChrome) document.getElementById('footerExtLink').hidden = true;
     // Auto-show once per browser; the footer link can still reopen it.
     try {
-      if (!localStorage.getItem('pdfseal-ext-modal-seen')) {
+      if (isGoogleChrome && !localStorage.getItem('pdfseal-ext-modal-seen')) {
         setExtensionModal(true);
         localStorage.setItem('pdfseal-ext-modal-seen', '1');
       }
