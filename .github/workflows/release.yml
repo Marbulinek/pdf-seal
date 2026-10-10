@@ -87,12 +87,28 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check for shipped extension changes
+        id: changes
+        # Paths must match the zip contents in package.json's build:extension script.
+        # Docs-only changes would re-upload an identical zip, which the Chrome Web Store rejects.
+        run: |
+          last=$(git describe --tags --match 'extension-v*' --abbrev=0 2>/dev/null || true)
+          cd extension
+          if [ -n "$last" ] && git diff --quiet "$last" HEAD -- manifest.json background.js popup.html popup.css popup.js shared.js icons page; then
+            echo "No shipped extension files changed since $last; skipping release."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
       - name: Run semantic-release for the extension
+        if: steps.changes.outputs.changed == 'true'
         uses: cycjimmy/semantic-release-action@v4
         with:
           working_directory: extension
