@@ -9,3 +9,4 @@ npm-debug.log
 *.md
 claude.json
 public/perf-fixtures
+extension

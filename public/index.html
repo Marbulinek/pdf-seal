@@ -174,6 +174,21 @@
     </div>
   </div>
 
+  <!-- Diagnostics modal (footer link) -->
+  <div class="modal-backdrop" id="diagnosticsModal" aria-hidden="true">
+    <div class="modal-box diagnostics-modal-box" role="dialog" aria-modal="true" aria-labelledby="diagnosticsModalTitle">
+      <div class="modal-header">
+        <h3 id="diagnosticsModalTitle">Diagnostics</h3>
+        <button type="button" class="modal-close" id="closeDiagnosticsModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
+      </div>
+      <p class="modal-hint">Include this Log ID when reporting a problem.</p>
+      <div class="diagnostics-row">
+        <span class="diagnostics-label">Log ID</span>
+        <code class="diagnostics-value" id="diagnosticsLogId"></code>
+      </div>
+    </div>
+  </div>
+
   <!-- Upload as Base64 modal -->
   <div class="modal-backdrop" id="base64UploadModal">
     <div class="modal-box">
@@ -1334,6 +1349,10 @@
           <span class="footer-link-icon" aria-hidden="true"><span class="icon icon-chat"></span></span>
           Report an Issue or Suggest a Feature
         </a>
+        <a class="footer-link" id="footerDiagnosticsLink" href="#" role="button">
+          <span class="footer-link-icon" aria-hidden="true"><span class="icon icon-info-circle"></span></span>
+          Diagnostics
+        </a>
         <a class="footer-ext-badge" id="footerExtLink" href="https://chromewebstore.google.com/detail/pdf-seal-portal/aamkakilmifjonocbbfchhcbnbgajceh" target="_blank" rel="noopener noreferrer">
           <span class="icon icon-download" aria-hidden="true"></span>
           PDF Seal Portal
@@ -1476,6 +1495,16 @@
     // Revisions tool state
     let documentSessionId = null;    // groups this document's revision snapshots in IndexedDB (see revisionStore below)
     let documentRevisionCount = 0;   // how many revisions are stored under documentSessionId so far
+
+    // Tag every API call with the open document's id so the server's log
+    // lines for it can be found (the id is shown in the footer's Diagnostics modal).
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      if (!documentSessionId || typeof input !== 'string' || !input.startsWith('/api/')) return nativeFetch(input, init);
+      const headers = new Headers(init.headers);
+      headers.set('X-Document-Id', documentSessionId);
+      return nativeFetch(input, { ...init, headers });
+    };
     // The versionKey of the version currently active (documentSessionId +
     // documentRevisionCount), i.e. the row actually shown in the viewer.
     // Tracked alongside documentRevisionCount because an index alone is
@@ -3124,6 +3153,17 @@
     extensionModal.addEventListener('click', (e) => { if (e.target === extensionModal) setExtensionModal(false); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setExtensionModal(false); });
 
+    const diagnosticsModal = document.getElementById('diagnosticsModal');
+    const setDiagnosticsModal = (open) => {
+      if (open) document.getElementById('diagnosticsLogId').textContent = documentSessionId || 'No document open';
+      diagnosticsModal.classList.toggle('is-open', open);
+      diagnosticsModal.setAttribute('aria-hidden', String(!open));
+    };
+    document.getElementById('footerDiagnosticsLink').addEventListener('click', (e) => { e.preventDefault(); setDiagnosticsModal(true); });
+    document.getElementById('closeDiagnosticsModalBtn').addEventListener('click', () => setDiagnosticsModal(false));
+    diagnosticsModal.addEventListener('click', (e) => { if (e.target === diagnosticsModal) setDiagnosticsModal(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setDiagnosticsModal(false); });
+
     document.getElementById('uploadBase64Btn').addEventListener('click', openBase64Modal);
     document.getElementById('emptyStateBase64Btn').addEventListener('click', openBase64Modal);
     document.getElementById('closeBase64ModalBtn').addEventListener('click', closeBase64Modal);
@@ -3738,7 +3778,7 @@
         }
       } else {
         previousSessionIdToClear = documentSessionId;
-        documentSessionId = createSessionId();
+        documentSessionId = createUuid();
         documentRevisionCount = 1;
         const versionKey = createSessionId();
         activeVersionKey = versionKey;
@@ -8639,6 +8679,16 @@ function createCompactCode(length) {
 
 function createSessionId() {
   return createCompactCode(8);
+}
+
+// UUID v4. Not crypto.randomUUID(): that needs a secure context, and a
+// self-hosted instance may be served over plain http.
+function createUuid() {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
 function bytesToBase64Url(bytes) {
