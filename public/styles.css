@@ -5378,3 +5378,18 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
 .ext-modal-img { display: block; width: 100%; max-height: 220px; object-fit: contain; margin: 4px 0 14px; }
 .ext-modal-box .modal-actions { justify-content: center; flex-wrap: wrap; }
 .ext-modal-box a.btn { text-decoration: none; }
+
+.diagnostics-modal-box { width: min(480px, 100%); }
+.diagnostics-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.diagnostics-label { font-size: 0.83rem; font-weight: 600; color: #4b5563; }
+.diagnostics-value {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--ice);
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+}

@@ -2,6 +2,7 @@
 
 import express, { type Request, type Response, type NextFunction } from "express";
 import http from "http";
+import { AsyncLocalStorage, AsyncResource } from "async_hooks";
 import multer, { MulterError } from "multer";
 import path from "path";
 import fs from "fs";
@@ -65,6 +66,9 @@ type ShareRole = "sender" | "receiver";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
 const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES } });
 
+// The X-Document-Id of the request currently being handled -- set by the access-log middleware, read by log().
+const requestDocumentId = new AsyncLocalStorage<string | undefined>();
+
 // /api/revisions/bundle reads every prior revision fully into memory, base64-encodes
 // each one, and holds them all at once to embed as a single JSON string in the output
 // PDF (see PdfSignatureTool.setRevisionSnapshotChain) -- measured at ~6-7x the combined
@@ -103,16 +107,22 @@ const generalLimiter = rateLimit({
 });
 app.use(generalLimiter);
 
-// Access log for every request that reaches the routes (static files are served earlier and not logged). No client identifiers.
+// Access log for every request that reaches the routes (static files are served earlier and not logged). No client identifiers --
+// only the random per-document id the browser sends in X-Document-Id (shown in its footer's Diagnostics modal), which every log line
+// written while handling the request is tagged with (see log()).
 app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
-  res.on("finish", () => {
-    log(res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info", "http", `${req.method} ${req.path}`, {
-      status: res.statusCode,
-      ms: Date.now() - start,
-    });
+  const header = req.get("x-document-id");
+  const documentId = header && /^[A-Za-z0-9-]{1,64}$/.test(header) ? header : undefined;
+  requestDocumentId.run(documentId, () => {
+    res.on("finish", AsyncResource.bind(() => {
+      log(res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info", "http", `${req.method} ${req.path}`, {
+        status: res.statusCode,
+        ms: Date.now() - start,
+      });
+    }));
+    next();
   });
-  next();
 });
 
 // Tighter limit for the endpoints that parse/rewrite PDFs -- these are the
@@ -201,9 +211,10 @@ function cleanupFiles(...paths: Array<string | null | undefined>) {
   }
 }
 
-// One log format for the whole server: `<iso time> <level> [scope] event {details}`.
+// One log format for the whole server: `<iso time> <level> [scope] [doc:<id>] event {details}` (doc part only inside a request carrying X-Document-Id).
 function log(level: "info" | "warn" | "error", scope: string, event: string, details?: Record<string, unknown>, error?: unknown) {
-  const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${scope}] ${event}`;
+  const documentId = requestDocumentId.getStore();
+  const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${scope}] ${documentId ? `[doc:${documentId}] ` : ""}${event}`;
   const out = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
   out(line, ...(details ? [details] : []), ...(error === undefined ? [] : [error]));
 }
