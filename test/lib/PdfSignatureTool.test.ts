@@ -453,7 +453,7 @@ describe('PdfSignatureTool', () => {
     expect(summary.stamps).toEqual([]);
   });
 
-  it('produces the full document info summary with metadata, raw info, fields, raw objects and overview', async () => {
+  it('produces the full document info summary with metadata, raw info, fields, annotations and overview', async () => {
     const tool = await PdfSignatureTool.create();
     tool.addPage();
     tool.addSignatureField(0, 'signature1', {});
@@ -463,7 +463,8 @@ describe('PdfSignatureTool', () => {
     expect(summary.metadata.title).toBe('Full summary');
     expect(summary.rawInfo.Title).toBe('Full summary');
     expect(summary.fields).toHaveLength(1);
-    expect(summary.rawObjects.objects).toBeTypeOf('object');
+    expect(summary.annotations).toEqual([]);
+    expect((summary as any).rawObjects).toBeUndefined();
     expect(summary.overview.documentInfo.fileSize).toBe(42);
   });
 
@@ -664,6 +665,13 @@ describe('PdfSignatureTool: signature dictionaries and certificates', () => {
     expect(tool.getSignatureDictionaries()[0].docMdpLevel).toBe(2);
   }, 30000);
 
+  it('exposes the certification level in the overview', async () => {
+    const certified = await PdfSignatureTool.fromBytes((await buildSignedPdfFixture({ docMdpLevel: 1 })).bytes);
+    expect(certified.getMetadataOverview().features.certification).toBe(1);
+    const plain = await PdfSignatureTool.fromBytes((await buildSignedPdfFixture()).bytes);
+    expect(plain.getMetadataOverview().features.certification).toBeNull();
+  }, 30000);
+
   it('returns empty structures when there is no document security store', async () => {
     const tool = await PdfSignatureTool.create();
     tool.addPage();
@@ -801,6 +809,38 @@ describe('PdfSignatureTool: stamp annotation detection', () => {
     tool.addPage();
     expect(tool.listStamps()).toEqual([]);
     expect(tool.getMetadataOverview().features.stampCount).toBe(0);
+  });
+});
+
+describe('PdfSignatureTool: listAnnotations', () => {
+  it('lists links, notes and markup, resolving URI and GoTo targets, and skips stamps/popups', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addPage();
+    const pdfDoc = (tool as any).pdfDoc;
+    const context = pdfDoc.context;
+    const [p0, p1] = pdfDoc.getPages();
+    const add = (entries: Record<string, any>) => {
+      const ref = context.register(context.obj({ Type: 'Annot', Rect: [10, 10, 60, 30], P: p0.ref, ...entries }));
+      p0.node.addAnnot(ref);
+      return ref;
+    };
+    add({ Subtype: 'Link', A: { S: 'URI', URI: PDFString.of('https://example.com') } });
+    add({ Subtype: 'Link', A: { S: 'GoTo', D: [p1.ref, 'Fit'] } });
+    const note = add({ Subtype: 'Text', Contents: PDFString.of('Check this'), T: PDFString.of('Ann') });
+    add({ Subtype: 'Highlight', QuadPoints: [0, 0, 1, 0, 0, 1, 1, 1] });
+    add({ Subtype: 'Popup', Parent: note });
+    addRawStampAnnot(tool, 0);
+
+    const list = tool.listAnnotations();
+    expect(list.map((a: any) => a.kind)).toEqual(['link', 'link', 'comment', 'markup']);
+    expect(list[0].uri).toBe('https://example.com');
+    expect(list[1].destPage).toBe(1);
+    expect(list[2].contents).toBe('Check this');
+    expect(list[2].author).toBe('Ann');
+    expect(list[3].subtype).toBe('Highlight');
+    expect(list[0].rect).toEqual({ x: 10, y: 10, width: 50, height: 20 });
+    expect(tool.listStamps()[0].raw.Subtype).toBe('/Stamp');
   });
 });
 

@@ -96,7 +96,7 @@
           <nav class="section-nav" id="sectionNav" aria-label="Document sections">
             <button type="button" class="section-nav-btn" id="navBtnMetaData" data-section="metadata">
               <span class="section-nav-icon" aria-hidden="true"><span class="icon icon-info-circle"></span></span>
-              <span class="section-nav-label">MetaData</span>
+              <span class="section-nav-label">Overview</span>
             </button>
             <button type="button" class="section-nav-btn active" id="navBtnSignatures" data-section="signatures" aria-current="page">
               <span class="section-nav-icon" aria-hidden="true"><span class="icon icon-pen"></span></span>
@@ -233,7 +233,7 @@
             <input type="checkbox" id="settingsShowRawData">
             <span>Show advanced PDF raw data</span>
           </div>
-          <p class="modal-hint settings-hint">If enabled, shows the "Advanced — raw PDF structure" panel in Metadata, "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Versions — each marked with a "Raw" badge, and opened automatically.</p>
+          <p class="modal-hint settings-hint">If enabled, shows "Field Details (raw PDF properties)" in Signatures, and the "Raw PDF objects" panel in Versions — each marked with a "Raw" badge, and opened automatically.</p>
         </label>
       </div>
 
@@ -328,7 +328,7 @@
         <details class="help-topic">
           <summary><span class="help-topic-title">Getting started</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="intro">Show me</button></summary>
           <div class="help-topic-body">
-            <p>Upload a PDF (drag &amp; drop, the Upload button, or Base64), then use the page/zoom/pan controls and the section tabs — MetaData, Signatures, Versions, Certificates — to move between features.</p>
+            <p>Upload a PDF (drag &amp; drop, the Upload button, or Base64), then use the page/zoom/pan controls and the section tabs — Overview, Signatures, Versions, Certificates — to move between features.</p>
           </div>
         </details>
         <details class="help-topic">
@@ -344,9 +344,9 @@
           </div>
         </details>
         <details class="help-topic">
-          <summary><span class="help-topic-title">Metadata &amp; raw PDF data</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="metadata">Show me</button></summary>
+          <summary><span class="help-topic-title">Overview</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="metadata">Show me</button></summary>
           <div class="help-topic-body">
-            <p>The MetaData section shows and edits the document's title, author, and other Info-dictionary fields. Turn on "Show advanced PDF raw data" in Settings to see the underlying raw PDF objects behind fields, versions, and metadata.</p>
+            <p>The Overview section summarizes the document — title, author, pages, whether it is signed — and lists everything on it: signatures, stamps, form fields, links and comments. While it is open, those objects are outlined on the page; click one (or its row in the list) to see its details. Overview is read-only. Turn on "Show advanced PDF raw data" in Settings to see raw PDF objects in the Signatures, Versions and Certificates panels.</p>
           </div>
         </details>
         <details class="help-topic">
@@ -849,29 +849,14 @@
         <section class="section-panel" id="sectionMetaData" data-section-panel="metadata" hidden>
           <div class="panel docinfo-panel" id="docInfoPanel">
             <div class="panel-overlay" id="docInfoPanelOverlay">
-              <div class="panel-overlay-text">Upload a document first to see its metadata</div>
+              <div class="panel-overlay-text">Upload a document first to see its overview</div>
             </div>
-            <h3><span class="panel-dot dot-ocean"></span>Metadata</h3>
-            <p class="revisions-hint">What this PDF is and what it contains — document info, features, pages, forms, attachments, and embedded metadata.</p>
+            <h3><span class="panel-dot dot-ocean"></span>Overview</h3>
+            <p class="revisions-hint">What this PDF is and what is on it. Click an item here, or its outline on the page, for details.</p>
 
             <div class="meta-overview" id="metaOverview">
               <p class="field-details-empty">No document loaded yet.</p>
             </div>
-
-            <details class="meta-advanced" id="metaAdvancedDetails">
-              <summary><span class="icon icon-code" aria-hidden="true"></span> Advanced — raw PDF structure <span class="raw-panel-badge">Raw</span></summary>
-              <div class="meta-advanced-body">
-                <div class="meta-search-wrap">
-                  <label for="metaSearchInput" class="sr-only">Search document metadata</label>
-                  <input type="text" id="metaSearchInput" class="meta-search-input" placeholder="Find a key or value…" disabled>
-                  <button type="button" class="meta-search-clear" id="metaSearchClearBtn" aria-label="Clear search" hidden><span class="icon icon-close" aria-hidden="true"></span></button>
-                </div>
-
-                <div class="meta-tree-container" id="metaTreeContainer">
-                  <p class="field-details-empty">No document loaded yet.</p>
-                </div>
-              </div>
-            </details>
           </div>
 
         </section>
@@ -1135,6 +1120,22 @@
             <div class="visual-diff-legend" id="visualDiffLegend"></div>
           </div>
         </div>
+      </aside>
+
+      <div class="edit-sheet-scrim" id="overviewSheetScrim"></div>
+
+      <!-- One object from the Overview list (signature, stamp, field, link,
+           comment). Same sliding sheet as #certificateSheet. -->
+      <aside class="edit-sheet" id="overviewSheet" tabindex="-1" aria-hidden="true" aria-labelledby="overviewSheetTitle">
+        <div class="edit-sheet-header">
+          <span class="edit-sheet-grabber" aria-hidden="true"></span>
+          <span class="panel-dot dot-ocean"></span>
+          <h3 id="overviewSheetTitle">Details</h3>
+          <span class="edit-sheet-subject" id="overviewSheetSubject"></span>
+          <button type="button" class="modal-close" id="btnOverviewSheetClose" aria-label="Close details"><span class="icon icon-close" aria-hidden="true"></span></button>
+        </div>
+        <div class="edit-sheet-body" id="overviewSheetBody"></div>
+        <div class="edit-sheet-footer" id="overviewSheetFooter" hidden></div>
       </aside>
 
       <!-- Mobile only: the bottom sheet's backdrop for the certificate sheet. -->
@@ -1479,7 +1480,8 @@
     let rectEditHistorySnapshot = null;
     let documentMeta = null;       // standard Info dict fields (title, author, producer, ...), from /api/info
     let documentRawInfo = null;    // raw/custom Info dictionary entries, from /api/info
-    let documentRawObjects = null; // { trailer, objects } -- the entire raw PDF object table, from /api/info
+    let documentStamps = [];       // every stamp annotation, from the full /api/info (Overview panel)
+    let documentAnnotations = [];  // links/comments/markup (non-widget, non-stamp), from the full /api/info
     let documentOverview = null;   // simplified Metadata-panel overview (documentInfo/features/pages/attachments/xmp/documentIds), from /api/info
     let documentMetaLoadedFor = null; // the File object the above four fields were loaded for (cache-invalidation key; reference equality with activeFile)
     let metadataLoading = false;
@@ -2618,7 +2620,6 @@
 
         if (nextSettings.showRawPdfData !== previousSettings.showRawPdfData) {
           if (nextSettings.showRawPdfData) {
-            document.getElementById('metaAdvancedDetails')?.setAttribute('open', '');
             document.getElementById('fieldDetailsBlock')?.setAttribute('open', '');
           }
           showNotification(
@@ -2941,15 +2942,19 @@
               panel.classList.add('section-panel-enter');
             }
           });
+          const previousSection = document.body.dataset.activeSection;
           document.body.dataset.activeSection = target;
           if (target !== 'signatures' && activeField) deselectActiveField();
           if (target !== 'revisions') suspendRevisionsView();
+          if (target !== 'metadata') closeOverviewSheet();
           if (target !== 'certificates') { closeCertificateSheet(); closeCertificateModifySheet(); closeCertificateTimelineSheet(); }
           if (target === 'signatures' && templatesPanelDirty) {
             renderTemplatesPanel();
             templatesPanelDirty = false;
           }
           if (target === 'metadata') loadMetadataIfNeeded();
+          // Overview outlines its objects on the page; redraw so they appear/disappear.
+          if (currentViewport && (target === 'metadata' || previousSection === 'metadata')) drawFieldOverlays(currentViewport);
           if (target === 'revisions') {
             loadRevisionsIfNeeded();
             resumeRevisionsView();
@@ -3348,11 +3353,9 @@
       if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument || !sigNameFilled;
 
       const docInfoPanelOverlay = document.getElementById('docInfoPanelOverlay');
-      const metaSearchInput = document.getElementById('metaSearchInput');
       const revisionsListPanelOverlay = document.getElementById('revisionsListPanelOverlay');
       const revisionsDiffPanelOverlay = document.getElementById('revisionsDiffPanelOverlay');
       if (docInfoPanelOverlay) docInfoPanelOverlay.classList.toggle('is-hidden', hasDocument);
-      if (metaSearchInput) metaSearchInput.disabled = !hasDocument;
       if (revisionsListPanelOverlay) revisionsListPanelOverlay.classList.toggle('is-hidden', hasDocument);
       if (revisionsDiffPanelOverlay) revisionsDiffPanelOverlay.classList.toggle('is-hidden', hasDocument);
       const certificatesPanelOverlay = document.getElementById('certificatesPanelOverlay');
@@ -3411,17 +3414,14 @@
 
       documentMeta = null;
       documentRawInfo = null;
-      documentRawObjects = null;
+      documentStamps = [];
+      documentAnnotations = [];
       documentOverview = null;
-      const metaSearchInput = document.getElementById('metaSearchInput');
-      if (metaSearchInput) metaSearchInput.value = '';
+      closeOverviewSheet();
       // Only worth painting the cleared state now if it's actually visible --
       // loadMetadataIfNeeded() re-derives it correctly from documentMeta et
       // al. (now null) whenever the MetaData section is next opened.
-      if (isSectionOpen('sectionMetaData')) {
-        renderMetaTree();
-        renderMetaOverview();
-      }
+      if (isSectionOpen('sectionMetaData')) renderMetaOverview();
     }
 
     // Discards the loaded document with no replacement -- unlike a new
@@ -3666,7 +3666,8 @@
         fieldsBaseline,
         documentMeta,
         documentRawInfo,
-        documentRawObjects,
+        documentStamps,
+        documentAnnotations,
         documentOverview,
         documentMetaLoadedFor,
         revisionsData,
@@ -3856,7 +3857,8 @@
         setLoadingProgress(50);
         documentMeta = null;
         documentRawInfo = null;
-        documentRawObjects = null;
+        documentStamps = [];
+        documentAnnotations = [];
         documentOverview = null;
         documentMetaLoadedFor = null;
 
@@ -4020,7 +4022,8 @@
           fieldsBaseline = previousDocumentState.fieldsBaseline;
           documentMeta = previousDocumentState.documentMeta;
           documentRawInfo = previousDocumentState.documentRawInfo;
-          documentRawObjects = previousDocumentState.documentRawObjects;
+          documentStamps = previousDocumentState.documentStamps;
+          documentAnnotations = previousDocumentState.documentAnnotations;
           documentOverview = previousDocumentState.documentOverview;
           documentMetaLoadedFor = previousDocumentState.documentMetaLoadedFor;
           revisionsData = previousDocumentState.revisionsData;
@@ -4051,7 +4054,8 @@
           updatePendingChangesUi();
           documentMeta = null;
           documentRawInfo = null;
-          documentRawObjects = null;
+          documentStamps = [];
+          documentAnnotations = [];
           documentOverview = null;
           documentMetaLoadedFor = null;
           documentSessionId = null;
@@ -4252,6 +4256,7 @@
         // Lets other sections address one overlay by name -- the Certificates
         // panel jumps here to select the field a signature belongs to.
         div.dataset.fieldName = field.name || '';
+        div.dataset.overviewKind = field.type === 'Signature' ? 'signature' : 'field';
         const invisibleSuffix = isInvisible ? ' — invisible field, no visible footprint on the page' : '';
         div.title = field.signed === true
           ? `${field.name} — signed, so it cannot be moved or removed without breaking the signature${invisibleSuffix}`
@@ -4344,6 +4349,9 @@
       });
 
       if (invisibleFieldPins.length || extraPins.length) layoutInvisibleFieldPins([...invisibleFieldPins, ...extraPins]);
+
+      // Overview mode: outline stamps/links/comments too, and mark the selection.
+      if (document.body.dataset.activeSection === 'metadata') drawOverviewHotspots();
     }
 
     // One-time delegated listeners for every field overlay drawFieldOverlays()
@@ -4494,6 +4502,19 @@
       if (!activeFile) return;
       selectFieldOverlay(div, field);
       openRemoveFieldModal(field.name);
+    });
+
+    // Overview mode: clicking an outlined object opens its detail sheet.
+    overlayLayer.addEventListener('click', (e) => {
+      if (document.body.dataset.activeSection !== 'metadata') return;
+      const hotspot = e.target.closest('.overview-hotspot');
+      if (hotspot) {
+        openOverviewSheet(hotspot.dataset.kind, hotspot.dataset.key);
+        return;
+      }
+      const div = e.target.closest('.field-overlay');
+      const field = div && fieldOverlayFields.get(div);
+      if (field) openOverviewSheet(field.type === 'Signature' ? 'signature' : 'field', field.name);
     });
 
     overlayLayer.addEventListener('dragstart', (e) => {
@@ -6694,7 +6715,8 @@
 
       documentMeta = null;
       documentRawInfo = null;
-      documentRawObjects = null;
+      documentStamps = [];
+      documentAnnotations = [];
       documentOverview = null;
       documentMetaLoadedFor = null;
       if (isSectionOpen('sectionMetaData')) loadMetadataIfNeeded();
@@ -7862,111 +7884,6 @@ function formatDisplayDate(value) {
   }).format(d);
 }
 
-function formatMetaDate(value) {
-  return formatDisplayDate(value);
-}
-
-function formatMetaValue(value) {
-  if (value === undefined || value === null || value === '') return '—';
-  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
-  return String(value);
-}
-
-// Give a raw indirect object a short, human-readable label (used as the
-// tree key alongside its "<num> <gen> R" reference) instead of just its
-// ref, based on whatever /Type, /Subtype, /FT, or stream-ness it has.
-function friendlyObjectLabel(obj) {
-  if (!obj || typeof obj !== 'object') return 'Object';
-  if (Array.isArray(obj)) return 'Array';
-  if (obj.Type === 'Catalog') return 'Catalog';
-  if (obj.Type === 'Pages') return 'Page Tree';
-  if (obj.Type === 'Page') return 'Page';
-  if (obj.Type === 'Annot') return `Annotation${obj.Subtype ? ` (${obj.Subtype})` : ''}`;
-  if (obj.Type === 'Font') return 'Font';
-  if (obj.Type === 'XObject') return `XObject${obj.Subtype ? ` (${obj.Subtype})` : ''}`;
-  if (obj.Fields !== undefined && obj.SigFlags !== undefined) return 'AcroForm';
-  if (obj['@type'] === 'Stream') return `Stream${obj.Filter ? ` (${Array.isArray(obj.Filter) ? obj.Filter.join(', ') : obj.Filter})` : ''}`;
-  if (obj.Type) return String(obj.Type);
-  return 'Object';
-}
-
-// Assemble the full "Document" object -- everything the PDF exposes --
-// as a plain nested object: { branchName: { key: value, ... }, ... }
-function buildMetaTreeData() {
-  const tree = {};
-
-  if (documentMeta) {
-    tree['Document Metadata'] = {
-      Title: formatMetaValue(documentMeta.title),
-      Author: formatMetaValue(documentMeta.author),
-      Subject: formatMetaValue(documentMeta.subject),
-      Keywords: formatMetaValue(documentMeta.keywords),
-      Creator: formatMetaValue(documentMeta.creator),
-      Producer: formatMetaValue(documentMeta.producer),
-      'Creation Date': formatMetaDate(documentMeta.creationDate),
-      'Modification Date': formatMetaDate(documentMeta.modificationDate),
-      'Page Count': formatMetaValue(documentMeta.pageCount),
-    };
-  }
-
-  // Refs already fully represented elsewhere in the tree (each form
-  // field's own dict/widgets below, and the Info dictionary above) --
-  // skipped when walking the raw object table further down so the same
-  // signature field/metadata doesn't show up twice under two names.
-  const shownRefs = new Set();
-
-  if (documentFields && documentFields.length) {
-    const fieldsNode = {};
-    documentFields.forEach((field, i) => {
-      const fieldName = field.name || `Field ${i + 1}`;
-      (field.objectRefs || []).forEach((ref) => shownRefs.add(ref));
-      if (field.raw && Object.keys(field.raw).length) {
-        const rawEntries = {};
-        Object.entries(field.raw).forEach(([key, value]) => {
-          rawEntries[key] = formatMetaValue(value);
-        });
-        fieldsNode[fieldName] = rawEntries;
-      } else {
-        fieldsNode[fieldName] = { 'No raw properties': '—' };
-      }
-    });
-    tree['Form Fields'] = fieldsNode;
-  }
-
-  if (documentRawInfo && Object.keys(documentRawInfo).length) {
-    const rawNode = {};
-    Object.entries(documentRawInfo).forEach(([key, value]) => {
-      rawNode[key] = formatMetaValue(value);
-    });
-    tree['Info Dictionary (raw)'] = rawNode;
-  }
-  const infoRef = documentRawObjects && documentRawObjects.trailer && documentRawObjects.trailer.Info;
-  if (infoRef) shownRefs.add(infoRef);
-
-  // The full raw PDF object table (trailer + every indirect object in the
-  // file: Catalog, Pages, fonts, XObjects, annotations, AcroForm, embedded
-  // metadata streams, custom producer keys -- literally everything except
-  // the form-field and Info-dictionary objects already shown above),
-  // labeled by object type rather than bare "<num> <gen> R" refs.
-  if (documentRawObjects) {
-    if (documentRawObjects.trailer && Object.keys(documentRawObjects.trailer).length) {
-      tree['Trailer'] = documentRawObjects.trailer;
-    }
-    if (documentRawObjects.objects) {
-      const objectsNode = {};
-      Object.entries(documentRawObjects.objects).forEach(([ref, obj]) => {
-        if (shownRefs.has(ref)) return;
-        objectsNode[`${friendlyObjectLabel(obj)} — ${ref}`] = obj;
-      });
-      if (Object.keys(objectsNode).length) {
-        tree['All PDF Objects (raw)'] = objectsNode;
-      }
-    }
-  }
-
-  return tree;
-}
-
 function highlightMetaTerm(text, term) {
   const safe = escapeHtml(text);
   if (!term) return safe;
@@ -8100,22 +8017,22 @@ function filterMetaTree(node, term) {
   return result;
 }
 
-// Fetches the full metadata/raw-object summary for `activeFile` from
-// /api/info (the fieldsOnly=false path), the same lazy-on-demand pattern
-// used by loadRevisionsIfNeeded: every upload/edit only fetches form
-// fields eagerly (cheap, needed for canvas rendering everywhere), and this
-// heavier computation only runs when the MetaData section is actually open.
+// Fetches the full summary (metadata, overview, stamps, annotations) for
+// `activeFile` from /api/info (the fieldsOnly=false path), the same
+// lazy-on-demand pattern used by loadRevisionsIfNeeded: every upload/edit
+// only fetches form fields eagerly (cheap, needed for canvas rendering
+// everywhere), and this heavier computation only runs when the Overview
+// section is actually open.
 async function loadMetadataIfNeeded() {
   const overviewEl = document.getElementById('metaOverview');
-  const treeEl = document.getElementById('metaTreeContainer');
 
   if (!activeFile || !pdfDoc) {
     documentMeta = null;
     documentRawInfo = null;
-    documentRawObjects = null;
+    documentStamps = [];
+    documentAnnotations = [];
     documentOverview = null;
     documentMetaLoadedFor = null;
-    renderMetaTree();
     renderMetaOverview();
     return;
   }
@@ -8126,7 +8043,6 @@ async function loadMetadataIfNeeded() {
   // which a session:count key can't tell apart. Every load/edit always
   // produces a new File instance, so reference equality is exact.
   if (documentMetaLoadedFor === activeFile) {
-    renderMetaTree();
     renderMetaOverview();
     return;
   }
@@ -8135,31 +8051,37 @@ async function loadMetadataIfNeeded() {
   metadataLoading = true;
 
   const requestedFile = activeFile; // guards against a stale response landing after a newer upload/edit
+  closeOverviewSheet(); // whatever it showed described the previous document
 
-  const loadingHtml = '<div class="panel-loading"><span class="spinner" aria-hidden="true"></span> Loading metadata…</div>';
-  if (overviewEl) overviewEl.innerHTML = loadingHtml;
-  if (treeEl) treeEl.innerHTML = loadingHtml;
+  if (overviewEl) overviewEl.innerHTML = '<div class="panel-loading"><span class="spinner" aria-hidden="true"></span> Loading overview…</div>';
 
   try {
     const formData = new FormData();
     formData.append('pdfDocument', requestedFile);
     const res = await fetch('/api/info', { method: 'POST', body: formData });
     const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || 'Could not load document metadata.');
+    if (!res.ok) throw new Error(data?.error || 'Could not load the document overview.');
     if (requestedFile !== activeFile) return; // a newer upload/edit superseded this request
 
     documentMeta = data.metadata || null;
     documentRawInfo = data.rawInfo || null;
-    documentRawObjects = data.rawObjects || null;
+    documentStamps = data.stamps || [];
+    documentAnnotations = data.annotations || [];
     documentOverview = data.overview || null;
     documentMetaLoadedFor = requestedFile;
-    renderMetaTree();
     renderMetaOverview();
+    // Stamps/links/comments are only known now: draw their hotspots.
+    if (currentViewport && document.body.dataset.activeSection === 'metadata') drawFieldOverlays(currentViewport);
+
+    // The signed chip and the signature sheet read the Certificates report.
+    if ((documentOverview?.features?.signatureCount || 0) > 0) {
+      Promise.resolve(loadCertificatesIfNeeded()).catch(() => {}).then(() => {
+        if (requestedFile === activeFile && isSectionOpen('sectionMetaData')) renderMetaOverview();
+      });
+    }
   } catch (err) {
     if (requestedFile !== activeFile) return;
-    const safeMessage = escapeHtml(err.message);
-    if (overviewEl) overviewEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
-    if (treeEl) treeEl.innerHTML = `<p class="field-details-empty">Error loading metadata: ${safeMessage}</p>`;
+    if (overviewEl) overviewEl.innerHTML = `<p class="field-details-empty">Error loading overview: ${escapeHtml(err.message)}</p>`;
   } finally {
     // Always clear, even if the file changed mid-load -- gating this on
     // `requestedFile === activeFile` left it stuck `true` forever once the
@@ -8169,67 +8091,9 @@ async function loadMetadataIfNeeded() {
   }
 }
 
-// getFullRawDump() enumerates every indirect object in the file with no limit,
-// and each one becomes a DOM subtree in the raw tree below. On a large PDF that
-// was tens of thousands of nodes torn down and rebuilt on every render, which
-// is what made typing in the search box lock the page up. Applied *after*
-// filtering, so a search still looks at every object -- only what gets rendered
-// at once is bounded.
-const META_TREE_MAX_OBJECTS = 500;
-
-function capMetaObjectBranch(tree) {
-  const branch = tree['All PDF Objects (raw)'];
-  if (!branch) return tree;
-  const entries = Object.entries(branch);
-  if (entries.length <= META_TREE_MAX_OBJECTS) return tree;
-
-  const capped = {};
-  entries.slice(0, META_TREE_MAX_OBJECTS).forEach(([key, value]) => { capped[key] = value; });
-  const hidden = entries.length - META_TREE_MAX_OBJECTS;
-  capped[`… ${hidden} more not shown`] =
-    `Showing ${META_TREE_MAX_OBJECTS} of ${entries.length} objects. Narrow the search above to reach the rest.`;
-  return Object.assign({}, tree, { 'All PDF Objects (raw)': capped });
-}
-
-function renderMetaTree() {
-  const container = document.getElementById('metaTreeContainer');
-  const clearBtn = document.getElementById('metaSearchClearBtn');
-  if (!container) return;
-
-  // This is about to discard every <details> currently in the container, so
-  // any lazy-children entries still pending for them would otherwise sit in
-  // the registry forever, unreachable but still holding their (possibly
-  // large) raw object data. Scoped to this container's own elements, not a
-  // blanket registry clear -- renderRawObjectSourceTree renders two other
-  // containers (before/after) through the same registry.
-  clearLazyMetaEntriesIn(container);
-
-  const rawTerm = (document.getElementById('metaSearchInput')?.value || '').trim();
-  const term = rawTerm.toLowerCase();
-  if (clearBtn) clearBtn.hidden = !rawTerm;
-
-  if (!pdfDoc) {
-    container.innerHTML = '<p class="field-details-empty">No document loaded yet.</p>';
-    return;
-  }
-
-  const treeData = buildMetaTreeData();
-  const filtered = capMetaObjectBranch(term ? filterMetaTree(treeData, term) : treeData);
-
-  if (!Object.keys(filtered).length) {
-    container.innerHTML = `<p class="field-details-empty">${term ? 'No matches found.' : 'No metadata available for this document.'}</p>`;
-    return;
-  }
-
-  const html = Object.entries(filtered).map(([k, v]) => renderMetaTreeNode(k, v, 0, rawTerm)).join('');
-  container.innerHTML = `<div class="meta-tree">${html}</div>`;
-}
-
 // ---------------------------------------------------------------
-// Metadata tab -- simplified overview cards (Document Information,
-// Document Features, Pages, Forms, Attachments, XMP Metadata,
-// Document IDs). The searchable raw tree above stays as-is under
-// "Advanced" for anyone who needs the full PDF object dump.
+// Overview tab -- shared helpers (file size, kv tables, cards). The
+// Overview renderer itself is further down.
 // ---------------------------------------------------------------
 
 function formatFileSize(bytes) {
@@ -8243,10 +8107,6 @@ function formatFileSize(bytes) {
     unitIndex += 1;
   }
   return `${value >= 100 ? Math.round(value) : Math.round(value * 10) / 10} ${units[unitIndex]}`;
-}
-
-function yesNoBadge(value) {
-  return `<span class="meta-badge ${value ? 'meta-badge-yes' : 'meta-badge-no'}">${value ? 'Yes' : 'No'}</span>`;
 }
 
 // Renders a label/value table, skipping rows whose value is empty
@@ -8271,65 +8131,6 @@ function metaCard(title, bodyHtml, extraClass, icon) {
   </div>`;
 }
 
-function renderDocumentInfoCard(info) {
-  if (!info) return '';
-  const rows = [
-    { label: 'Title', value: info.title },
-    { label: 'Author', value: info.author },
-    { label: 'Subject', value: info.subject },
-    { label: 'Keywords', value: Array.isArray(info.keywords) ? info.keywords.join(', ') : info.keywords },
-    { label: 'Creator', value: info.creator },
-    { label: 'Producer', value: info.producer },
-    { label: 'Creation date', value: info.creationDate, html: info.creationDate ? escapeHtml(formatDisplayDate(info.creationDate)) : null },
-    { label: 'Modification date', value: info.modificationDate, html: info.modificationDate ? escapeHtml(formatDisplayDate(info.modificationDate)) : null },
-    { label: 'PDF version', value: info.pdfVersion, keep: true },
-    { label: 'File size', value: formatFileSize(info.fileSize), keep: true },
-    { label: 'Page count', value: info.pageCount, keep: true },
-  ];
-  return metaCard('Document Information', metaKvTable(rows), null, 'icon-file-text');
-}
-
-// This count comes from scanning the current file's own raw bytes for
-// genuine `startxref ... %%EOF` revision boundaries (see server.ts's
-// /api/metadata route and PdfRevisionTool.findRevisionBoundaries) -- it's
-// independent of this browser's locally-stored Versions history, though for
-// a file that was incrementally saved before being uploaded, the two
-// usually line up (each boundary gets imported as its own "Incremental
-// update" version -- see hydrateNativeChain). The link is just a
-// cross-reference to help make that connection, not a claim the counts are
-// always identical.
-function incrementalUpdatesCell(count) {
-  if (count === null || count === undefined) return null;
-  const countHtml = escapeHtml(String(count));
-  // A single boundary just means "this file has one complete xref table" --
-  // the normal, unremarkable case for any freshly-saved PDF -- not an actual
-  // appended update. Only >1 (matching the same threshold the embedded-chain
-  // fallback in server.ts uses) means there's genuine incremental history to
-  // look at, so the link only shows up when it would actually lead somewhere.
-  if (!count || count <= 1) return countHtml;
-  return `${countHtml} <button type="button" class="meta-inline-link" data-goto-section="revisions" title="Open the Versions panel to see these as saved versions">View in Versions</button>`;
-}
-
-function renderFeaturesCard(features) {
-  if (!features) return '';
-  const rows = [
-    { label: 'Encrypted', value: true, html: yesNoBadge(features.encrypted), keep: true },
-    { label: 'PDF/A', value: true, html: yesNoBadge(features.pdfA === 'Yes'), keep: true },
-    { label: 'Linearized', value: true, html: yesNoBadge(features.linearized), keep: true },
-    { label: 'XFA', value: true, html: yesNoBadge(features.xfa), keep: true },
-    { label: 'AcroForm', value: true, html: yesNoBadge(features.acroForm), keep: true },
-    { label: 'Signature fields', value: features.signatureFieldCount, keep: true },
-    { label: 'Stamps', value: features.stampCount, keep: true },
-    { label: 'Annotations', value: features.annotationCount, keep: true },
-    { label: 'JavaScript', value: true, html: yesNoBadge(features.javascript), keep: true },
-    { label: 'Attachments', value: features.attachmentCount, keep: true },
-    { label: 'XMP metadata', value: true, html: yesNoBadge(features.xmpMetadata), keep: true },
-    { label: 'Incremental updates', value: features.incrementalUpdates ?? '—', keep: true, html: incrementalUpdatesCell(features.incrementalUpdates) },
-    { label: 'Signatures', value: features.signatureCount, keep: true },
-  ];
-  return metaCard('Document Features', metaKvTable(rows), null, 'icon-layers');
-}
-
 // Consecutive pages sharing the same size/orientation/rotation are folded
 // into one range row (e.g. "Pages 1-4  A4  Portrait") rather than repeated.
 function groupPages(pages) {
@@ -8345,18 +8146,6 @@ function groupPages(pages) {
   return groups;
 }
 
-function renderPagesCard(pages) {
-  if (!pages || !pages.length) return '';
-  const groups = groupPages(pages);
-  const rows = groups.map((g) => {
-    const label = g.from === g.to ? `Page ${g.from + 1}` : `Pages ${g.from + 1}–${g.to + 1}`;
-    const rotationNote = g.rotation ? ` · rotated ${g.rotation}°` : '';
-    return `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(g.sizeName)} · ${escapeHtml(g.orientation)}${escapeHtml(rotationNote)}</td></tr>`;
-  }).join('');
-  const body = `<p class="meta-card-subhead">${pages.length} page${pages.length === 1 ? '' : 's'}</p><table class="field-details-table meta-kv-table">${rows}</table>`;
-  return metaCard('Pages', body, null, 'icon-file-detailed');
-}
-
 function fieldStateLabel(field) {
   const raw = field.raw || {};
   const isSignature = field.type === 'Signature';
@@ -8369,20 +8158,6 @@ function fieldStateLabel(field) {
 }
 
 const FIELD_STATE_FILLED = new Set(['Signed', 'Filled', 'Checked']);
-
-function renderFormsCard(fields) {
-  const formFields = fields || [];
-  if (!formFields.length) return '';
-  const rows = formFields.map((f) => {
-    const state = fieldStateLabel(f);
-    const badgeClass = FIELD_STATE_FILLED.has(state) ? 'meta-badge-yes' : 'meta-badge-no';
-    const stateBadge = `<span class="meta-badge ${badgeClass}">${escapeHtml(state)}</span>`;
-    return `<tr><th>${escapeHtml(f.name || '—')}</th><td>${escapeHtml(f.type)}</td><td>${stateBadge}</td></tr>`;
-  }).join('');
-  const body = `<p class="meta-card-subhead">${formFields.length} field${formFields.length === 1 ? '' : 's'}</p>
-    <table class="field-details-table meta-kv-table meta-forms-table"><thead><tr><th>Field</th><th>Type</th><th>State</th></tr></thead><tbody>${rows}</tbody></table>`;
-  return metaCard('Forms', body, null, 'icon-check-circle');
-}
 
 function renderAttachmentsCard(attachments) {
   if (!attachments || !attachments.length) return '';
@@ -8397,32 +8172,295 @@ function renderAttachmentsCard(attachments) {
   return metaCard('Attachments', body, null, 'icon-copy');
 }
 
-function renderXmpCard(xmp) {
-  if (!xmp) return '';
-  const rows = [
-    { label: 'Title', value: xmp.title },
-    { label: 'Creator', value: xmp.creator },
-    { label: 'Creator tool', value: xmp.creatorTool },
-    { label: 'Create date', value: xmp.createDate, html: xmp.createDate ? escapeHtml(formatDisplayDate(xmp.createDate)) : null },
-    { label: 'Modify date', value: xmp.modifyDate, html: xmp.modifyDate ? escapeHtml(formatDisplayDate(xmp.modifyDate)) : null },
-    { label: 'Document ID', value: xmp.documentId },
-    { label: 'Instance ID', value: xmp.instanceId },
-  ];
-  const table = metaKvTable(rows);
-  if (!table) return '';
-  const body = `${table}<button type="button" class="btn btn-ghost meta-view-raw-btn" id="btnViewRawXmp"><span class="icon icon-eye" aria-hidden="true"></span> View raw XMP</button>`;
-  return metaCard('XMP Metadata', body, null, 'icon-code');
+// ---------------------------------------------------------------
+// Overview tab -- document header, "at a glance" chips, and a list of
+// everything on the document (signatures, stamps, form fields, links &
+// comments). The same list drives the hotspots drawn on the PDF while this
+// section is open (drawOverviewHotspots) and the detail sheet.
+//
+// The curation / list / chip logic below is hand-mirrored from
+// lib/DocumentOverview.ts (no frontend build step) -- keep the two in sync.
+// ---------------------------------------------------------------
+
+const OVERVIEW_KEY_LABELS = {
+  T: 'Name', TU: 'Tooltip', FT: 'Field type', V: 'Value', DV: 'Default value', DA: 'Default appearance',
+  F: 'Flags', Ff: 'Field flags', Rect: 'Position', Subtype: 'Subtype', Contents: 'Text', NM: 'Identifier',
+  M: 'Modified', CA: 'Opacity', AS: 'Appearance state', Name: 'Icon name', ByteRange: 'Signed byte ranges',
+  Reason: 'Reason', Location: 'Location', Filter: 'Filter', SubFilter: 'Sub-filter', Q: 'Alignment',
+  MaxLen: 'Max length', Opt: 'Options',
+};
+const OVERVIEW_HIDDEN_KEYS = new Set(['Type', 'P', 'Parent', 'AP', 'Kids', 'Popup', 'Border', 'BS', 'MK', 'DR']);
+const OVERVIEW_ANNOT_FLAGS = [
+  [1, 'Invisible'], [2, 'Hidden'], [4, 'Print'], [8, 'NoZoom'], [16, 'NoRotate'],
+  [32, 'NoView'], [64, 'ReadOnly'], [128, 'Locked'], [256, 'ToggleNoView'], [512, 'LockedContents'],
+];
+const OVERVIEW_FIELD_FLAGS = [
+  [1, 'ReadOnly'], [2, 'Required'], [4, 'NoExport'],
+  [1 << 12, 'Multiline'], [1 << 13, 'Password'], [1 << 20, 'FileSelect'], [1 << 22, 'DoNotSpellCheck'], [1 << 23, 'DoNotScroll'],
+  [1 << 24, 'Comb'], [1 << 25, 'RichText'],
+];
+const OVERVIEW_MAX_STRING = 200;
+
+function overviewFlagNames(n, table) {
+  const names = table.filter(([bit]) => (n & bit) !== 0).map(([, name]) => name);
+  return names.length ? names.join(', ') : 'None';
 }
 
-function renderDocumentIdsCard(ids) {
-  if (!ids) return '';
+function overviewNumbersOf(text) {
+  const m = /^\[\s*([-+\d.\s]*)\]$/.exec(text.trim());
+  if (!m) return null;
+  const nums = m[1].trim().split(/\s+/).filter(Boolean).map(Number);
+  return nums.some((n) => Number.isNaN(n)) ? null : nums;
+}
+
+function overviewCurateValue(key, value) {
+  const text = String(value ?? '');
+  const n = Number(text);
+  const round = (x) => Math.round(x * 10) / 10;
+  if (key === 'F' && text.trim() !== '' && Number.isInteger(n)) return overviewFlagNames(n, OVERVIEW_ANNOT_FLAGS);
+  if (key === 'Ff' && text.trim() !== '' && Number.isInteger(n)) return overviewFlagNames(n, OVERVIEW_FIELD_FLAGS);
+
+  const nums = overviewNumbersOf(text);
+  if (key === 'Rect' && nums && nums.length === 4) {
+    const [x1, y1, x2, y2] = nums;
+    return `${round(Math.min(x1, x2))}, ${round(Math.min(y1, y2))} · ${round(Math.abs(x2 - x1))} × ${round(Math.abs(y2 - y1))} pt`;
+  }
+  if (key === 'ByteRange' && nums && nums.length === 4) {
+    const [, a, b, len] = nums;
+    return `bytes 0–${a} and ${b}–${b + len}`;
+  }
+  if (nums && nums.length > 8) return `${nums.length} numbers`;
+
+  const hex = /^<([0-9a-fA-F\s]+)>$/.exec(text);
+  const hexDigits = hex ? hex[1].replace(/\s/g, '').length : 0;
+  if (hex && hexDigits > 64) return `binary data, ${Math.ceil(hexDigits / 2)} bytes`;
+  if (text.length > 64 && /[\x00-\x08\x0e-\x1f]/.test(text)) return `binary data, ${text.length} bytes`;
+  if (text.length > OVERVIEW_MAX_STRING) return `${text.slice(0, OVERVIEW_MAX_STRING)}… (${text.length} chars)`;
+  return text;
+}
+
+// A raw dictionary-entries record -> readable [{ key, label, value }] rows.
+function curateRawEntries(raw) {
+  if (!raw) return [];
+  return Object.entries(raw)
+    .filter(([key]) => !OVERVIEW_HIDDEN_KEYS.has(key))
+    .map(([key, value]) => ({ key, label: OVERVIEW_KEY_LABELS[key] || key, value: overviewCurateValue(key, value) }));
+}
+
+function overviewStampLabel(s) {
+  return s.text || s.note || s.name || (s.kind === 'image' ? 'Image stamp' : 'Stamp');
+}
+
+function overviewAnnotLabel(a, kind) {
+  if (kind === 'link') return a.uri || (Number.isInteger(a.destPage) ? `Go to page ${a.destPage + 1}` : 'Link');
+  const text = (a.contents || '').trim();
+  const name = a.subtype === 'Text' ? 'Note' : a.subtype === 'FreeText' ? 'Text box' : a.subtype;
+  return text ? `${name}: ${text.length > 60 ? `${text.slice(0, 60)}…` : text}` : name;
+}
+
+// Flat list of everything on the document in reading order (page, then top to bottom).
+function overviewItems({ fields, stamps, annotations }) {
+  const items = [];
+  (fields || []).forEach((f) => {
+    items.push({
+      kind: f.type === 'Signature' ? 'signature' : 'field', key: f.name, label: f.name || '—',
+      page: f.page ?? 0, rect: f.rect || null, status: fieldStateLabel(f), source: f,
+    });
+  });
+  (stamps || []).forEach((s) => {
+    items.push({
+      kind: 'stamp', key: s.id || s.ref || '', label: overviewStampLabel(s), page: s.page ?? 0, rect: s.rect || null,
+      status: s.kind === 'image' ? 'Image' : s.kind === 'text' ? 'Text' : 'Stamp', source: s,
+    });
+  });
+  (annotations || []).forEach((a) => {
+    const kind = a.kind === 'link' ? 'link' : 'comment';
+    items.push({
+      kind, key: a.ref || '', label: overviewAnnotLabel(a, kind), page: a.page ?? 0, rect: a.rect || null,
+      status: kind === 'link' ? (a.uri ? 'URL' : Number.isInteger(a.destPage) ? `Page ${a.destPage + 1}` : 'Link') : a.subtype,
+      source: a,
+    });
+  });
+  const top = (i) => (i.rect ? i.rect.y + i.rect.height : -Infinity); // PDF y grows upward
+  return items.sort((a, b) => a.page - b.page || top(b) - top(a));
+}
+
+// Only the chips that are true or non-zero.
+const CERTIFICATION_CHIPS = {
+  1: { label: 'Certified · no changes allowed', tone: 'warning', title: 'This document is certified with no changes allowed. Adding a field will invalidate its certification.' },
+  2: { label: 'Certified · form filling & signing allowed', tone: 'neutral', title: 'The certifier permits form filling and signing only. Other changes invalidate the certification.' },
+  3: { label: 'Certified · filling, signing & comments allowed', tone: 'neutral', title: 'The certifier permits form filling, signing and annotations. Other changes invalidate the certification.' },
+};
+function atAGlanceChips(overview, fields) {
+  const out = [];
+  const features = (overview && overview.features) || {};
+  const signed = features.signatureCount || 0;
+  if (signed > 0) out.push({ id: 'signed', label: signed === 1 ? 'Signed' : `Signed ×${signed}`, tone: 'positive' });
+  const cert = CERTIFICATION_CHIPS[features.certification];
+  if (cert) out.push({ id: 'certified', ...cert });
+  const toFill = (fields || []).filter((f) => !f.readOnly && ['Empty', 'Unchecked'].includes(fieldStateLabel(f))).length;
+  if (toFill > 0) out.push({ id: 'toFill', label: `${toFill} field${toFill === 1 ? '' : 's'} to fill`, tone: 'neutral' });
+  if (features.encrypted) out.push({ id: 'encrypted', label: 'Encrypted', tone: 'neutral' });
+  if (features.pdfA === 'Yes') out.push({ id: 'pdfa', label: 'PDF/A', tone: 'neutral' });
+  if (features.javascript) out.push({ id: 'js', label: 'Contains JavaScript', tone: 'warning' });
+  if (features.attachmentCount > 0) {
+    out.push({ id: 'attachments', label: `${features.attachmentCount} attachment${features.attachmentCount === 1 ? '' : 's'}`, tone: 'neutral' });
+  }
+  if (features.incrementalUpdates > 1) out.push({ id: 'updates', label: `${features.incrementalUpdates} updates`, tone: 'neutral', goto: 'revisions' });
+  return out;
+}
+
+const OVERVIEW_KINDS = {
+  signature: { single: 'Signature', icon: 'icon-pen' },
+  stamp: { single: 'Stamp', icon: 'icon-stamp' },
+  field: { single: 'Form field', icon: 'icon-file-text' },
+  link: { single: 'Link', icon: 'icon-arrow-right' },
+  comment: { single: 'Comment', icon: 'icon-chat' },
+};
+const OVERVIEW_GROUPS = [
+  { id: 'signature', title: 'Signatures', kinds: ['signature'] },
+  { id: 'stamp', title: 'Stamps', kinds: ['stamp'] },
+  { id: 'field', title: 'Form fields', kinds: ['field'] },
+  { id: 'linkcomment', title: 'Links & comments', kinds: ['link', 'comment'] },
+];
+
+let overviewHiddenKinds = new Set(); // kinds whose hotspots are hidden on the PDF
+let activeOverviewItem = null;       // { kind, key } shown in the sheet
+
+function applyOverviewHiddenKinds() {
+  document.body.dataset.overviewHide = [...overviewHiddenKinds].join(' ');
+}
+
+function currentOverviewItems() {
+  return overviewItems({ fields: documentFields, stamps: documentStamps, annotations: documentAnnotations });
+}
+
+function overviewItemFor(kind, key) {
+  return currentOverviewItems().find((i) => i.kind === kind && i.key === key) || null;
+}
+
+function overviewDateHtml(label, value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' }).format(d);
+  const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(d);
+  return `<div class="overview-date"><span class="overview-date-label">${escapeHtml(label)}</span><time datetime="${d.toISOString()}"><span class="overview-date-day">${escapeHtml(day)}</span><span class="overview-date-time">${escapeHtml(time)}</span></time></div>`;
+}
+
+function overviewHeaderHtml() {
+  const info = documentOverview?.documentInfo || null;
+  const title = (info?.title || '').trim() || activeFile?.name || 'Untitled document';
+  const pageCount = info?.pageCount ?? pdfDoc?.numPages ?? null;
+  const parts = [];
+  if (pageCount) {
+    let pageLine = `${pageCount} page${pageCount === 1 ? '' : 's'}`;
+    const groups = documentOverview?.pages?.length ? groupPages(documentOverview.pages) : [];
+    if (groups.length === 1) pageLine += ` · ${groups[0].sizeName} ${String(groups[0].orientation || '').toLowerCase()}`;
+    else if (groups.length > 1) pageLine += ' · mixed sizes';
+    parts.push(pageLine);
+  }
+  const size = formatFileSize(info?.fileSize ?? activeFile?.size ?? null);
+  if (size) parts.push(size);
+  if (info?.pdfVersion) parts.push(`PDF ${info.pdfVersion}`);
+
+  const dates = [overviewDateHtml('Created', info?.creationDate), overviewDateHtml('Modified', info?.modificationDate)].filter(Boolean);
+  const madeWith = [...new Set([info?.creator, info?.producer].filter(Boolean))].join(' / ');
+
+  return `<div class="meta-card overview-header">
+    <h4 class="overview-title">${escapeHtml(title)}</h4>
+    ${info?.author ? `<p class="overview-author">${escapeHtml(info.author)}</p>` : ''}
+    ${parts.length ? `<p class="overview-line">${escapeHtml(parts.join(' · '))}</p>` : ''}
+    ${dates.length ? `<div class="overview-dates">${dates.join('')}</div>` : ''}
+    ${madeWith ? `<p class="overview-line overview-madewith">Made with ${escapeHtml(madeWith)}</p>` : ''}
+  </div>`;
+}
+
+function overviewChipsHtml() {
+  const chips = atAGlanceChips(documentOverview, documentFields);
+  if (!chips.length) return '';
+  const report = certificatesLoadedForFile === activeFile ? certificatesData : null;
+  return `<div class="overview-chips">${chips.map((c) => {
+    let tone = c.tone;
+    let title = c.title || '';
+    if (c.id === 'signed' && report?.summary) {
+      // The Certificates headline, not a re-derived verdict.
+      title = report.summary.headline || '';
+      tone = report.summary.status === 'pass' ? 'positive' : report.summary.status === 'fail' ? 'warning' : 'neutral';
+    }
+    const cls = `overview-chip is-${tone}`;
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+    return c.goto
+      ? `<button type="button" class="${cls}" data-goto-section="${escapeHtml(c.goto)}" title="Open the Versions panel">${escapeHtml(c.label)}</button>`
+      : `<span class="${cls}"${titleAttr}>${escapeHtml(c.label)}</span>`;
+  }).join('')}</div>`;
+}
+
+function overviewRowHtml(item) {
+  const meta = OVERVIEW_KINDS[item.kind];
+  const isFieldish = item.kind === 'signature' || item.kind === 'field';
+  const badgeClass = isFieldish && FIELD_STATE_FILLED.has(item.status) ? 'meta-badge-yes' : 'meta-badge-no';
+  return `<li><button type="button" class="overview-row" data-ov-kind="${item.kind}" data-ov-key="${escapeHtml(item.key)}">
+    <span class="overview-dot is-${item.kind}" aria-hidden="true"></span>
+    <span class="icon ${meta.icon}" aria-hidden="true"></span>
+    <span class="overview-row-label">${escapeHtml(item.label)}</span>
+    <span class="meta-badge ${badgeClass}">${escapeHtml(item.status)}</span>
+    <span class="overview-row-page">p. ${item.page + 1}</span>
+  </button></li>`;
+}
+
+function overviewListHtml() {
+  const items = currentOverviewItems();
+  if (!items.length) return '<p class="field-details-empty">Nothing on this document yet — no signatures, stamps, form fields, links or comments.</p>';
+  return OVERVIEW_GROUPS.map((group) => {
+    const rows = items.filter((i) => group.kinds.includes(i.kind));
+    if (!rows.length) return '';
+    const hidden = group.kinds.every((k) => overviewHiddenKinds.has(k));
+    const verb = hidden ? 'Show' : 'Hide';
+    return `<section class="overview-group">
+      <div class="overview-group-head">
+        <h4>${escapeHtml(group.title)} <span class="overview-count">${rows.length}</span></h4>
+        <button type="button" class="overview-eye${hidden ? ' is-off' : ''}" data-ov-toggle="${group.id}" aria-pressed="${hidden ? 'false' : 'true'}"
+          aria-label="${verb} ${escapeHtml(group.title.toLowerCase())} on the page" title="${verb} on the page">
+          <span class="icon ${hidden ? 'icon-eye-off' : 'icon-eye'}" aria-hidden="true"></span>
+        </button>
+      </div>
+      <ul class="overview-rows">${rows.map(overviewRowHtml).join('')}</ul>
+    </section>`;
+  }).join('');
+}
+
+const OVERVIEW_STANDARD_INFO_KEYS = new Set(['Title', 'Author', 'Subject', 'Keywords', 'Creator', 'Producer', 'CreationDate', 'ModDate', 'Trapped']);
+
+function overviewMoreHtml() {
+  const info = documentOverview?.documentInfo;
+  const xmp = documentOverview?.xmp;
+  const ids = documentOverview?.documentIds;
+  const features = documentOverview?.features || {};
   const rows = [
-    { label: 'Permanent document ID', value: ids.permanent },
-    { label: 'Changing document ID', value: ids.changing },
-    { label: 'XMP document ID', value: ids.xmpDocumentId },
-    { label: 'XMP instance ID', value: ids.xmpInstanceId },
+    { label: 'Subject', value: info?.subject },
+    { label: 'Keywords', value: Array.isArray(info?.keywords) ? info.keywords.join(', ') : info?.keywords },
+    { label: 'Linearized', value: features.linearized ? 'Yes' : '' },
+    { label: 'XFA forms', value: features.xfa ? 'Yes' : '' },
+    { label: 'XMP title', value: xmp?.title },
+    { label: 'XMP creator tool', value: xmp?.creatorTool },
+    { label: 'Permanent document ID', value: ids?.permanent },
+    { label: 'Changing document ID', value: ids?.changing },
+    { label: 'XMP document ID', value: ids?.xmpDocumentId },
+    { label: 'XMP instance ID', value: ids?.xmpInstanceId },
   ];
-  return metaCard('Document IDs', metaKvTable(rows), 'meta-card-mono', 'icon-lock');
+  const custom = {};
+  Object.entries(documentRawInfo || {}).forEach(([k, v]) => {
+    if (!OVERVIEW_STANDARD_INFO_KEYS.has(k)) custom[k] = typeof v === 'string' ? v : JSON.stringify(v);
+  });
+  curateRawEntries(custom).forEach((r) => rows.push({ label: r.label, value: r.value }));
+
+  const table = metaKvTable(rows);
+  const rawBtn = xmp?.raw
+    ? '<button type="button" class="btn btn-ghost meta-view-raw-btn" id="btnViewRawXmp"><span class="icon icon-eye" aria-hidden="true"></span> View raw XMP</button>'
+    : '';
+  if (!table && !rawBtn) return '';
+  return `<details class="overview-more"><summary>More details</summary><div class="overview-more-body">${table}${rawBtn}</div></details>`;
 }
 
 function renderMetaOverview() {
@@ -8434,28 +8472,299 @@ function renderMetaOverview() {
     return;
   }
 
-  if (!documentOverview) {
-    container.innerHTML = '<p class="field-details-empty">Detailed metadata isn\'t available for this document (it was loaded without a server round-trip).</p>';
-    return;
-  }
+  const attachments = renderAttachmentsCard(documentOverview?.attachments);
+  const note = documentOverview
+    ? ''
+    : '<p class="field-details-empty">Detailed info isn\'t available for this document (it was loaded without a server round-trip).</p>';
 
-  const cards = [
-    renderDocumentInfoCard(documentOverview.documentInfo),
-    renderFeaturesCard(documentOverview.features),
-    renderPagesCard(documentOverview.pages),
-    renderFormsCard(documentFields),
-    renderAttachmentsCard(documentOverview.attachments),
-    renderXmpCard(documentOverview.xmp),
-    renderDocumentIdsCard(documentOverview.documentIds),
-  ].filter(Boolean);
-
-  container.innerHTML = cards.length ? cards.join('') : '<p class="field-details-empty">No metadata available for this document.</p>';
+  container.innerHTML = [
+    overviewHeaderHtml(),
+    overviewChipsHtml(),
+    `<div class="overview-list"><h4 class="overview-list-title">On this document</h4>${overviewListHtml()}</div>`,
+    attachments,
+    overviewMoreHtml(),
+    note,
+  ].join('');
+  applyOverviewHiddenKinds();
 
   const viewRawBtn = document.getElementById('btnViewRawXmp');
-  if (viewRawBtn) {
-    viewRawBtn.addEventListener('click', () => openXmpRawModal(documentOverview.xmp.raw || ''));
+  if (viewRawBtn) viewRawBtn.addEventListener('click', () => openXmpRawModal(documentOverview.xmp.raw || ''));
+}
+
+(function wireOverviewPanel() {
+  const panel = document.getElementById('metaOverview');
+  if (!panel) return;
+
+  panel.addEventListener('click', (e) => {
+    const toggle = e.target.closest('[data-ov-toggle]');
+    if (toggle) {
+      const group = OVERVIEW_GROUPS.find((g) => g.id === toggle.getAttribute('data-ov-toggle'));
+      if (!group) return;
+      const allHidden = group.kinds.every((k) => overviewHiddenKinds.has(k));
+      group.kinds.forEach((k) => (allHidden ? overviewHiddenKinds.delete(k) : overviewHiddenKinds.add(k)));
+      renderMetaOverview();
+      return;
+    }
+    const row = e.target.closest('.overview-row');
+    if (row) activateOverviewItem(row.getAttribute('data-ov-kind'), row.getAttribute('data-ov-key'));
+  });
+
+  // Hovering a row highlights its hotspot -- when it is on the page being shown.
+  const setHover = (row, on) => {
+    const item = overviewItemFor(row.getAttribute('data-ov-kind'), row.getAttribute('data-ov-key'));
+    if (!item || item.page !== pageNum - 1) return;
+    const el = document.querySelector(overviewSelector(item));
+    if (el) el.classList.toggle('is-hover', on);
+  };
+  panel.addEventListener('mouseover', (e) => {
+    const row = e.target.closest('.overview-row');
+    if (row && !row.contains(e.relatedTarget)) setHover(row, true);
+  });
+  panel.addEventListener('mouseout', (e) => {
+    const row = e.target.closest('.overview-row');
+    if (row && !row.contains(e.relatedTarget)) setHover(row, false);
+  });
+})();
+
+// The element on the page that represents an item.
+function overviewSelector(item) {
+  return item.kind === 'signature' || item.kind === 'field'
+    ? `.field-overlay[data-field-name="${CSS.escape(item.key)}"]`
+    : `.overview-hotspot[data-kind="${item.kind}"][data-key="${CSS.escape(item.key)}"]`;
+}
+
+function syncOverviewSelection() {
+  overlayLayer.querySelectorAll('.is-selected').forEach((el) => el.classList.remove('is-selected'));
+  if (!activeOverviewItem) return;
+  const item = overviewItemFor(activeOverviewItem.kind, activeOverviewItem.key);
+  if (item && item.page === pageNum - 1) document.querySelector(overviewSelector(item))?.classList.add('is-selected');
+}
+
+// Stamps, links and comments are not field overlays, so they get their own
+// outlines. Fields and signatures reuse .field-overlay (see drawFieldOverlays).
+function drawOverviewHotspots() {
+  const page = pageNum - 1;
+  const items = overviewItems({ stamps: documentStamps, annotations: documentAnnotations })
+    .filter((i) => i.page === page && i.rect);
+  const pins = [];
+  items.forEach((item) => {
+    const div = document.createElement('div');
+    const invisible = isRectPracticallyInvisible(item.rect);
+    div.className = `overview-hotspot${invisible ? ' is-invisible-field' : ''}`;
+    div.dataset.kind = item.kind;
+    div.dataset.key = item.key;
+    div.title = `${OVERVIEW_KINDS[item.kind].single}: ${item.label}`;
+    applyRectToOverlay(div, item.rect);
+    if (invisible) {
+      const pin = document.createElement('div');
+      pin.className = 'field-invisible-pin';
+      pin.innerHTML = `<span class="icon ${OVERVIEW_KINDS[item.kind].icon}" aria-hidden="true"></span>`;
+      div.appendChild(pin);
+      pins.push({ div, pin });
+    }
+    overlayLayer.appendChild(div);
+  });
+  if (pins.length) layoutInvisibleFieldPins(pins);
+  syncOverviewSelection();
+}
+
+/* ---------- Detail sheet ---------- */
+
+const overviewSheet = document.getElementById('overviewSheet');
+const overviewSheetScrim = document.getElementById('overviewSheetScrim');
+
+function isOverviewSheetOpen() {
+  return Boolean(overviewSheet && overviewSheet.classList.contains('is-open'));
+}
+
+function openOverviewSheet(kind, key) {
+  const item = overviewItemFor(kind, key);
+  if (!item || !overviewSheet) return;
+
+  // Only one sheet slides over the column at a time.
+  closeCertificateSheet();
+  if (typeof closeCertificateTimelineSheet === 'function') closeCertificateTimelineSheet();
+  if (typeof closeRevisionsCompareSheet === 'function') closeRevisionsCompareSheet();
+
+  activeOverviewItem = { kind, key };
+  renderOverviewSheet(item);
+  overviewSheet.classList.add('is-open');
+  overviewSheet.setAttribute('aria-hidden', 'false');
+  overviewSheetScrim?.classList.add('is-open');
+  document.body.classList.add('edit-sheet-open');
+  overviewSheet.focus({ preventScroll: true });
+  syncOverviewSelection();
+  document.querySelectorAll('.overview-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
+  document.querySelector(`.overview-row[data-ov-kind="${kind}"][data-ov-key="${CSS.escape(key)}"]`)?.classList.add('is-selected');
+
+  // A signed signature's detail comes from the Certificates report.
+  if (kind === 'signature' && item.status === 'Signed' && !(certificatesLoadedForFile === activeFile && certificatesData)) {
+    const file = activeFile;
+    Promise.resolve(loadCertificatesIfNeeded()).catch(() => {}).then(() => {
+      if (file !== activeFile || !isOverviewSheetOpen()) return;
+      if (activeOverviewItem?.kind !== kind || activeOverviewItem?.key !== key) return;
+      renderOverviewSheet(item, { settled: true });
+      renderMetaOverview(); // the chip can now show the Certificates headline
+    });
   }
 }
+
+function closeOverviewSheet() {
+  if (!overviewSheet) return;
+  overviewSheet.classList.remove('is-open');
+  overviewSheet.setAttribute('aria-hidden', 'true');
+  overviewSheetScrim?.classList.remove('is-open');
+  if (typeof isEditSheetOpen === 'function' && !isEditSheetOpen()) document.body.classList.remove('edit-sheet-open');
+  activeOverviewItem = null;
+  document.querySelectorAll('.is-selected').forEach((el) => {
+    if (el.classList.contains('overview-hotspot') || el.classList.contains('overview-row') || el.classList.contains('field-overlay')) {
+      el.classList.remove('is-selected');
+    }
+  });
+}
+
+function ovBool(v) {
+  return v ? 'Yes' : 'No';
+}
+
+function overviewSheetBody(item, opts) {
+  const s = item.source;
+  const parts = [];
+  const actions = [];
+  const table = (rows) => metaKvTable(rows);
+
+  if (item.kind === 'signature') {
+    if (item.status === 'Signed') {
+      const report = certificatesLoadedForFile === activeFile ? certificatesData : null;
+      const sig = report?.signatures?.find((x) => x.fieldName === s.name);
+      if (sig) {
+        const slot = sig.cmsSlot;
+        const coverage = slot
+          ? (slot.coversWholeFile ? 'Covers the whole file' : `${slot.trailingBytes} byte${slot.trailingBytes === 1 ? '' : 's'} added after signing`)
+          : null;
+        const when = sig.signedAttributes?.signingTime || sig.signingTimeClaimed;
+        parts.push(table([
+          { label: 'Status', value: sig.status, html: certBadge(sig.status), keep: true },
+          { label: 'Signer', value: sig.name },
+          { label: 'Signed', value: when, html: when ? escapeHtml(formatDisplayDate(when)) : null },
+          { label: 'Reason', value: sig.reason },
+          { label: 'Location', value: sig.location },
+          { label: 'Coverage', value: coverage },
+          { label: 'Timestamp', value: ovBool(sig.hasTimestampToken), keep: true },
+          { label: 'Field', value: s.name },
+        ]));
+        actions.push(`<button type="button" class="btn btn-primary" data-ov-action="open-certificates" data-ov-field="${escapeHtml(s.name)}">Open in Certificates</button>`);
+      } else {
+        parts.push(table([
+          { label: 'Status', value: 'Signed', keep: true },
+          { label: 'Field', value: s.name },
+        ]));
+        parts.push(`<p class="field-details-empty">${opts?.settled ? 'Signature details could not be read.' : 'Loading signature details…'}</p>`);
+      }
+    } else {
+      parts.push('<p class="overview-callout">Waiting to be signed.</p>');
+      parts.push(table([
+        { label: 'Field', value: s.name },
+        { label: 'Required', value: ovBool(s.required), keep: true },
+        { label: 'Read-only', value: ovBool(s.readOnly), keep: true },
+        { label: 'Tooltip', value: s.tooltip },
+      ]));
+      actions.push(`<button type="button" class="btn btn-primary" data-ov-action="edit-signature" data-ov-field="${escapeHtml(s.name)}">Edit in Signatures</button>`);
+    }
+  } else if (item.kind === 'field') {
+    parts.push(table([
+      { label: 'Name', value: s.name },
+      { label: 'Type', value: s.type },
+      { label: 'Value', value: item.status, keep: true },
+      { label: 'Required', value: ovBool(s.required), keep: true },
+      { label: 'Read-only', value: ovBool(s.readOnly), keep: true },
+      { label: 'Tooltip', value: s.tooltip },
+    ]));
+  } else if (item.kind === 'stamp') {
+    const kindLabel = s.kind === 'text' ? 'Text stamp' : s.kind === 'image' ? 'Image stamp' : 'Stamp from another tool';
+    parts.push(table([
+      { label: 'Kind', value: kindLabel, keep: true },
+      { label: 'Text', value: s.text },
+      { label: 'Author', value: s.author },
+      { label: 'Note', value: s.note },
+      { label: 'Created by pdf-seal', value: ovBool(s.createdByPdfSeal), keep: true },
+      { label: 'Locked', value: ovBool(s.locked), keep: true },
+      { label: 'Opacity', value: `${Math.round((s.opacity ?? 1) * 100)}%`, keep: true },
+    ]));
+  } else if (item.kind === 'link') {
+    if (s.uri) {
+      // Plain text on purpose: this is untrusted content from the PDF.
+      parts.push(`<p class="overview-url">${escapeHtml(s.uri)}</p>`);
+      actions.push(`<button type="button" class="btn btn-ghost" data-ov-action="copy" data-ov-text="${escapeHtml(s.uri)}"><span class="icon icon-copy" aria-hidden="true"></span> Copy link</button>`);
+    } else if (Number.isInteger(s.destPage)) {
+      parts.push(`<p class="overview-callout">Goes to page ${s.destPage + 1}.</p>`);
+      actions.push(`<button type="button" class="btn btn-primary" data-ov-action="goto-page" data-ov-page="${s.destPage}">Go to page ${s.destPage + 1}</button>`);
+    } else {
+      parts.push('<p class="field-details-empty">This link has no destination pdf-seal can show.</p>');
+    }
+  } else {
+    parts.push(table([
+      { label: 'Type', value: s.subtype === 'Text' ? 'Note' : s.subtype === 'FreeText' ? 'Text box' : s.subtype, keep: true },
+      { label: 'Author', value: s.author },
+      { label: 'Text', value: s.contents },
+      { label: 'Modified', value: s.modified, html: s.modified ? escapeHtml(formatDisplayDate(s.modified)) : null },
+    ]));
+  }
+
+  const tech = curateRawEntries(s.raw);
+  const ref = s.ref || (s.objectRefs && s.objectRefs[0]) || null;
+  if (tech.length || ref) {
+    // Friendly label, the raw PDF key (/T, /FT, /Rect...), then the curated value.
+    const rows = [...(ref ? [{ label: 'Object', key: 'ref', value: ref }] : []), ...tech];
+    const body = rows.map((r) => `<tr><th>${escapeHtml(r.label)}</th><td class="overview-tech-key">${r.key === 'ref' ? '' : `/${escapeHtml(r.key)}`}</td><td>${escapeHtml(r.value)}</td></tr>`).join('');
+    parts.push(`<details class="overview-tech"><summary>Technical details</summary><table class="field-details-table meta-kv-table"><thead><tr><th>Name</th><th>PDF key</th><th>Value</th></tr></thead><tbody>${body}</tbody></table></details>`);
+  }
+  return { html: parts.join(''), actions };
+}
+
+function renderOverviewSheet(item, opts) {
+  const meta = OVERVIEW_KINDS[item.kind];
+  document.getElementById('overviewSheetTitle').innerHTML = `<span class="icon ${meta.icon}" aria-hidden="true"></span> ${escapeHtml(meta.single)}`;
+  document.getElementById('overviewSheetSubject').textContent = `Page ${item.page + 1}`;
+  const { html, actions } = overviewSheetBody(item, opts);
+  document.getElementById('overviewSheetBody').innerHTML = `<p class="overview-sheet-label">${escapeHtml(item.label)}</p>${html}`;
+  const footer = document.getElementById('overviewSheetFooter');
+  footer.innerHTML = actions.join('');
+  footer.hidden = !actions.length;
+}
+
+// Row click: go to the page, flash the object, open its sheet.
+async function activateOverviewItem(kind, key) {
+  const item = overviewItemFor(kind, key);
+  if (!item) return;
+  openOverviewSheet(kind, key);
+  await goToPageAndFlash(item.page, overviewSelector(item));
+}
+
+overviewSheet?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-ov-action]');
+  if (!btn) return;
+  const action = btn.getAttribute('data-ov-action');
+  if (action === 'open-certificates') {
+    const field = btn.getAttribute('data-ov-field');
+    closeOverviewSheet();
+    focusCertificateForField(field);
+  } else if (action === 'edit-signature') {
+    showSignatureFieldOnDocument(btn.getAttribute('data-ov-field'));
+  } else if (action === 'copy') {
+    copyCertificateText(btn.getAttribute('data-ov-text'), 'Link');
+  } else if (action === 'goto-page') {
+    goToPageAndFlash(Number(btn.getAttribute('data-ov-page')), null);
+  }
+});
+document.getElementById('btnOverviewSheetClose')?.addEventListener('click', closeOverviewSheet);
+overviewSheetScrim?.addEventListener('click', closeOverviewSheet);
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !isOverviewSheetOpen()) return;
+  if (document.querySelector('.modal-backdrop.is-open')) return;
+  if (typeof tourActive !== 'undefined' && tourActive) return;
+  closeOverviewSheet();
+});
 
 function openXmpRawModal(raw) {
   const modal = document.getElementById('xmpRawModal');
@@ -8479,29 +8788,6 @@ const xmpRawModalEl = document.getElementById('xmpRawModal');
 if (xmpRawModalEl) {
   xmpRawModalEl.addEventListener('click', (e) => {
     if (e.target === xmpRawModalEl) closeXmpRawModal();
-  });
-}
-
-const metaSearchInput = document.getElementById('metaSearchInput');
-if (metaSearchInput) {
-  // Debounced, because renderMetaTree() is not cheap: it re-filters the whole
-  // raw object table, rebuilds it as one HTML string and replaces the entire
-  // subtree. Running that per keystroke on a document with a few thousand
-  // objects locked the page up while typing. Same 200ms as the base64 field.
-  let metaSearchTimer = null;
-  metaSearchInput.addEventListener('input', () => {
-    clearTimeout(metaSearchTimer);
-    metaSearchTimer = setTimeout(renderMetaTree, 200);
-  });
-}
-const metaSearchClearBtn = document.getElementById('metaSearchClearBtn');
-if (metaSearchClearBtn) {
-  metaSearchClearBtn.addEventListener('click', () => {
-    if (metaSearchInput) {
-      metaSearchInput.value = '';
-      metaSearchInput.focus();
-    }
-    renderMetaTree();
   });
 }
 
@@ -13463,6 +13749,19 @@ function showSignatureFieldOnDocument(fieldName) {
   }
 }
 
+/** Show `pageIndex` (0-based) and pulse the element matching `selector` once it is drawn. */
+async function goToPageAndFlash(pageIndex, selector) {
+  if (Number.isInteger(pageIndex) && pageIndex + 1 !== pageNum) {
+    pageNum = pageIndex + 1;
+    try {
+      await renderPage(pageNum);
+    } catch (_e) {
+      return;
+    }
+  }
+  if (selector) flashElement(document.querySelector(selector));
+}
+
 /** Certificates tree -> just point at the field in the viewer, staying on
  * Certificates -- unlike showSignatureFieldOnDocument, this never switches
  * section or opens the Edit sheet. */
@@ -13472,17 +13771,7 @@ function flashSignatureFieldOnDocument(fieldName) {
     showNotification(`This signature's field (${fieldName}) is not on the document.`, 'info');
     return;
   }
-
-  const goToField = () => {
-    flashElement(document.querySelector(`.field-overlay[data-field-name="${CSS.escape(fieldName)}"]`));
-  };
-
-  if (typeof field.page === 'number' && field.page + 1 !== pageNum) {
-    pageNum = field.page + 1;
-    Promise.resolve(renderPage(pageNum)).then(goToField).catch(() => {});
-  } else {
-    goToField();
-  }
+  goToPageAndFlash(field.page, `.field-overlay[data-field-name="${CSS.escape(fieldName)}"]`);
 }
 
 /* ---------- Event wiring ---------- */
@@ -14279,7 +14568,7 @@ function buildTourSteps() {
     {
       id: 'intro-nav', chapter: 'intro', target: '#sectionNav', placement: 'bottom',
       title: 'Section tabs',
-      body: 'MetaData, Signatures, Versions, and Certificates — everything below is organized under one of these four sections.',
+      body: 'Overview, Signatures, Versions, and Certificates — everything below is organized under one of these four sections.',
       enter: async () => {},
     },
     // Chapter: signatures
@@ -14383,18 +14672,19 @@ function buildTourSteps() {
     // Chapter: metadata
     {
       id: 'meta-overview', chapter: 'metadata', target: '#metaOverview', placement: 'right',
-      title: 'Document metadata',
-      body: "Title, author, and the rest of this PDF's Info dictionary — editable right here.",
-      enter: async () => { await tourGoToSection('navBtnMetaData'); await loadMetadataIfNeeded(); },
+      title: 'Document overview',
+      body: "What this PDF is and what's on it: a summary, at-a-glance badges, and a list of its signatures, stamps, form fields, links and comments. Hover a row to find it on the page.",
+      enter: async () => { await tourGoToSection('navBtnMetaData'); closeOverviewSheet(); await loadMetadataIfNeeded(); },
     },
     {
-      id: 'meta-advanced', chapter: 'metadata', target: '#metaAdvancedDetails', placement: 'right',
-      title: 'Raw PDF structure',
-      body: 'With "Show advanced PDF raw data" on (Settings), the underlying raw PDF objects are one click away wherever they\'re relevant.',
+      id: 'meta-inspect', chapter: 'metadata', target: '.field-overlay[data-field-name="Provider_Signature"]', placement: 'bottom',
+      title: 'Inspect an object',
+      body: 'While Overview is open, objects are outlined on the page. Click one — or its row in the list — to see who signed, when, and what the signature covers.',
       enter: async () => {
-        tourSetSettingsOverride({ showRawPdfData: true });
-        const details = document.getElementById('metaAdvancedDetails');
-        if (details) details.open = true;
+        await tourGoToSection('navBtnMetaData');
+        await loadMetadataIfNeeded();
+        await tourGoToPage(2);
+        openOverviewSheet('signature', 'Provider_Signature');
       },
     },
     // Chapter: revisions
@@ -14482,7 +14772,7 @@ function buildTourSteps() {
     {
       id: 'settings-general', chapter: 'settings', target: '#settingsTabPanelGeneral', placement: 'left',
       title: 'Settings: General',
-      body: 'These toggles turn optional panels on and off for real (unlike this tour\'s temporary previews) — nothing here takes effect until you hit Save. "Show advanced PDF raw data" exposes raw PDF objects wherever they\'re relevant: Metadata, Signatures, and Versions.',
+      body: 'These toggles turn optional panels on and off for real (unlike this tour\'s temporary previews) — nothing here takes effect until you hit Save. "Show advanced PDF raw data" exposes raw PDF objects wherever they\'re relevant: Signatures, Versions, and Certificates.',
       enter: async () => {
         closeCertificateSheet();
         openSettingsModal('general');
