@@ -1130,12 +1130,18 @@ class PdfSignatureTool {
     return ref instanceof PDFRef ? `ref:${ref.objectNumber} ${ref.generationNumber}` : null;
   }
 
-  /** Walk every page's /Annots and invoke `callback` for each /Subtype /Stamp annotation found. Returning `false` stops the walk early. */
-  _forEachStampAnnot(callback: (entry: { dict: any; ref: any; page: any; pageIndex: number }) => void | false) {
+  /**
+   * Walk every page's /Annots and invoke `callback` for each annotation (or only those whose /Subtype
+   * is `subtypeFilter`, e.g. 'Stamp'). Returning `false` stops the walk early.
+   */
+  _forEachAnnot(
+    callback: (entry: { dict: any; ref: any; page: any; pageIndex: number }) => void | false,
+    subtypeFilter?: string,
+  ) {
     const pdfDoc = this.pdfDoc;
     const pages = pdfDoc.getPages();
     const context = pdfDoc.context;
-    const stampSubtype = PDFName.of('Stamp');
+    const wanted = subtypeFilter ? PDFName.of(subtypeFilter) : null;
 
     for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
       const page = pages[pageIndex];
@@ -1145,11 +1151,16 @@ class PdfSignatureTool {
         const entryRef = annots.get(i);
         const dict = context.lookupMaybe(entryRef, PDFDict);
         if (!dict) continue;
-        if (dict.get(PDFName.of('Subtype')) !== stampSubtype) continue;
+        if (wanted && dict.get(PDFName.of('Subtype')) !== wanted) continue;
         const ref = entryRef instanceof PDFRef ? entryRef : context.getObjectRef(dict);
         if (callback({ dict, ref, page, pageIndex }) === false) return;
       }
     }
+  }
+
+  /** Walk every /Subtype /Stamp annotation. */
+  _forEachStampAnnot(callback: (entry: { dict: any; ref: any; page: any; pageIndex: number }) => void | false) {
+    this._forEachAnnot(callback, 'Stamp');
   }
 
   _rectFromArray(arr: any): { x: number; y: number; width: number; height: number } {
@@ -1237,6 +1248,7 @@ class PdfSignatureTool {
       locked: !!(flags & ANNOTATION_FLAG_LOCKED),
       createdByPdfSeal,
       objectRefs: Array.from(objectRefs),
+      raw: this._getRawDictEntries(dict),
     };
   }
 
@@ -1245,6 +1257,71 @@ class PdfSignatureTool {
     const out: any[] = [];
     this._forEachStampAnnot(({ dict, ref, pageIndex }) => {
       out.push(this._describeStamp(dict, ref, pageIndex));
+    });
+    return out;
+  }
+
+  /** Page index a /Dest array (or named dest resolved to one) points at, or undefined. */
+  _destPageIndex(dest: any): number | undefined {
+    const context = this.pdfDoc.context;
+    const arr = dest instanceof PDFArray ? dest : context.lookupMaybe(dest, PDFArray);
+    if (!arr || arr.size() === 0) return undefined;
+    const target = arr.get(0);
+    if (target instanceof PDFRef) {
+      const idx = this.pdfDoc.getPages().findIndex((p: any) => p.ref === target || p.ref.toString() === target.toString());
+      return idx >= 0 ? idx : undefined;
+    }
+    if (target instanceof PDFNumber) return target.asNumber();
+    return undefined;
+  }
+
+  /**
+   * Every page annotation that is not a /Widget (see listFields) or /Stamp (see listStamps):
+   * links, text notes/comments and markup. /Popup annotations are skipped -- they belong to their parent.
+   */
+  listAnnotations() {
+    const markup = new Set(['Highlight', 'Underline', 'StrikeOut', 'Squiggly', 'Ink', 'Square', 'Circle', 'Line', 'Polygon', 'PolyLine', 'Caret']);
+    const out: any[] = [];
+    this._forEachAnnot(({ dict, ref, pageIndex }) => {
+      const subtype = this._getRawName(dict, 'Subtype') || '';
+      if (!subtype || subtype === 'Widget' || subtype === 'Stamp' || subtype === 'Popup') return;
+      const rectArr = dict.lookupMaybe(PDFName.of('Rect'), PDFArray);
+      let rect = null;
+      try {
+        rect = rectArr ? this._rectFromArray(rectArr) : null;
+      } catch (_e) {
+        rect = null;
+      }
+      const kind: 'link' | 'comment' | 'markup' | 'other' =
+        subtype === 'Link' ? 'link'
+        : subtype === 'Text' || subtype === 'FreeText' ? 'comment'
+        : markup.has(subtype) ? 'markup'
+        : 'other';
+      const item: any = {
+        ref: ref ? ref.toString() : null,
+        page: pageIndex,
+        rect,
+        subtype,
+        kind,
+        contents: this._getTextValue(dict, 'Contents') ?? undefined,
+        author: this._getTextValue(dict, 'T') ?? undefined,
+        modified: this._getRawDate(dict, 'M') ?? undefined,
+      };
+      if (kind === 'link') {
+        const action = dict.lookupMaybe(PDFName.of('A'), PDFDict);
+        const actionType = action ? this._getRawName(action, 'S') : null;
+        if (action && actionType === 'URI') item.uri = this._getTextValue(action, 'URI') ?? undefined;
+        const dest = action && actionType === 'GoTo' ? action.get(PDFName.of('D')) : dict.get(PDFName.of('Dest'));
+        if (dest) {
+          try {
+            item.destPage = this._destPageIndex(dest);
+          } catch (_e) {
+            // unresolvable destination (e.g. a named dest) -- leave destPage unset
+          }
+        }
+      }
+      item.raw = this._getRawDictEntries(dict);
+      out.push(item);
     });
     return out;
   }
@@ -1589,6 +1666,14 @@ class PdfSignatureTool {
         xmpMetadata: !!xmp,
         incrementalUpdates: options.incrementalUpdates ?? null,
         signatureCount: signatureInfo.length,
+        // Strictest DocMDP level among the signatures (1 = no changes allowed), or null if not certified.
+        certification: (() => {
+          // docMdpLevel is only on getSignatureDictionaries(), not getSignatureInfo().
+          const levels = this.getSignatureDictionaries()
+            .map((s: any) => s.docMdpLevel)
+            .filter((n: any) => typeof n === 'number');
+          return levels.length ? Math.min(...levels) : null;
+        })(),
         stampCount: stamps.length,
         annotationCount,
       },
@@ -1676,19 +1761,14 @@ class PdfSignatureTool {
   /**
    * Convenience bundle for a "Document Info" view: standard metadata,
    * the raw Info dictionary (including any custom keys), every form
-   * field with its full raw dictionary entries, and -- for a truly
-   * complete picture -- the entire raw PDF object table via
-   * getFullRawDump(). Intended to be spread into whatever JSON an
-   * `/api/info`-style route already returns, e.g.
-   *
-   *   const info = tool.getDocumentInfoSummary();
-   *   res.json({ fields: info.fields, metadata: info.metadata, rawInfo: info.rawInfo, rawObjects: info.rawObjects });
+   * field with its full raw dictionary entries, every stamp and every
+   * non-widget/non-stamp annotation (links, comments, markup). The raw
+   * object table (getFullRawDump()) is deliberately not included.
    */
   getDocumentInfoSummary(
     options: { fileSize?: number | null; incrementalUpdates?: number | null; fieldsOnly?: boolean } = {},
   ) {
-    // `fieldsOnly` skips getFullRawDump() (a walk of every object in the
-    // PDF) and the metadata/overview lookups -- callers that only need form
+    // `fieldsOnly` skips the annotations walk and the metadata/overview lookups -- callers that only need form
     // fields for canvas rendering (i.e. every document load and edit) hit
     // this path so that work isn't repeated on every keystroke of a signing
     // session; the full summary is fetched separately, on demand, only when
@@ -1703,7 +1783,7 @@ class PdfSignatureTool {
       rawInfo: truncateLongStrings(this.getRawInfoDict(), MAX_RAW_STRING_LENGTH),
       fields: this.listFields(),
       stamps: this.listStamps(),
-      rawObjects: truncateLongStrings(this.getFullRawDump(), MAX_RAW_STRING_LENGTH),
+      annotations: this.listAnnotations(),
       overview: this.getMetadataOverview(options),
     };
   }
