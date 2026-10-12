@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/Marbulinek/pdf-seal/compare/v1.8.2...v1.9.0) (2026-10-12)
+
+
+### Features
+
+* simplified metadata section to overview ([#75](https://github.com/Marbulinek/pdf-seal/issues/75)) ([0ce1816](https://github.com/Marbulinek/pdf-seal/commit/0ce1816c360f683c49401279243bdafaafe45b42))
+
 ## [1.8.2](https://github.com/Marbulinek/pdf-seal/compare/v1.8.1...v1.8.2) (2026-10-10)
 
 
