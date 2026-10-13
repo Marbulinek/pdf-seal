@@ -8739,7 +8739,7 @@ function renderSignaturesHero() {
   const host = document.getElementById('sigSectionHero');
   if (!host) return;
   if (!activeFile) {
-    host.innerHTML = ovHeroHtml({ kind: 'signature' }, { label: 'Signature fields', subtitle: 'Upload a document to place fields' });
+    host.innerHTML = '';
     return;
   }
   const sigs = documentFields.filter((f) => f.type === 'Signature');
