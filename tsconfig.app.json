@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/app",
+    "types": []
+  },
+  "include": [
+    "src/**/*.ts",
+    "lib/DemoTour.ts",
+    "lib/DocumentOverview.ts",
+    "lib/SignatureTemplates.ts",
+    "lib/VersionHistory.ts"
+  ],
+  "exclude": ["src/**/*.spec.ts", "src/app/testing/**"]
+}

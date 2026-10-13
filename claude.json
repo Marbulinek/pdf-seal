@@ -11,10 +11,10 @@
     "port": 3000
   },
   "language": "typescript",
-  "framework": "express",
+  "framework": "angular + express",
   "dependencies": {
     "core": ["pdf-lib", "express", "multer", "ws"],
-    "frontend": ["pdfjs-dist"]
+    "frontend": ["@angular/core", "@ngrx/signals", "pdfjs-dist"]
   },
   "security": {
     "rateLimiting": true,

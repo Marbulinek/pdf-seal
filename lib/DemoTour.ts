@@ -2,9 +2,9 @@
 // navigation. Everything here is pure -- no DOM, no timers, no localStorage --
 // so it can run headless in tests.
 //
-// public/index.html inlines this same logic directly (the app has no frontend
-// build step to import from here), the same approach as lib/SignatureTemplates.ts
-// and lib/FieldHistory.ts; keep the two in sync by hand if either changes.
+// The Angular app imports this module directly (src/app/features/tour/ and
+// src/app/shell/tour-overlay/), so there is one copy of the logic, covered by
+// test/lib/DemoTour.test.ts.
 //
 // Rects use the same shape as DOMRect's writable fields (top/left/width/height),
 // in viewport pixels.

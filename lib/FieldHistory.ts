@@ -1,11 +1,9 @@
 // Pure undo/redo stack semantics for the Signatures panel's History section.
-// public/index.html inlines this same push/undo/redo/reset/cap logic
-// directly (the app has no frontend build step to import from here),
-// against full document snapshots (file/pdfDoc/fields/baseline/etc, see
-// captureDocumentSnapshot() there) so undo/redo can reach back across an
-// "Apply changes" boundary, not just a plain staged field edit -- this
-// module exists so that logic has unit coverage; keep the two in sync by
-// hand if either changes.
+// SignaturesStore (src/app/features/signatures/signatures.store.ts) keeps the
+// same push/undo/redo/reset/cap semantics as immutable signal-store state,
+// against full document snapshots (DocumentService.captureSnapshot()) so
+// undo/redo can reach back across an "Apply changes" boundary, not just a
+// plain staged field edit. Keep the two in sync if either changes.
 export default class FieldHistoryStack<T> {
   private undoStack: T[] = [];
   private redoStack: T[] = [];

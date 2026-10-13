@@ -1,0 +1,461 @@
+import { ChangeDetectionStrategy, Component, computed, inject, linkedSignal } from '@angular/core';
+import { DocumentStore } from '../../core/document.store';
+import { UiService } from '../../core/ui.service';
+import { VISUAL_DIFF_PENS, type DiffMarkStyle, type PenColor } from '../../features/versions/visual-diff.service';
+import {
+  checklistItems,
+  chipMatchesFilter,
+  diffSections,
+  objectChangeCount,
+  objectChipGroups,
+  rawObjectCategories,
+  revisionLabel,
+  type ChecklistItem,
+  type DiffRow,
+  type DiffTab,
+  type ObjectChip,
+} from '../../features/versions/versions-model';
+import { VersionsStore } from '../../features/versions/versions.store';
+import { DictionaryChanges, INVISIBLE_FIELD_TITLE, ObjectBadges } from '../../shared/diff-bits';
+
+const TABS: { id: DiffTab; elementId: string; panel: string; icon: string; label: string }[] = [
+  { id: 'overview', elementId: 'tabRevOverview', panel: 'revisionsDiffOverview', icon: 'icon-list', label: 'Overview' },
+  { id: 'details', elementId: 'tabRevDetails', panel: 'revisionsDiffResults', icon: 'icon-layers', label: 'Details' },
+  { id: 'visual', elementId: 'tabRevVisual', panel: 'visualDiffPanel', icon: 'icon-eye', label: 'Visual' },
+];
+
+/**
+ * The comparison of two stored versions: the From/To picker, then Overview
+ * (verdict, checklist, integrity), Details (change lists + raw objects) and
+ * Visual (page marks drawn in the main viewer).
+ */
+@Component({
+  selector: 'aside[appCompareSheet]',
+  imports: [DictionaryChanges, ObjectBadges],
+  template: `
+    <div class="edit-sheet-header">
+      <span class="edit-sheet-grabber" aria-hidden="true"></span>
+      <span class="panel-dot dot-coral"></span>
+      <h3 id="revisionsCompareSheetTitle">Compare Versions</h3>
+      <span class="edit-sheet-subject" id="revisionsCompareSheetSubject">{{ versions.compareSubject() }}</span>
+      <button type="button" class="modal-close" id="btnRevisionsCompareSheetClose" aria-label="Close comparison" (click)="versions.closeCompareSheet()">
+        <span class="icon icon-close" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <div class="revisions-compare-header" id="revisionsCompareBar" [hidden]="!doc.activeFile() || !versions.canCompare()">
+      <div class="revisions-compare-select">
+        <label for="revisionFromSelect">From</label>
+        <select id="revisionFromSelect" (change)="onFrom($event)">
+          @for (rev of versions.fromOptions(); track rev.index) {
+            <option [value]="rev.index" [selected]="rev.index === versions.compareFrom()">{{ label(rev) }}</option>
+          }
+        </select>
+      </div>
+      <div class="revisions-compare-swap"><span class="icon icon-repeat" aria-hidden="true"></span></div>
+      <div class="revisions-compare-select">
+        <label for="revisionToSelect">To</label>
+        <select id="revisionToSelect" (change)="onTo($event)">
+          @for (rev of versions.toOptions(); track rev.index) {
+            <option [value]="rev.index" [selected]="rev.index === versions.compareTo()">{{ label(rev) }}</option>
+          }
+        </select>
+      </div>
+      <button type="button" class="btn btn-primary" id="btnCompareRevisions" (click)="versions.compare()">Compare</button>
+    </div>
+
+    <div class="edit-sheet-body">
+      @let diff = versions.diff();
+      <div class="revisions-view-tabs" id="revisionsViewTabs" role="tablist" aria-label="Comparison views" [hidden]="!diff" (keydown)="onTabKey($event)">
+        @for (tab of tabs; track tab.id) {
+          <button
+            type="button"
+            class="revisions-view-tab"
+            role="tab"
+            [id]="tab.elementId"
+            [attr.data-rev-tab]="tab.id"
+            [class.active]="versions.activeTab() === tab.id"
+            [attr.aria-selected]="versions.activeTab() === tab.id"
+            [attr.aria-controls]="tab.panel"
+            (click)="versions.switchTab(tab.id)"
+          >
+            <span class="icon {{ tab.icon }}" aria-hidden="true"></span> {{ tab.label }}
+          </button>
+        }
+      </div>
+
+      <div class="revisions-diff-empty" id="revisionsDiffEmpty" [hidden]="!!diff || versions.diffLoading()">
+        <p>{{ versions.diffEmptyText() }}</p>
+      </div>
+      <div class="revisions-diff-loading" id="revisionsDiffLoading" [hidden]="!versions.diffLoading()">
+        <span class="spinner" aria-hidden="true"></span> Computing diff…
+      </div>
+
+      <div class="revisions-diff-overview" id="revisionsDiffOverview" role="tabpanel" aria-labelledby="tabRevOverview" [hidden]="!diff || versions.activeTab() !== 'overview'">
+        @if (diff) {
+          @if (diff.pageCountDelta) {
+            <p class="diff-verdict-note">Page count {{ diff.pageCountDelta > 0 ? 'grew' : 'shrank' }} by {{ abs(diff.pageCountDelta) }}.</p>
+          }
+          @if (checklist().length) {
+            <div class="diff-section revision-checklist-section">
+              <div class="revision-checklist-head">
+                <h4 class="diff-section-title"><span class="diff-section-icon"><span class="icon icon-list" aria-hidden="true"></span></span>What changed</h4>
+                <span class="diff-empty-note">Click a change to go and look at it</span>
+              </div>
+              <div class="revision-checklist">
+                @for (item of checklist(); track item.label) {
+                  @if (item.target) {
+                    <button
+                      type="button"
+                      class="revision-check-item is-changed"
+                      [attr.data-check-tab]="item.target.tab"
+                      [attr.data-check-section]="item.target.section ?? null"
+                      (click)="goto(item)"
+                    >
+                      <span class="revision-check-icon" aria-hidden="true"><span class="icon icon-dot" aria-hidden="true"></span></span>
+                      <span class="revision-check-label">{{ item.label }}</span>
+                      <span class="revision-check-detail">{{ item.detail }}</span>
+                    </button>
+                  } @else {
+                    <div class="revision-check-item" [class.is-unchanged]="item.unchanged" [class.is-changed]="!item.unchanged">
+                      <span class="revision-check-icon" aria-hidden="true"
+                        ><span class="icon {{ item.unchanged ? 'icon-check' : 'icon-dot' }}" aria-hidden="true"></span
+                      ></span>
+                      <span class="revision-check-label">{{ item.label }}</span>
+                      <span class="revision-check-detail">{{ item.detail }}</span>
+                    </div>
+                  }
+                }
+              </div>
+            </div>
+          }
+          @if (diff.integrity; as integrity) {
+            @if (integrity.ok) {
+              <div class="revision-integrity is-ok">
+                <span class="revision-integrity-icon" aria-hidden="true"><span class="icon icon-check" aria-hidden="true"></span></span>
+                Everything this revision added or modified checks out structurally — no dangling references, and any new signature's /ByteRange covers the
+                full revision.
+              </div>
+            } @else {
+              <div class="revision-integrity is-warning">
+                <div class="revision-integrity-title">
+                  <span class="revision-integrity-icon" aria-hidden="true"><span class="icon icon-alert-triangle" aria-hidden="true"></span></span>
+                  {{ integrity.issues.length }} possible issue{{ integrity.issues.length === 1 ? '' : 's' }} found in what this revision added or modified
+                </div>
+                <ul class="revision-integrity-list">
+                  @for (issue of integrity.issues; track $index) {
+                    <li>{{ issue }}</li>
+                  }
+                </ul>
+              </div>
+            }
+          }
+        }
+      </div>
+
+      <div class="revisions-diff-results" id="revisionsDiffResults" role="tabpanel" aria-labelledby="tabRevDetails" [hidden]="!diff || versions.activeTab() !== 'details'">
+        <!-- The most expensive panel here: built on first visit, kept afterwards. -->
+        @if (diff && detailsRendered()) {
+          @for (section of sections(); track section.key) {
+            <div class="diff-section" [attr.data-diff-section]="section.key">
+              <h4 class="diff-section-title"><span class="diff-section-icon"><span class="icon {{ section.icon }}" aria-hidden="true"></span></span>{{ section.title }}</h4>
+              @if (section.rows.length) {
+                <ul class="diff-list">
+                  @for (row of section.rows; track $index) {
+                    <li
+                      class="diff-row"
+                      [class.is-locatable]="!!row.locate"
+                      [class.is-hovered]="!!row.locate && versions.activeObjectId() === row.locate.key"
+                      [attr.tabindex]="row.locate ? 0 : null"
+                      [attr.role]="row.locate ? 'button' : null"
+                      (click)="locate(row)"
+                      (keydown.enter)="locateKey($event, row)"
+                      (keydown.space)="locateKey($event, row)"
+                    >
+                      <span class="diff-row-badge badge-{{ row.badge }}">{{ row.badgeText }}</span>
+                      <span class="diff-row-key">{{ row.key }}</span>
+                      <span class="diff-row-values">
+                        @if (row.changes.length) {
+                          @for (c of row.changes; track $index; let last = $last) {
+                            @if (c.key) {
+                              {{ c.key }}:
+                            }
+                            <del>{{ c.before }}</del> → <ins>{{ c.after }}</ins>
+                            @if (!last) {
+                              ;
+                            }
+                          }
+                        } @else {
+                          {{ row.text }}
+                        }
+                      </span>
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="diff-empty-note">No changes.</p>
+              }
+            </div>
+          }
+
+          <details class="diff-section diff-raw-objects" data-diff-section="objects">
+            <summary class="diff-section-title">
+              <span class="diff-section-icon"><span class="icon icon-layers" aria-hidden="true"></span></span>Raw PDF objects
+              <span class="diff-empty-note">({{ objectCount() }})</span> <span class="raw-panel-badge">Raw</span>
+            </summary>
+            @if (!objectCount()) {
+              <p class="diff-empty-note">No changes.</p>
+            } @else {
+              @if (categories().length) {
+                <div class="raw-object-filter-row">
+                  <input
+                    #filterSearch
+                    type="text"
+                    class="meta-search-input raw-object-filter-search"
+                    id="rawObjectFilterSearch"
+                    placeholder="Find an object, name, or field…"
+                    [value]="versions.rawFilter().term"
+                    (input)="versions.setRawFilterTerm(filterSearch.value)"
+                  />
+                  <div class="raw-object-filter-chips">
+                    @for (cat of categories(); track cat) {
+                      <button
+                        type="button"
+                        class="raw-object-filter-chip"
+                        [attr.data-category]="cat"
+                        [class.is-active]="versions.rawFilter().categories.includes(cat)"
+                        (click)="versions.toggleRawCategory(cat)"
+                      >
+                        {{ cat }}
+                      </button>
+                    }
+                  </div>
+                  <label class="raw-object-filter-toggle">
+                    <input #locatable type="checkbox" id="rawObjectFilterLocatable" [checked]="versions.rawFilter().locatableOnly" (change)="versions.setRawLocatableOnly(locatable.checked)" />
+                    Locatable only
+                  </label>
+                </div>
+              }
+              @for (group of chipGroups(); track group.cls) {
+                <div class="diff-section">
+                  <h4 class="diff-section-title">
+                    <span class="diff-section-icon"><span class="icon {{ group.icon }}" aria-hidden="true"></span></span>{{ group.label }}
+                    <span class="diff-empty-note">({{ group.chips.length }})</span>
+                  </h4>
+                  <div class="diff-object-chips">
+                    @for (chip of group.chips; track chip.objectId) {
+                      <div
+                        class="diff-object-chip {{ chip.cls }}"
+                        [class.is-previewable]="chip.canShowOnPage"
+                        [class.is-unmapped]="!chip.canShowOnPage"
+                        [class.is-hovered]="versions.activeObjectId() === chip.objectId"
+                        [hidden]="!matches(chip)"
+                        [attr.data-object-id]="chip.objectId"
+                        [attr.data-object-key]="chip.item.key"
+                      >
+                        <div class="diff-object-ref">{{ chip.item.label || chip.item.key }}</div>
+                        @if (chip.item.classifications.length || chip.invisible) {
+                          <div class="diff-object-badges"><app-object-badges [item]="chip.item" /></div>
+                        }
+                        @if (chip.item.category || chip.revisionIndex !== null || chip.item.page !== null || chip.item.fieldName) {
+                          <div class="diff-object-meta">
+                            @if (chip.item.category) {
+                              <span class="diff-object-meta-row"><span class="diff-object-meta-label">Type</span><span class="diff-object-meta-value">{{ chip.item.category }}</span></span>
+                            }
+                            @if (chip.revisionIndex !== null) {
+                              <span class="diff-object-meta-row"><span class="diff-object-meta-label">Version</span><span class="diff-object-meta-value">{{ chip.revisionIndex }}</span></span>
+                            }
+                            @if (chip.item.page !== null) {
+                              <span class="diff-object-meta-row"><span class="diff-object-meta-label">Page</span><span class="diff-object-meta-value">{{ chip.item.page + 1 }}</span></span>
+                            }
+                            @if (chip.item.fieldName) {
+                              <span class="diff-object-meta-row"><span class="diff-object-meta-label">Field</span><span class="diff-object-meta-value">{{ chip.item.fieldName }}</span></span>
+                            }
+                          </div>
+                        }
+                        <app-dictionary-changes [changes]="chip.item.dictionaryChanges" />
+                        <p class="diff-object-preview-status" [hidden]="!versions.chipStatus()[chip.objectId]">{{ versions.chipStatus()[chip.objectId] }}</p>
+                        <div class="diff-object-actions">
+                          @if (chip.canShowOnPage) {
+                            <button
+                              type="button"
+                              class="btn btn-ghost btn-sm diff-object-action-preview"
+                              [attr.data-preview-mode]="chip.item.previewMode"
+                              [title]="chip.invisible ? invisibleTitle : ''"
+                              (click)="preview($event, chip)"
+                            >
+                              {{ chip.showLabel }}
+                            </button>
+                          }
+                          <button type="button" class="btn btn-ghost btn-sm diff-object-action-source" (click)="source($event, chip)">PDF source</button>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                  @if (noMatches(group.chips)) {
+                    <p class="diff-empty-note raw-object-filter-no-matches">No matches.</p>
+                  }
+                </div>
+              }
+            }
+            @if (diff.objectChanges.truncated) {
+              <p class="diff-truncated-note">Showing the first 500 changes of each kind — this revision touched more objects than that.</p>
+            }
+          </details>
+        }
+      </div>
+
+      <div class="visual-diff-panel" id="visualDiffPanel" role="tabpanel" aria-labelledby="tabRevVisual" [hidden]="!diff || versions.activeTab() !== 'visual'">
+        <p class="visual-diff-note">The changed passages are marked on the document to the left, the way you would sweep a highlighter over a printout.</p>
+        <div class="visual-diff-toolbar">
+          <div class="visual-diff-page-nav">
+            <button type="button" class="icon-btn" id="btnVisualDiffPrevPage" aria-label="Previous page" [disabled]="versions.diffPage() <= 1" (click)="versions.visualPrev()">
+              <span class="icon icon-chevron-left" aria-hidden="true"></span>
+            </button>
+            <span id="visualDiffPageLabel">Page {{ versions.diffPage() }} / {{ versions.visualPageCount() }}</span>
+            <button
+              type="button"
+              class="icon-btn"
+              id="btnVisualDiffNextPage"
+              aria-label="Next page"
+              [disabled]="versions.diffPage() >= versions.visualPageCount()"
+              (click)="versions.visualNext()"
+            >
+              <span class="icon icon-chevron-right" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="visual-diff-mode-select">
+            <label for="visualDiffStyle">Mark with</label>
+            <select #styleSelect class="visual-diff-select" id="visualDiffStyle" (change)="setStyle(styleSelect.value)">
+              <option value="highlight" [selected]="versions.visualStyle() === 'highlight'">Highlighter</option>
+              <option value="outline" [selected]="versions.visualStyle() === 'outline'">Outline</option>
+            </select>
+            <label for="visualDiffColor" id="visualDiffColorLabel" [class.is-disabled]="versions.visualStyle() === 'outline'">Pen</label>
+            <select #colorSelect class="visual-diff-select" id="visualDiffColor" [disabled]="versions.visualStyle() === 'outline'" (change)="setColor(colorSelect.value)">
+              <option value="yellow" [selected]="versions.visualColor() === 'yellow'">Yellow</option>
+              <option value="pink" [selected]="versions.visualColor() === 'pink'">Pink</option>
+              <option value="green" [selected]="versions.visualColor() === 'green'">Green</option>
+            </select>
+          </div>
+        </div>
+        <div class="visual-diff-legend" id="visualDiffLegend">
+          @if (versions.legend(); as legend) {
+            @if (versions.visualStyle() === 'outline') {
+              <span class="visual-diff-swatch is-outline" aria-hidden="true"></span>
+            } @else {
+              <span class="visual-diff-swatch" [style.background]="penCss()" aria-hidden="true"></span>
+            }
+            <span>{{ legend.count === 0 ? 'Nothing changed on this page' : legend.count + ' marked passage' + (legend.count === 1 ? '' : 's') + ' on this page' }}</span>
+            @if (legend.note) {
+              <span class="visual-diff-legend-note">{{ legend.note }}</span>
+            }
+          }
+        </div>
+      </div>
+    </div>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    id: 'revisionsCompareSheet',
+    class: 'edit-sheet',
+    tabindex: '-1',
+    'aria-labelledby': 'revisionsCompareSheetTitle',
+    '[class.is-open]': 'ui.sheets.compare()',
+    '[attr.aria-hidden]': '!ui.sheets.compare()',
+  },
+})
+export class CompareSheet {
+  protected readonly ui = inject(UiService);
+  protected readonly doc = inject(DocumentStore);
+  protected readonly versions = inject(VersionsStore);
+
+  protected readonly tabs = TABS;
+  protected readonly label = revisionLabel;
+  protected readonly abs = Math.abs;
+  protected readonly invisibleTitle = INVISIBLE_FIELD_TITLE;
+
+  protected readonly checklist = computed(() => {
+    const diff = this.versions.diff();
+    return diff ? checklistItems(diff) : [];
+  });
+  protected readonly sections = computed(() => {
+    const diff = this.versions.diff();
+    return diff ? diffSections(diff) : [];
+  });
+  protected readonly chipGroups = computed(() => {
+    const diff = this.versions.diff();
+    return diff ? objectChipGroups(diff, this.versions.diffFrom(), this.versions.diffTo()) : [];
+  });
+  protected readonly categories = computed(() => rawObjectCategories(this.chipGroups()));
+  protected readonly objectCount = computed(() => {
+    const diff = this.versions.diff();
+    return diff ? objectChangeCount(diff) : 0;
+  });
+  /** Built on the first visit to Details for each comparison, then kept. */
+  protected readonly detailsRendered = linkedSignal<{ diff: unknown; tab: DiffTab }, boolean>({
+    source: () => ({ diff: this.versions.diff(), tab: this.versions.activeTab() }),
+    computation: (source, previous) =>
+      source.tab === 'details' || (!!previous && previous.value && previous.source.diff === source.diff),
+  });
+  protected readonly penCss = computed(() => VISUAL_DIFF_PENS[this.versions.visualColor()].css);
+
+  protected onFrom(event: Event): void {
+    this.versions.setCompareFrom(Number((event.target as HTMLSelectElement).value));
+  }
+
+  protected onTo(event: Event): void {
+    this.versions.setCompareTo(Number((event.target as HTMLSelectElement).value));
+  }
+
+  protected setStyle(value: string): void {
+    this.versions.setVisualStyle(value === 'outline' ? 'outline' : ('highlight' satisfies DiffMarkStyle));
+  }
+
+  protected setColor(value: string): void {
+    const color: PenColor = value === 'pink' || value === 'green' ? value : 'yellow';
+    this.versions.setVisualColor(color);
+  }
+
+  /** Left/right arrows walk the tablist. */
+  protected onTabKey(event: KeyboardEvent): void {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    const current = TABS.findIndex((t) => t.id === this.versions.activeTab());
+    if (current === -1) return;
+    event.preventDefault();
+    const next = TABS[(current + (event.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    document.getElementById(next.elementId)?.focus();
+    this.versions.switchTab(next.id);
+  }
+
+  protected goto(item: ChecklistItem): void {
+    if (item.target) void this.versions.gotoChecklistTarget(item.target);
+  }
+
+  protected locate(row: DiffRow): void {
+    if (row.locate) this.versions.toggleRowLocate(row.locate.key, row.locate.page, [row.locate.rect], row.locate.side);
+  }
+
+  protected locateKey(event: Event, row: DiffRow): void {
+    if (!row.locate) return;
+    event.preventDefault();
+    this.locate(row);
+  }
+
+  protected matches(chip: ObjectChip): boolean {
+    return chipMatchesFilter(chip, this.versions.rawFilter());
+  }
+
+  protected noMatches(chips: ObjectChip[]): boolean {
+    return !chips.some((c) => this.matches(c));
+  }
+
+  protected preview(event: Event, chip: ObjectChip): void {
+    event.stopPropagation();
+    this.versions.toggleChipPreview(chip.objectId, chip.item, chip.side);
+  }
+
+  protected source(event: Event, chip: ObjectChip): void {
+    event.stopPropagation();
+    this.versions.openRawObject(chip.item, chip.revisionIndex, chip.objectId, chip.side);
+  }
+}

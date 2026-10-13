@@ -1,0 +1,316 @@
+<div class="drop-replace-badge-wrap" aria-hidden="true">
+  <div class="drop-replace-badge">
+    <span class="icon icon-upload-device" aria-hidden="true"></span>
+    <span>Drop to replace this document</span>
+  </div>
+</div>
+<div class="viewer-controls">
+  <div class="viewer-diff-banner" id="viewerDiffBanner" [hidden]="!viewer.diffActive()">
+    <span id="viewerDiffBannerText">{{ viewer.diffBannerText() }}</span>
+    <button type="button" class="btn btn-ghost" id="btnExitDiffView" (click)="viewer.exitDiffViewMode()">
+      <span class="icon icon-close" aria-hidden="true"></span> Back to document
+    </button>
+  </div>
+  <!-- One row: the document name shares the strip with the page and zoom
+       clusters and is the only elastic item, so it ellipsises past them. -->
+  <div class="viewer-toolbar">
+    <span
+      id="viewerFileName"
+      class="viewer-file-name"
+      [class.is-visible]="!!fileName()"
+      [title]="fileName()"
+      (mouseenter)="collapseControlsSoon()"
+      (mouseleave)="expandControls()"
+      (focusin)="collapseControlsSoon()"
+      (focusout)="expandControls()"
+    >
+      <span class="viewer-file-name-icon icon-file-simple" aria-hidden="true"></span>
+      <span class="viewer-file-name-text" #fileNameText>{{ fileName() }}</span>
+      <button
+        type="button"
+        id="btnCloseDocument"
+        class="viewer-file-close-btn"
+        aria-label="Close document"
+        title="Close document"
+        (click)="$event.stopPropagation(); ui.closeDocumentModalOpen.set(true)"
+      >
+        <span class="icon icon-close" aria-hidden="true"></span>
+      </button>
+    </span>
+    <div class="viewer-controls-row" id="viewerControlsRow" [hidden]="!doc.hasDocument()">
+      <!-- Page/pan/zoom show as pill groups. Hovering a truncated document name
+           swaps them for the wrench toggle, whose popover holds the same groups
+           (one live copy either way -- rendered in exactly one place). -->
+      <div
+        class="viewer-controls-inline"
+        id="viewerControlsInline"
+        #controlsInline
+        [class.is-collapsed]="controlsCollapsed()"
+        [style.width]="inlineWidth()"
+      >
+        @if (!controlsCollapsed()) {
+          <ng-container [ngTemplateOutlet]="controlGroups" />
+        }
+      </div>
+      <div class="viewer-tools" id="viewerTools" [class.is-visible]="controlsCollapsed()">
+        <button
+          type="button"
+          id="btnViewerTools"
+          class="icon-btn viewer-tools-toggle"
+          [class.is-active]="toolsMenuOpen()"
+          [disabled]="!doc.hasDocument()"
+          aria-haspopup="true"
+          [attr.aria-expanded]="toolsMenuOpen()"
+          aria-controls="viewerToolsMenu"
+          aria-label="Page and zoom controls"
+          title="Page and zoom controls"
+          (click)="$event.stopPropagation(); toolsMenuOpen.set(!toolsMenuOpen())"
+        >
+          <span class="icon icon-wrench" aria-hidden="true"></span>
+        </button>
+        <div class="viewer-tools-menu" id="viewerToolsMenu" [hidden]="!toolsMenuOpen()" (click)="$event.stopPropagation()">
+          @if (controlsCollapsed()) {
+            <ng-container [ngTemplateOutlet]="controlGroups" />
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<ng-template #controlGroups>
+  <div class="viewer-controls-group">
+    <button id="btnPrev" class="icon-btn" [disabled]="viewer.prevDisabled()" aria-label="Previous page" (click)="viewer.prev()">
+      <span class="icon icon-chevron-left" aria-hidden="true"></span>
+    </button>
+    <span class="page-indicator"
+      ><span class="page-indicator-label">Page </span><span id="pageNum">{{ viewer.indicatorPage() }}</span>
+      <span class="page-indicator-sep">/</span> <span id="pageCount">{{ viewer.indicatorCount() }}</span></span
+    >
+    <button id="btnNext" class="icon-btn" [disabled]="viewer.nextDisabled()" aria-label="Next page" (click)="viewer.next()">
+      <span class="icon icon-chevron-right" aria-hidden="true"></span>
+    </button>
+  </div>
+  <div class="viewer-controls-group">
+    <button
+      id="btnPan"
+      class="icon-btn viewer-tool-btn"
+      [class.is-active]="viewer.isPanning()"
+      [disabled]="!doc.hasDocument()"
+      aria-label="Pan document"
+      [attr.aria-pressed]="viewer.isPanning()"
+      title="Pan document"
+      (click)="viewer.isPanning.set(!viewer.isPanning())"
+    >
+      <span class="icon icon-move" aria-hidden="true"></span>
+    </button>
+    <span class="viewer-controls-divider" aria-hidden="true"></span>
+    <button id="btnZoomOut" class="icon-btn" [disabled]="!doc.hasDocument()" aria-label="Zoom out" (click)="viewer.changeScale(-0.25)">
+      <span class="icon icon-minus" aria-hidden="true"></span>
+    </button>
+    <button type="button" id="zoomLevel" class="zoom-level" [disabled]="!doc.hasDocument()" title="Reset zoom to fit the page" (click)="viewer.resetZoomToFit()">
+      {{ zoomLabel() }}
+    </button>
+    <button id="btnZoomIn" class="icon-btn" [disabled]="!doc.hasDocument()" aria-label="Zoom in" (click)="viewer.changeScale(0.25)">
+      <span class="icon icon-plus" aria-hidden="true"></span>
+    </button>
+  </div>
+</ng-template>
+
+<div
+  class="viewer-scroll"
+  #scroll
+  [class.is-zoomed]="viewer.userHasManuallyZoomed()"
+  [class.is-panning]="viewer.isPanning()"
+  [class.is-dragging]="panning()"
+  (pointerdown)="onPanStart($event)"
+  (pointermove)="onPanMove($event)"
+  (pointerup)="onPanEnd($event)"
+  (pointercancel)="onPanEnd($event)"
+  (click)="onScrollClick($event)"
+>
+  <div
+    class="empty-state-viewer"
+    id="emptyStateViewer"
+    [style.display]="viewer.containerVisible() ? 'none' : 'flex'"
+    [class.drag-active]="emptyDragActive()"
+    (dragenter)="onFileDrag($event, 'empty', true)"
+    (dragover)="onFileDrag($event, 'empty', true)"
+    (dragleave)="onFileDragLeave($event, 'empty')"
+    (drop)="onFileDrop($event, 'empty')"
+  >
+    <div class="empty-icon-wrap">
+      <span class="empty-icon icon-file-detailed"></span>
+    </div>
+    <h3>No Document Loaded</h3>
+    <p>Drag &amp; drop a PDF into this area, use <strong>Upload</strong> in the header, or load one straight from Base64.</p>
+    <div class="empty-state-actions">
+      <button type="button" class="btn btn-ghost empty-state-base64-btn" id="emptyStateBase64Btn" (click)="ui.base64ModalOpen.set(true)">
+        <span class="icon icon-code" aria-hidden="true"></span> Paste Base64
+      </button>
+      <button type="button" class="btn btn-ghost empty-state-base64-btn" id="emptyStateSampleBtn" (click)="tour.requestDemoSampleLoad(null)">
+        <span class="icon icon-file-text" aria-hidden="true"></span> Try the sample document
+      </button>
+    </div>
+    <div class="empty-state-dropline" aria-hidden="true"></div>
+  </div>
+
+  <div
+    class="pdf-container"
+    id="pdfContainer"
+    #container
+    [style.display]="viewer.containerVisible() ? 'inline-block' : 'none'"
+    [class.placing-mode]="signatures.isPlacing()"
+    [class.template-drop-active]="templateDropActive()"
+    [class.drag-active]="containerDragActive()"
+    (click)="onContainerClick($event)"
+    (dragenter)="onFileDrag($event, 'container', true)"
+    (dragover)="onContainerDragOver($event)"
+    (dragleave)="onContainerDragLeave($event)"
+    (drop)="onContainerDrop($event)"
+  >
+    <canvas id="pdf-canvas" #canvas></canvas>
+    <div
+      id="overlay-layer"
+      #overlayLayer
+      [style.pointer-events]="viewer.diffActive() ? 'none' : null"
+      [class.has-many-diff-markers]="viewer.diffActive() && viewer.manyDiffMarkers()"
+    >
+      @if (!viewer.diffActive()) {
+        @for (o of fieldOverlays(); track o.field.uid) {
+          <div
+            class="field-overlay"
+            [class.required]="o.field.required"
+            [class.is-staged]="o.staged"
+            [class.is-invisible-field]="o.invisible"
+            [class.is-signed]="o.locked"
+            [class.is-readonly]="o.locked && !o.field.signed"
+            [class.active]="o.active"
+            [class.is-selected]="o.selected"
+            [class.is-hover]="o.hovered"
+            [attr.data-field-name]="o.field.name || ''"
+            [attr.data-overview-kind]="o.field.type === 'Signature' ? 'signature' : 'field'"
+            [attr.title]="o.title"
+            [style.left.px]="o.box.left"
+            [style.top.px]="o.box.top"
+            [style.width.px]="o.box.width"
+            [style.height.px]="o.box.height"
+            (mouseenter)="onOverlayEnter($event, o.field.uid)"
+            (mouseleave)="onOverlayLeave(o.field.uid)"
+            (mousedown)="onOverlayMouseDown($event, o.field)"
+            (click)="onOverlayClick($event, o.field)"
+          >
+            <span class="field-overlay-icon" aria-hidden="true"><span class="icon" [class]="o.icon" aria-hidden="true"></span></span>
+            <div class="field-invisible-pin" aria-hidden="true" [style.display]="o.invisible ? null : 'none'">
+              <span class="icon" [class]="o.pinIcon" aria-hidden="true"></span>
+            </div>
+            <div class="field-label" [style.display]="o.labelVisible ? 'block' : 'none'">
+              <span class="field-label-name">{{ o.field.name || 'Signature field' }}</span>
+              <div class="field-label-tooltip field-label-invisible" [hidden]="!o.invisible">Invisible field — no visible footprint on the page</div>
+              <div class="field-label-tooltip field-label-generic" [hidden]="!o.field.tooltip">{{ o.field.tooltip || '' }}</div>
+            </div>
+            <div class="resize-handle" [style.display]="o.locked ? 'none' : null" (mousedown)="onResizeStart($event, o.field)"></div>
+            <div
+              class="template-save-handle"
+              draggable="true"
+              [hidden]="o.locked"
+              [title]="'Drag &quot;' + (o.field.name || 'this field') + '&quot; into Signature Templates to save it'"
+              (mousedown)="$event.stopPropagation()"
+              (dragstart)="onTemplateGripDragStart($event, o.field)"
+              (dragend)="templates.endDocumentFieldDrag()"
+            >
+              <span class="icon icon-layers" aria-hidden="true"></span>
+            </div>
+            <button
+              type="button"
+              class="field-delete-handle"
+              aria-label="Remove field"
+              [hidden]="o.locked || o.smallField"
+              [title]="'Remove &quot;' + (o.field.name || 'this field') + '&quot;'"
+              (mousedown)="$event.stopPropagation()"
+              (click)="onDeleteHandle($event, o.field)"
+            >
+              <span class="icon icon-close" aria-hidden="true"></span>
+            </button>
+          </div>
+        }
+        <!-- Checkbox/radio options beyond the first widget: view-only markers. -->
+        @for (m of extraWidgetMarkers(); track $index) {
+          <div
+            class="diff-object-hover-overlay"
+            [class.is-invisible-field]="m.invisible"
+            style="pointer-events: none"
+            [title]="m.title"
+            [style.left.px]="m.box.left"
+            [style.top.px]="m.box.top"
+            [style.width.px]="m.box.width"
+            [style.height.px]="m.box.height"
+          >
+            @if (m.invisible) {
+              <div class="field-invisible-pin"><span class="icon" [class]="m.icon" aria-hidden="true"></span></div>
+            }
+          </div>
+        }
+        @if (ui.activeSection() === 'metadata') {
+          @for (h of hotspots(); track h.item.kind + ':' + h.item.key) {
+            <div
+              class="overview-hotspot"
+              [class.is-invisible-field]="h.invisible"
+              [class.is-selected]="h.selected"
+              [class.is-hover]="h.hovered"
+              [attr.data-kind]="h.item.kind"
+              [attr.data-key]="h.item.key"
+              [title]="h.title"
+              [style.left.px]="h.box.left"
+              [style.top.px]="h.box.top"
+              [style.width.px]="h.box.width"
+              [style.height.px]="h.box.height"
+              (click)="overview.openSheet(h.item.kind, h.item.key)"
+            >
+              @if (h.invisible) {
+                <div class="field-invisible-pin" [attr.data-label]="h.item.label || ''">
+                  <span class="icon" [class]="h.icon" aria-hidden="true"></span>
+                </div>
+              }
+            </div>
+          }
+        }
+      } @else {
+        @for (m of diffMarkerBoxes(); track $index) {
+          <div
+            class="diff-object-hover-overlay"
+            [class.is-invisible-field]="m.invisible"
+            [style.left.px]="m.box.left"
+            [style.top.px]="m.box.top"
+            [style.width.px]="m.box.width"
+            [style.height.px]="m.box.height"
+          >
+            @if (m.invisible) {
+              <div class="field-invisible-pin"><span class="icon icon-eye-off" aria-hidden="true"></span></div>
+            }
+          </div>
+        }
+      }
+    </div>
+    <div class="drop-replace-overlay" aria-hidden="true"></div>
+  </div>
+
+  <div class="document-loading-overlay" id="documentLoadingOverlay" [hidden]="!doc.loadingOverlayVisible()">
+    <div
+      class="document-loading-page"
+      id="documentLoadingPage"
+      [style.transform]="'scale(' + (0.35 + (doc.loadingProgress() / 100) * 0.65) + ')'"
+      [style.opacity]="0.4 + (doc.loadingProgress() / 100) * 0.6"
+    >
+      <span class="icon icon-file-detailed" aria-hidden="true"></span>
+    </div>
+    <div class="document-loading-progress">
+      <div class="document-loading-bar">
+        <div class="document-loading-bar-fill" id="documentLoadingBarFill" [style.width.%]="doc.loadingProgress()"></div>
+      </div>
+      <div class="document-loading-label" id="documentLoadingLabel">
+        Loading document… <span id="documentLoadingPercent">{{ roundedProgress() }}%</span>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,113 @@
+<div class="topbar-inner">
+  <div class="topbar-row topbar-row-primary">
+    <div class="brand">
+      <img class="brand-logo" src="/assets/logo_app.png" alt="PDF Seal logo" />
+    </div>
+
+    <div class="section-nav-shell">
+      <button
+        type="button"
+        class="section-nav-toggle"
+        id="sectionNavToggle"
+        aria-label="Toggle sections"
+        [attr.aria-expanded]="ui.sectionNavOpen()"
+        aria-controls="sectionNav"
+        (click)="toggleNav($event)"
+      >
+        <span class="icon icon-hamburger" aria-hidden="true"></span>
+      </button>
+      <nav class="section-nav" id="sectionNav" aria-label="Document sections" [class.is-open]="ui.sectionNavOpen()">
+        @for (item of nav; track item.id) {
+          <button
+            type="button"
+            class="section-nav-btn"
+            [id]="item.navId"
+            [class.active]="ui.activeSection() === item.id"
+            [class.tour-nav-flash]="tour.flashNavId() === item.navId"
+            [attr.data-section]="item.id"
+            [attr.aria-current]="ui.activeSection() === item.id ? 'page' : null"
+            (click)="ui.goToSection(item.id)"
+          >
+            <span class="section-nav-icon" aria-hidden="true"><span class="icon" [class]="item.icon"></span></span>
+            <span class="section-nav-label">{{ item.label }}</span>
+          </button>
+        }
+      </nav>
+    </div>
+  </div>
+
+  <div class="topbar-actions">
+    <div class="topbar-row topbar-row-secondary">
+      <button
+        type="button"
+        class="icon-btn topbar-settings-btn"
+        id="btnOpenHelp"
+        aria-label="Open help"
+        title="Help"
+        (click)="$event.stopPropagation(); ui.helpModalOpen.set(true)"
+      >
+        <span class="icon icon-help-circle" aria-hidden="true"></span>
+      </button>
+      <button
+        type="button"
+        class="icon-btn topbar-settings-btn"
+        id="btnOpenSettings"
+        aria-label="Open settings"
+        title="Settings"
+        (click)="$event.stopPropagation(); ui.openSettings()"
+      >
+        <span class="icon icon-settings-gear" aria-hidden="true"></span>
+      </button>
+      <div class="upload-zone">
+        <div class="dropdown" id="uploadDropdown" [class.is-open]="ui.openDropdown() === 'upload'">
+          <button
+            type="button"
+            class="btn btn-ghost dropdown-toggle"
+            id="btnUploadToggle"
+            aria-haspopup="true"
+            [attr.aria-expanded]="ui.openDropdown() === 'upload'"
+            (click)="toggleDropdown('upload', $event)"
+          >
+            Upload <span class="dropdown-caret"><span class="icon icon-chevron-down" aria-hidden="true"></span></span>
+          </button>
+          <div class="dropdown-menu" id="uploadMenu" role="menu">
+            <button type="button" class="dropdown-item" id="uploadFromComputerBtn" role="menuitem" (click)="pickFile()">
+              <span class="dropdown-item-icon"><span class="icon icon-upload-device" aria-hidden="true"></span></span> Upload from device
+            </button>
+            <button type="button" class="dropdown-item" id="uploadBase64Btn" role="menuitem" (click)="openBase64()">
+              <span class="dropdown-item-icon"><span class="icon icon-code" aria-hidden="true"></span></span> Upload as Base64
+            </button>
+          </div>
+        </div>
+        <input type="file" id="mainFileInput" #fileInput accept="application/pdf" style="display: none" (change)="onFileChosen(fileInput)" />
+      </div>
+    </div>
+    <div class="topbar-row topbar-row-tertiary">
+      <button type="button" class="btn btn-ghost" id="btnShare" [disabled]="!doc.hasDocument() || doc.isDocumentUpdating()" (click)="share.open()">
+        <span class="icon icon-share" aria-hidden="true"></span> Share
+      </button>
+      <div class="dropdown" id="downloadDropdown" [class.is-open]="ui.openDropdown() === 'download'">
+        <button
+          type="button"
+          class="btn btn-primary dropdown-toggle"
+          id="btnDownloadToggle"
+          [disabled]="!doc.hasDocument()"
+          aria-haspopup="true"
+          [attr.aria-expanded]="ui.openDropdown() === 'download'"
+          (click)="toggleDropdown('download', $event, !doc.hasDocument())"
+        >
+          Download <span class="dropdown-caret"><span class="icon icon-chevron-down" aria-hidden="true"></span></span>
+        </button>
+        <div class="dropdown-menu dropdown-menu-right" id="downloadMenu" role="menu">
+          <button type="button" class="dropdown-item" id="exportPdfBtn" role="menuitem" (click)="exportPdf()">
+            <span class="dropdown-item-icon"><span class="icon icon-download" aria-hidden="true"></span></span> Export as PDF
+          </button>
+          <button type="button" class="dropdown-item" id="copyBase64Btn" role="menuitem" (click)="copyBase64()">
+            <span class="dropdown-item-icon"><span class="icon icon-copy" aria-hidden="true"></span></span> Copy as Base64
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="scan-divider" aria-hidden="true"><span class="scan-divider-glow"></span></div>

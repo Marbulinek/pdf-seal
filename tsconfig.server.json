@@ -1,0 +1,11 @@
+{
+  "extends": "@tsconfig/node24/tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["server.ts", "lib/**/*.ts"],
+  "exclude": ["node_modules", "dist", "uploads", "public", "**/*.test.ts"]
+}

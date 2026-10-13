@@ -2,10 +2,10 @@
 // each locally-stored snapshot was produced (an appended incremental update
 // vs. a full rewrite) and turning that into the badges/filter the UI shows.
 //
-// public/index.html inlines this same classify/badge/filter logic directly
-// (the app has no frontend build step to import from here), so this module
-// exists to give it unit coverage; keep the two in sync by hand if either
-// changes. Everything here is pure: no IndexedDB, no DOM.
+// The Angular app imports this module directly (VersionsStore and
+// VersionStoreService under src/app/), so there is one copy of the logic,
+// covered by test/lib/VersionHistory.test.ts. Everything here is pure: no
+// IndexedDB, no DOM.
 
 export type SaveKind = 'initial' | 'identical' | 'incremental' | 'rewrite';
 export type VersionSource = 'upload' | 'imported' | 'edit';

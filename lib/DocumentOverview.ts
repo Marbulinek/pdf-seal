@@ -3,8 +3,8 @@
 // into the one list that drives both the panel and the PDF hotspots, and
 // picking the "at a glance" chips.
 //
-// public/index.html inlines this same logic (no frontend build step), so this
-// module exists to give it unit coverage; keep the two in sync by hand.
+// The Angular app imports this module directly (src/app/features/overview/),
+// so there is one copy of the logic, covered by test/lib/DocumentOverview.test.ts.
 // Everything here is pure: no DOM, no fetch.
 
 export type OverviewKind = 'signature' | 'stamp' | 'field' | 'link' | 'comment';
@@ -155,7 +155,7 @@ export function curateRawEntries(raw: Record<string, string> | null | undefined,
     .map(([key, value]) => ({ key, label: KEY_LABELS[key] || key, value: curateValue(key, value) }));
 }
 
-// Same wording as the panel's fieldStateLabel() in public/index.html.
+// The Overview list's status badge for a form field (Signed / Filled / Checked / Empty).
 export function fieldStateLabel(field: any): string {
   const raw = field.raw || {};
   if (field.type === 'Signature') return raw.V ? 'Signed' : 'Empty';

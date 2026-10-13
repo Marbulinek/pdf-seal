@@ -1,0 +1,119 @@
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { RECEIVER_STEPS, SENDER_STEPS, ShareService } from '../../features/share/share.service';
+import { isBackdropClick } from './simple-modals';
+
+/**
+ * Hybrid share modal. The PDF is always encrypted in the browser; WebRTC is
+ * preferred and the encrypted WebSocket relay is the resilient fallback. The
+ * same box doubles as the recipient's progress view on /share/:id.
+ */
+@Component({
+  selector: 'div[appShareModal]',
+  template: `
+    <div class="modal-box share-modal-box" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
+      <div class="modal-header">
+        <h3 id="shareModalTitle">Share PDF</h3>
+        <button type="button" class="modal-close" id="closeShareModalBtn" aria-label="Close" (click)="share.close()">
+          <span class="icon icon-close" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="share-modal-hero-panel">
+        <img class="share-hero-seal" src="/assets/images/seal-sharing.webp" alt="" aria-hidden="true" />
+        <div class="share-modal-hero-copy">
+          @if (share.isReceiverView()) {
+            <p class="modal-hint" id="shareDescription">
+              Someone shared a PDF with you. It downloads securely and opens automatically once the transfer finishes.
+            </p>
+            <div class="share-security-note" id="shareSecurityNote"><span class="icon icon-lock" aria-hidden="true"></span> Encrypted transfer</div>
+          } @else {
+            <p class="modal-hint" id="shareDescription">Create a private link to this PDF. Only people you send it to can open it.</p>
+            <div class="share-security-note" id="shareSecurityNote">
+              <span class="icon icon-lock" aria-hidden="true"></span> Encrypted · link expires automatically
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="share-steps" id="shareStepsSender" [hidden]="share.isReceiverView()">
+        @for (step of senderSteps; track step.key; let i = $index, first = $first) {
+          @if (!first) {
+            <div class="share-step-connector" [class.is-done]="!share.isReceiverView() && i - 1 < activeIndex()"></div>
+          }
+          <div
+            class="share-step"
+            [attr.data-step]="step.key"
+            [class.is-active]="!share.isReceiverView() && i === activeIndex()"
+            [class.is-done]="!share.isReceiverView() && i < activeIndex()"
+          >
+            <span class="share-step-badge">{{ i + 1 }}</span><span class="share-step-label">{{ step.label }}</span>
+          </div>
+        }
+      </div>
+      <div class="share-steps" id="shareStepsReceiver" [hidden]="!share.isReceiverView()">
+        @for (step of receiverSteps; track step.key; let i = $index, first = $first) {
+          @if (!first) {
+            <div class="share-step-connector" [class.is-done]="share.isReceiverView() && i - 1 < activeIndex()"></div>
+          }
+          <div
+            class="share-step"
+            [attr.data-step]="step.key"
+            [class.is-active]="share.isReceiverView() && i === activeIndex()"
+            [class.is-done]="share.isReceiverView() && i < activeIndex()"
+          >
+            <span class="share-step-badge">{{ i + 1 }}</span><span class="share-step-label">{{ step.label }}</span>
+          </div>
+        }
+      </div>
+
+      <div class="share-link-row" id="shareLinkRow" [hidden]="!share.linkVisible()">
+        <input #linkInput class="modal-text-input share-link-input" id="shareLink" readonly aria-label="Share link" [value]="share.link()" />
+        <div class="copy-share-wrap">
+          <button type="button" class="btn btn-primary" id="copyShareLinkBtn" (click)="share.copyLink(linkInput)">Copy link</button>
+          <span class="copy-share-tooltip" id="copyShareTooltip" role="status" [class.is-visible]="share.copiedVisible()">Copied</span>
+        </div>
+      </div>
+      <div class="share-progress-wrap" id="shareProgressWrap" [hidden]="!share.progress().visible">
+        <div class="share-progress-label">
+          <span id="shareProgressText">{{ share.progress().text }}</span><strong id="shareProgressPercent">{{ share.progress().percent }}%</strong>
+        </div>
+        <div class="share-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="share.progress().percent">
+          <span id="shareProgressBar" [style.width.%]="share.progress().percent" [class.is-complete]="share.progress().percent === 100"></span>
+        </div>
+      </div>
+      <div class="share-status {{ share.status().type }}" id="shareStatus" aria-live="polite">{{ share.status().message }}</div>
+      <div class="share-connected-users" id="shareConnectedUsersWrap" [hidden]="share.role() !== 'sender'">
+        Connected: <strong id="shareConnectedUsers">{{ share.connectedUsers() }}</strong>
+      </div>
+      <p class="share-recipient-note" id="shareRecipientNote">
+        {{ share.isReceiverView() ? "This link works until the sender's session expires." : 'Anyone with this link can open the PDF until the session expires.' }}
+      </p>
+      <div class="modal-actions" id="shareActions">
+        <button type="button" class="btn btn-ghost" id="cancelShareBtn" (click)="share.close()">{{ share.isReceiverView() ? 'Close' : 'Cancel' }}</button>
+        <button type="button" class="btn btn-primary" id="startShareBtn" [hidden]="!share.startVisible()" (click)="share.startSending()">
+          Create share link
+        </button>
+      </div>
+    </div>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    id: 'shareModal',
+    class: 'modal-backdrop',
+    '[class.is-open]': 'share.modalOpen()',
+    '[attr.aria-hidden]': '!share.modalOpen()',
+    '(click)': 'onBackdrop($event)',
+  },
+})
+export class ShareModal {
+  protected readonly share = inject(ShareService);
+  protected readonly senderSteps = SENDER_STEPS;
+  protected readonly receiverSteps = RECEIVER_STEPS;
+
+  protected activeIndex(): number {
+    return this.share.stepIndex();
+  }
+
+  protected onBackdrop(event: MouseEvent): void {
+    if (isBackdropClick(event)) this.share.close();
+  }
+}

@@ -33,7 +33,7 @@ several fixtures a few times over will hit it.
 
 Paste into the browser devtools console once the app is loaded, before
 running a scenario. It patches a few things in place so counts/bytes can be
-read back afterward; nothing here is committed into `public/index.html`.
+read back afterward; nothing here is committed into the app.
 
 ```js
 (() => {
@@ -171,24 +171,24 @@ Chrome/the built-in browser pane.
 
 ## Scenarios
 
-Drive these through the page's own globals in the devtools console (all are
-plain top-level functions in `public/index.html`'s script, so they hang off
-`window`):
+Drive these from the devtools console through `window.pdfSeal`, which a
+development build (`npm run dev`) exposes with the app's services and signal
+stores (see `src/app/core/debug-handle.ts`; production builds don't have it):
 
 1. **Fresh upload, small file.** Upload `fields-60.pdf`. Snapshot after the
    document settles.
 2. **Fresh upload, oversized images.** Upload `large-images-200-fields.pdf`.
    Snapshot after settle.
 3. **Field-heavy Apply.** With `fields-60.pdf` open, move/edit several
-   fields, then `await applyPendingFieldChanges()`. Snapshot before and
+   fields, then `await pdfSeal.signatures.applyPending()`. Snapshot before and
    after; note `apiCalls`/`apiUploadBytes` delta for exactly one Apply.
-4. **Undo/redo churn.** `await undoFieldChange()` / redo five times in a
+4. **Undo/redo churn.** `await pdfSeal.signatures.undo()` / `redo()` five times in a
    row after a few Applies. Snapshot `liveLoadingTasks` (live pdf.js
    documents) after each.
 5. **Open Revisions.** With `bundled-history-12.pdf` or
-   `native-incremental-6.pdf` open, `await loadRevisionsIfNeeded()`.
+   `native-incremental-6.pdf` open, `await pdfSeal.versions.loadIfNeeded()`.
    Snapshot `apiCalls`/`apiUploadBytes` and `usedJSHeapMB` before/after.
-6. **Compare/diff.** `await runQuickDiff(1, 2)` (adjust indices to the open
+6. **Compare/diff.** `await pdfSeal.versions.runQuickDiff(1, 2)` (adjust indices to the open
    document's revision count). Snapshot `liveLoadingTasks` after -- it
    should return to its pre-diff value once the compare view closes.
 7. **Startup cost.** Reload the page with a document already in IndexedDB

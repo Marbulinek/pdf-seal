@@ -1,0 +1,55 @@
+<div class="site-footer-inner">
+  <div class="footer-col footer-col-brand">
+    <div class="footer-brand-row">
+      <img class="footer-logo" src="/assets/logo_app.png" alt="PDF Seal" />
+    </div>
+    <p class="footer-tagline">
+      Manage signature fields, inspect metadata, verify certificates, and compare version history — entirely in your browser, nothing is
+      stored on a server.
+    </p>
+  </div>
+
+  <div class="footer-col">
+    <h5 class="footer-col-heading">Links</h5>
+    <a class="footer-link" href="https://github.com/marbulinek/pdf-seal" target="_blank" rel="noopener noreferrer">
+      <span class="footer-link-icon" aria-hidden="true"><span class="icon icon-github"></span></span>
+      GitHub Repository
+    </a>
+    <a class="footer-link" href="https://github.com/marbulinek/pdf-seal/issues/new" target="_blank" rel="noopener noreferrer">
+      <span class="footer-link-icon" aria-hidden="true"><span class="icon icon-chat"></span></span>
+      Report an Issue or Suggest a Feature
+    </a>
+    <a class="footer-link" id="footerDiagnosticsLink" href="#" role="button" (click)="openDiagnostics($event)">
+      <span class="footer-link-icon" aria-hidden="true"><span class="icon icon-info-circle"></span></span>
+      Diagnostics
+    </a>
+    <a
+      class="footer-ext-badge"
+      id="footerExtLink"
+      [href]="extensionUrl"
+      target="_blank"
+      rel="noopener noreferrer"
+      [hidden]="!chrome"
+      (click)="openExtension($event)"
+    >
+      <span class="icon icon-download" aria-hidden="true"></span>
+      PDF Seal Portal
+      <span class="footer-new-badge">NEW</span>
+    </a>
+  </div>
+
+  <div class="footer-col">
+    <h5 class="footer-col-heading">Built for</h5>
+    <span class="footer-badge"><span class="icon icon-lock" aria-hidden="true"></span> Privacy-first editing</span>
+    <span class="footer-badge"><span class="icon icon-shield" aria-hidden="true"></span> Open source &amp; free</span>
+  </div>
+
+  <div class="footer-col footer-col-love">
+    <span class="footer-love">
+      Made with
+      <span class="heart-icon icon-heart" aria-hidden="true"></span>
+    </span>
+    <span class="footer-copy">© 2026 PDF Seal</span>
+    <span class="footer-version" id="footerVersion" aria-live="polite">{{ version() }}</span>
+  </div>
+</div>

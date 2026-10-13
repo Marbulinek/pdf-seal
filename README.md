@@ -4,7 +4,7 @@
 
 **PDF Seal** is a browser-based workspace for preparing PDFs for signing: place signature fields, inspect metadata, compare revisions, examine embedded certificates, and share the result peer-to-peer. Nothing is kept on a server — your document stays in your browser.
 
-**[Open the live app](https://pdf-seal-production.up.railway.app)** · Built with Node.js, Express, TypeScript, pdf-lib and pdf.js.
+**[Open the live app](https://pdf-seal-production.up.railway.app)** · Built with Angular, Node.js, Express, TypeScript, pdf-lib and pdf.js.
 
 > PDF Seal does **not** apply cryptographic signatures. It inserts interactive signature form fields that PDF viewers and e-signature tools recognise, and it can inspect signatures that already exist.
 
@@ -47,14 +47,16 @@ Click **?** next to Settings for per-feature docs, each with a "Show me" button.
 
 ## Run it locally
 
+Requires Node.js ^22.22.3, ^24.15.0 or 26+ (the Angular CLI's minimum).
+
 ```bash
 npm install
-npm run dev          # tsx, no build step
+npm run dev          # Angular build in watch mode + API under tsx watch
 # or
 npm run build && npm start
 ```
 
-Then open <http://localhost:3000>.
+Then open <http://localhost:3000>. For hot module replacement, run `npm run dev:api` and `npm run dev:web` in two terminals and open <http://localhost:4200> instead (the Angular dev server proxies `/api` and `/signal` to the API).
 
 ### Docker
 
@@ -64,15 +66,16 @@ docker compose up --build
 docker build -t pdf-seal . && docker run -p 3000:3000 pdf-seal
 ```
 
-The image is a multi-stage Node 24 / Alpine build shipping only production dependencies and the compiled `dist/`.
+The image is a multi-stage Node 24 / Alpine build shipping only production dependencies and the compiled `dist/` (the bundled API in `dist/server.js` and the Angular build in `dist/web/browser`).
 
 ## Development
 
 | Command | Purpose |
 | --- | --- |
-| `npm test` | Vitest suite (`test/` mirrors `lib/`) |
-| `npm run test:coverage` | Coverage with enforced thresholds on `lib/**` |
-| `npm run build` | Type-check and bundle |
+| `npm test` | Both suites: Vitest for the backend (`test/` mirrors `lib/`) and the Angular unit tests (`ng test`, `src/**/*.spec.ts`) |
+| `npm run test:coverage` | Coverage with enforced thresholds on `lib/**`, plus Angular coverage |
+| `npm run build` | Type-check and bundle the API, then build the Angular UI |
+| `npm run dev:web` / `npm run build:web` | Angular dev server (port 4200) / production build only |
 | `npm run build:demo-sample` | Regenerate the Help-tour sample PDF and demo root CA |
 | `npm run build:perf-fixtures` | Generate performance fixtures — see [`docs/performance.md`](docs/performance.md) |
 | `npm run build:extension` | Zip the browser extension for the Chrome Web Store |
@@ -81,7 +84,7 @@ Releases are automated with semantic-release from Conventional Commits. Contribu
 
 ## Tech stack
 
-Express · Multer · ws · pdf-lib · pkijs · pdf.js (self-hosted, no CDN) · TypeScript/tsx · IndexedDB · WebRTC · Vitest
+Angular 22 (standalone components, signals, zoneless, lazy routes) · NgRx SignalStore · Express · Multer · ws · pdf-lib · pkijs · pdf.js (self-hosted, no CDN) · TypeScript/tsx · IndexedDB · WebRTC · Vitest
 
 ## Privacy
 

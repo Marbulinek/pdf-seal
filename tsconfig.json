@@ -1,11 +1,32 @@
+/* Solution-style root config. The Angular front end (src/) and the Express
+   back end (server.ts + lib/) are separate TypeScript programs:
+     - tsconfig.app.json / tsconfig.spec.json -> the Angular app and its specs
+     - tsconfig.server.json                   -> the Node server and lib/ */
 {
-  "extends": "@tsconfig/node24/tsconfig.json",
+  "compileOnSave": false,
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": ".",
-    "declaration": false,
-    "sourceMap": false
+    "strict": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
-  "include": ["server.ts", "lib/**/*.ts"],
-  "exclude": ["node_modules", "dist", "uploads", "public", "**/*.test.ts"]
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true
+  },
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.spec.json" },
+    { "path": "./tsconfig.server.json" }
+  ]
 }

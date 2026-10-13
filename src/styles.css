@@ -5567,3 +5567,37 @@ body[data-overview-hide~="comment"][data-active-section="metadata"] .overview-ho
 .overview-history .overview-callout { margin: 0; }
 #overviewSheetFooter:not([hidden]) { display: flex; flex-wrap: wrap; gap: 10px; }
 .overview-history:empty { display: none; }
+
+/* ---- Formerly an inline <style> block in public/index.html ---- */
+    /* Two variables styles.css references but never defines: --sand-light
+       (.revisions-view-tab:hover) and --transition-fast (.visual-diff-toolbar). */
+    :root {
+      --sand-light: var(--cream);
+      --transition-fast: 0.15s ease;
+    }
+
+    /* ---- Viewer diff banner: shown in the main (left) document viewer while it's
+       displaying a single revision snapshot or a revision-vs-revision visual diff,
+       instead of the live editable document. `[hidden] { display: none !important }`
+       matches the same defensive pattern used by .btn elsewhere in styles.css --
+       without it, the unconditional `display: flex` below wins the cascade over the
+       browser's default [hidden] rule and the banner never actually hides. ---- */
+    .viewer-diff-banner {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 8px 14px; margin-bottom: 8px; border-radius: var(--radius-s);
+      border: none;
+      background: var(--navy); color: #ffffff;
+      font-size: 0.82rem; font-weight: 600;
+      box-shadow: none;
+    }
+    .viewer-diff-banner[hidden] { display: none !important; }
+    .viewer-diff-banner button { flex-shrink: 0; }
+
+/* Angular host elements for structural components must not add layout boxes
+   of their own -- the original stylesheet was written for a flat DOM. */
+app-root, app-topbar, app-viewer, app-footer, app-notification-stack,
+app-pending-changes-bar, app-tour-overlay, app-modals, app-sheets,
+app-overview-section, app-signatures-section, app-versions-section,
+app-certificates-section, app-share-receive {
+  display: contents;
+}

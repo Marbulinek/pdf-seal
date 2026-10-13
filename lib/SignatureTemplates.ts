@@ -2,14 +2,14 @@
 // named, reusable lists of field definitions the user keeps in localStorage
 // and drops onto any document.
 //
-// public/index.html inlines this same normalization/naming/placement logic
-// directly (the app has no frontend build step to import from here), so this
-// module exists to give it unit coverage; keep the two in sync by hand if
-// either changes. Everything here is pure: no localStorage, no DOM.
+// The Angular app imports this module directly (TemplatesStore in
+// src/app/features/signatures/templates.store.ts), so there is one copy of
+// the logic, covered by test/lib/SignatureTemplates.test.ts. Everything here
+// is pure: no localStorage, no DOM.
 //
 // Coordinates are PDF user space points with a bottom-left origin -- the same
-// space as a field's `rect` in the UI (see screenRectToPdf() in
-// public/index.html) -- and `page` is 0-indexed, matching `field.page`.
+// space as a field's `rect` in the UI (see ViewerService.screenRectToPdf() in
+// src/app/core/viewer.service.ts) -- and `page` is 0-indexed, matching `field.page`.
 
 export type TemplateItemType = 'signature' | 'text';
 
@@ -87,7 +87,7 @@ export const TEMPLATE_STORE_VERSION = 1;
 // but it makes the file self-describing for anyone who opens it in an editor.
 export const TEMPLATE_EXPORT_APP = 'pdf-seal';
 
-// Per-type fallbacks, mirroring FIELD_TYPE_CONFIG in public/index.html so a
+// Per-type fallbacks, mirroring FIELD_TYPE_CONFIG in src/app/core/field-rules.ts so a
 // template item with a missing/garbage size lands at the same default the
 // Add New panel would have used.
 const DEFAULT_SIZE: Record<TemplateItemType, { width: number; height: number }> = {

@@ -82,17 +82,37 @@ const MAX_REVISION_BUNDLE_BYTES = 40 * 1024 * 1024; // 40MB combined (pdfDocumen
 const MAX_CERT_UPLOAD_BYTES = 64 * 1024; // 64KB
 const certUpload = multer({ dest: "uploads/", limits: { fileSize: MAX_CERT_UPLOAD_BYTES } });
 
+// The Angular UI is built (`npm run build:web`, Angular CLI) into
+// dist/web/browser -- index.html, the hashed JS/CSS bundles, and everything
+// copied verbatim from public/ (assets, vendor, 404.html). Resolved from the
+// working directory like UPLOADS_DIR: the server always runs from the repo
+// (or image) root, both as `tsx server.ts` and as the bundled dist/server.js.
+const WEB_ROOT = path.resolve(process.cwd(), "dist", "web", "browser");
+const INDEX_HTML = path.join(WEB_ROOT, "index.html");
+const NOT_FOUND_HTML = path.join(WEB_ROOT, "404.html");
+
 // Serve the self-hosted pdf.js vendor bundle (~1.3MB) with a long,
 // immutable cache: on a slow/constrained host, letting every colleague's
 // browser cache it across visits instead of re-fetching it each time saves
 // real bandwidth and avoids one more big synchronous read+send per request.
-// Scoped to /vendor only -- unlike index.html/styles.css, these files don't
-// change between deploys of the app itself.
-app.use("/vendor", express.static("public/vendor", { maxAge: "30d", immutable: true }));
+// Scoped to /vendor only -- unlike index.html, these files don't change
+// between deploys of the app itself.
+app.use("/vendor", express.static(path.join(WEB_ROOT, "vendor"), { maxAge: "30d", immutable: true }));
 
-// Everything else in 'public' (index.html, styles.css, app JS) is served
-// without aggressive caching so a new deploy is picked up immediately.
-app.use(express.static("public"));
+// The Angular bundles carry a content hash in their file name
+// (main-XXXXXXXX.js, chunk-XXXXXXXX.js, styles-XXXXXXXX.css), so they can be
+// cached forever; a new deploy ships new names. index.html is never served
+// from here (`index: false`) -- the SPA routes below send it without caching,
+// so a new deploy is picked up immediately.
+const HASHED_BUNDLE = /-[A-Za-z0-9_-]{8}\.(?:js|css)$/;
+app.use(
+  express.static(WEB_ROOT, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (HASHED_BUNDLE.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    },
+  }),
+);
 app.use(express.json());
 
 // Baseline throttling for every HTTP route. Keeps a single client from
@@ -136,11 +156,26 @@ const uploadLimiter = rateLimit({
   message: { error: "Too many upload requests. Please slow down and try again shortly." },
 });
 
+// The single-page app: the shell plus one lazily-loaded route per section
+// (see src/app/app.routes.ts). Every client-side route answers with the same
+// index.html; anything else falls through to the 404 handler at the end.
+function sendApp(res: Response) {
+  if (!fs.existsSync(INDEX_HTML)) {
+    return res.status(503).type("text/plain").send("The web UI has not been built yet -- run `npm run build:web` (or `npm run dev`).");
+  }
+  res.setHeader("Cache-Control", "no-cache");
+  res.sendFile(INDEX_HTML);
+}
+
+app.get(["/", "/signatures", "/versions", "/certificates"], (_req: Request, res: Response) => {
+  sendApp(res);
+});
+
 app.get("/share/:sessionId", (req: Request, res: Response) => {
   const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
-  if (!SESSION_ID_PATTERN.test(sessionId)) return res.status(404).sendFile(path.resolve("public/404.html"));
+  if (!SESSION_ID_PATTERN.test(sessionId)) return res.status(404).sendFile(NOT_FOUND_HTML);
   log("info", "share", "page-opened", { sessionId });
-  res.sendFile(path.resolve("public/index.html"));
+  sendApp(res);
 });
 
 // Ensure the uploads directory exists
@@ -712,7 +747,7 @@ app.get('/api/share-config', (_req: Request, res: Response) => {
 // Last route: anything unmatched is a 404 -- JSON for the API, a page for browsers.
 app.use((req: Request, res: Response) => {
   if (req.path.startsWith("/api/")) return res.status(404).json({ error: "Not found" });
-  res.status(404).sendFile(path.resolve("public/404.html"));
+  res.status(404).sendFile(NOT_FOUND_HTML);
 });
 
 const shareWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });

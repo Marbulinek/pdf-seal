@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PDF Seal is a free, open-source PDF workspace. Manage signature fields, inspect document metadata, browse and compare version history, and share PDFs securely — all in your browser, with nothing stored on a server.">
+  <meta name="author" content="Lukas Caniga <lukas.caniga@gmail.com>">
+  <title>PDF Seal :: Workspace</title>
+  <base href="/">
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- pdf.js is loaded on demand by PdfJsService, but the request should start
+       as early as possible so it is already cached by the time a document opens. -->
+  <link rel="preload" href="/vendor/pdfjs/pdf.min.js" as="script">
+</head>
+<body data-active-section="metadata">
+  <app-root></app-root>
+</body>
+</html>

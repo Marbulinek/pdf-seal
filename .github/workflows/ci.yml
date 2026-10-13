@@ -34,5 +34,25 @@ jobs:
       - name: Bundle backend
         run: npm run build:bundle
 
-      - name: Test with coverage
+      - name: Build web UI (Angular)
+        run: npm run build:web
+
+      - name: Test with coverage (lib + Angular)
         run: npm run test:coverage
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          tags: pdf-seal:ci

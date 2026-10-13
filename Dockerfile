@@ -1,24 +1,27 @@
 # syntax=docker/dockerfile:1
 
-# --- Stage 1: compile TypeScript -------------------------------------------
-# Needs devDependencies (typescript, @types/*), so it's isolated to a stage
-# that never ships -- only dist/ is copied out of it below.
+# --- Stage 1: build the API bundle and the Angular UI ------------------------
+# Needs devDependencies (typescript, esbuild, the Angular CLI), so it's
+# isolated to a stage that never ships -- only dist/ is copied out of it below:
+# dist/server.js (the esbuild-bundled API) and dist/web/browser (the Angular
+# build, which also carries everything from public/: assets, vendor, 404.html).
 FROM node:24-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY tsconfig.json ./
-COPY esbuild.config.mjs ./
+COPY tsconfig.json tsconfig.app.json tsconfig.server.json tsconfig.spec.json angular.json esbuild.config.mjs ./
 COPY server.ts ./
 COPY lib ./lib
+COPY src ./src
+COPY public ./public
 RUN npm run build
 
 # --- Stage 2: production-only node_modules ----------------------------------
 # A separate install (rather than `npm prune` on stage 1) keeps this fully
 # cacheable independent of source changes, and guarantees no dev tooling
-# (tsx, typescript, @types/*) ends up in the runtime image.
+# (tsx, typescript, the Angular CLI, @types/*) ends up in the runtime image.
 FROM node:24-alpine AS prod-deps
 WORKDIR /app
 
@@ -35,7 +38,6 @@ ENV NODE_ENV=production \
 
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node public ./public
 COPY --chown=node:node package.json ./
 
 RUN mkdir -p uploads && chown node:node uploads

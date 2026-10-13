@@ -1,5 +1,8 @@
 node_modules
 dist
+.angular
+out-tsc
+coverage
 uploads
 .git
 .github
