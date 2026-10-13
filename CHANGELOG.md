@@ -1,3 +1,10 @@
+## [1.9.2](https://github.com/Marbulinek/pdf-seal/compare/v1.9.1...v1.9.2) (2026-10-13)
+
+
+### Bug Fixes
+
+* fixed hero block in signature panel ([#77](https://github.com/Marbulinek/pdf-seal/issues/77)) ([c60a451](https://github.com/Marbulinek/pdf-seal/commit/c60a45170622b07521be641ad1d223859eeb514f))
+
 ## [1.9.1](https://github.com/Marbulinek/pdf-seal/compare/v1.9.0...v1.9.1) (2026-10-13)
 
 
