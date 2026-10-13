@@ -4273,7 +4273,8 @@
         // .field-invisible-pin's own unconditional `display: flex`.
         const pin = div.querySelector('.field-invisible-pin');
         pin.style.display = isInvisible ? '' : 'none';
-        if (isInvisible && choiceFieldIcon(field.type)) pin.innerHTML = choiceFieldIcon(field.type);
+        if (isInvisible && (choiceFieldIcon(field.type) || field.signed === true)) pin.innerHTML = field.signed === true ? ICONS.lock : choiceFieldIcon(field.type);
+        if (isInvisible) pin.dataset.label = field.name || 'Signature';
         if (isInvisible) invisibleFieldPins.push({ div, pin });
 
         const label = div.querySelector('.field-label');
@@ -4531,105 +4532,66 @@
       endDocumentFieldDrag();
     });
 
-    // Invisible-field pins are fixed-size, so a field parked hard against a
-    // page edge/corner (their most common spot) would otherwise have its pin
-    // half-clipped by the viewer's rounded, overflow:hidden frame. Nudge each
-    // pin's center back inside the visible canvas, and fan out any that land
-    // on top of each other (several invisible signatures often share the
-    // exact same corner). A thin leader line is drawn back to the field's
-    // true position whenever the pin had to move off it, so the marker still
-    // reads as "pointing at" that spot rather than "the field is right here".
+    // An invisible field's true position (a ~1x1pt rect, usually tucked into a
+    // page corner) means nothing to the user, and it typically sits under the
+    // viewer's rounded, overflow:hidden corner anyway. So each field gets a
+    // fixed-size chip instead, clamped far enough inside the page that the
+    // corner radius never clips it -- a field near a corner lands snapped into
+    // that corner. Chips that would overlap (several invisible signatures often
+    // share the exact same corner) stack vertically, inward from the nearer
+    // top/bottom edge.
     function layoutInvisibleFieldPins(entries) {
       const containerRect = overlayLayer.getBoundingClientRect();
-      const PIN_RADIUS = 11;
-      const EDGE_MARGIN = 4;
-      const minX = containerRect.left + PIN_RADIUS + EDGE_MARGIN;
-      const maxX = containerRect.right - PIN_RADIUS - EDGE_MARGIN;
-      const minY = containerRect.top + PIN_RADIUS + EDGE_MARGIN;
-      const maxY = containerRect.bottom - PIN_RADIUS - EDGE_MARGIN;
-      const clampX = (x) => Math.min(Math.max(x, minX), maxX);
-      const clampY = (y) => Math.min(Math.max(y, minY), maxY);
-      const SPACING = PIN_RADIUS * 2 + 4; // center-to-center gap that keeps neighboring pins from touching
+      const EDGE_INSET = 10; // clears .pdf-container's 14px border-radius
+      const GAP = 4;
 
-      // Read pass: every entry's current field rect, gathered up front. The
+      // Read pass: every field's and chip's geometry, gathered up front. The
       // placement math below only touches these plain numbers -- reading a
-      // fresh getBoundingClientRect() for pin N *after* pin N-1's style
+      // fresh getBoundingClientRect() for chip N *after* chip N-1's style
       // writes have already landed would force a synchronous layout
-      // recalculation per pin, which is the real cost on a document with
+      // recalculation per chip, which is the real cost on a document with
       // many invisible fields (a multi-signer PDF can easily have a dozen).
       const fieldRects = entries.map(({ div }) => div.getBoundingClientRect());
+      const pinRects = entries.map(({ pin }) => pin.getBoundingClientRect());
 
-      const placedCenters = [];
+      const placed = [];
       const placements = entries.map(({ div, pin }, i) => {
         const fieldRect = fieldRects[i];
+        const w = pinRects[i].width;
+        const h = pinRects[i].height;
+        const minX = containerRect.left + EDGE_INSET + w / 2;
+        const maxX = containerRect.right - EDGE_INSET - w / 2;
+        const minY = containerRect.top + EDGE_INSET + h / 2;
+        const maxY = containerRect.bottom - EDGE_INSET - h / 2;
         const anchorX = fieldRect.left + fieldRect.width / 2;
         const anchorY = fieldRect.top + fieldRect.height / 2;
+        const cx = Math.min(Math.max(anchorX, minX), maxX);
+        const baseY = Math.min(Math.max(anchorY, minY), maxY);
+        const dir = anchorY < containerRect.top + containerRect.height / 2 ? 1 : -1;
 
-        // Several invisible fields often share almost the exact same corner
-        // (e.g. every invisible signature on a multi-signer document landing
-        // at 0,0), so fan collisions out *along* whichever edge the anchor
-        // is pinned against, rather than toward/away from it -- offsetting
-        // toward the edge just re-clamps back to the same spot, which is
-        // the bug a naive "try points around the anchor" approach hits here.
-        let normalX = 0, normalY = 0;
-        if (anchorX < minX) normalX = 1; else if (anchorX > maxX) normalX = -1;
-        if (anchorY < minY) normalY = 1; else if (anchorY > maxY) normalY = -1;
-        if (!normalX && !normalY) normalX = 1; // an interior point: pick an arbitrary fan axis
-        const tangentX = -normalY;
-        const tangentY = normalX;
-
-        let cx = clampX(anchorX);
-        let cy = clampY(anchorY);
-
-        let step = 0;
-        while (
-          step < 12
-          && placedCenters.some((p) => Math.hypot(p.x - cx, p.y - cy) < SPACING)
-        ) {
-          step++;
-          // 0, +1, -1, +2, -2, ... so the fan grows outward from the corner
-          // in both directions along the edge instead of just one.
-          const n = Math.ceil(step / 2) * (step % 2 === 0 ? -1 : 1);
-          cx = clampX(anchorX + tangentX * SPACING * n);
-          cy = clampY(anchorY + tangentY * SPACING * n);
+        let cy = baseY;
+        const overlaps = () => placed.some((p) =>
+          Math.abs(p.x - cx) < (p.w + w) / 2 + GAP && Math.abs(p.y - cy) < (p.h + h) / 2 + GAP);
+        for (let step = 1; step <= 12 && overlaps(); step++) {
+          cy = Math.min(Math.max(baseY + dir * (h + GAP) * step, minY), maxY);
         }
-        placedCenters.push({ x: cx, y: cy });
+        placed.push({ x: cx, y: cy, w, h });
 
-        // `div` is the pin's offsetParent, so its own position is expressed
+        // `div` is the chip's offsetParent, so its own position is expressed
         // relative to div's box -- not the viewport.
-        const localX = cx - fieldRect.left;
-        const localY = cy - fieldRect.top;
-        const dx = anchorX - cx;
-        const dy = anchorY - cy;
-        const dist = Math.hypot(dx, dy);
-        return { div, pin, localX, localY, dist, angle: Math.atan2(dy, dx) };
+        return { div, pin, localX: cx - fieldRect.left, localY: cy - fieldRect.top };
       });
 
       // Write pass: no geometry reads below this point, so none of these
-      // style/dataset/DOM writes can trigger a layout recalc mid-loop.
-      placements.forEach(({ div, pin, localX, localY, dist, angle }) => {
+      // style/dataset writes can trigger a layout recalc mid-loop.
+      placements.forEach(({ div, pin, localX, localY }) => {
         pin.style.left = `${localX}px`;
         pin.style.top = `${localY}px`;
         // Read by positionInvisibleFieldLabel() so the hover label anchors
-        // to the pin's actual (possibly clamped/fanned-out) position rather
-        // than div's own near-zero box.
+        // to the chip's actual (clamped/stacked) position rather than div's
+        // own near-zero box.
         div.dataset.pinLocalX = String(localX);
         div.dataset.pinLocalY = String(localY);
-
-        let leader = div.querySelector('.field-invisible-pin-leader');
-        if (dist > 3) {
-          if (!leader) {
-            leader = document.createElement('div');
-            leader.className = 'field-invisible-pin-leader';
-            div.insertBefore(leader, pin);
-          }
-          leader.style.left = `${localX}px`;
-          leader.style.top = `${localY}px`;
-          leader.style.width = `${dist}px`;
-          leader.style.transform = `rotate(${angle}rad)`;
-        } else if (leader) {
-          leader.remove();
-        }
       });
     }
 
@@ -4884,7 +4846,7 @@
     // bounds rather than assumed from the field's on-page position.
     function positionFieldLabel(div, label) {
       // An invisible field's pin (see layoutInvisibleFieldPins) can sit
-      // anywhere inside div's box -- clamped off a page edge, fanned out
+      // anywhere inside div's box -- clamped off a page edge, stacked
       // from a cluster of other pins at the same corner -- so the label has
       // to be anchored to the pin's actual position, not centered above
       // div's own (usually near-zero, often off in a corner) box like a
@@ -8559,6 +8521,7 @@ function drawOverviewHotspots() {
       const pin = document.createElement('div');
       pin.className = 'field-invisible-pin';
       pin.innerHTML = `<span class="icon ${OVERVIEW_KINDS[item.kind].icon}" aria-hidden="true"></span>`;
+      pin.dataset.label = item.label || '';
       div.appendChild(pin);
       pins.push({ div, pin });
     }
@@ -10806,9 +10769,9 @@ async function drawHoveredDiffObjectOverlay(pdfRects) {
     }
     overlayLayer.appendChild(overlay);
   });
-  // Same edge-clamp/fan-out treatment as the Signatures viewer's pins (see
+  // Same corner-chip treatment as the Signatures viewer (see
   // layoutInvisibleFieldPins) -- a located field right at a page edge would
-  // otherwise have its marker half-clipped by the viewer's rounded frame.
+  // otherwise have its marker clipped by the viewer's rounded frame.
   if (invisiblePins.length) layoutInvisibleFieldPins(invisiblePins);
   overlayLayer.querySelector('.diff-object-hover-overlay')?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
 }

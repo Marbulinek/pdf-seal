@@ -1700,52 +1700,62 @@ canvas { display: block; }
 
 /* Invisible signature field: its /Rect is at or near zero size (commonly
    placed by external tools that attach a signature without a visible
-   appearance) and often tucked into a page corner, so the real overlay box
-   is too small to ever notice. A fixed-size pin sits centered on that same
-   spot instead, always on (not just on hover/select like a normal field's
-   border) so the page doesn't just look empty where it actually has a
-   signature field. It's a real child element (not just decoration) so
-   hovering/clicking the pin still hits the parent overlay's handlers. */
+   appearance) and often tucked into a page corner, under the viewer's
+   rounded overflow:hidden frame. The field's own box is made transparent
+   and a fixed-size chip (icon + name, see layoutInvisibleFieldPins) stands
+   in for it, clamped inside the corner radius -- always on, not just on
+   hover/select like a normal field's border, so the page doesn't look empty
+   where it actually has a field. It's a real child element (not just
+   decoration) so hovering/clicking the chip still hits the parent overlay's
+   handlers. */
+/* !important: hover/active/selected/signed/diff rules all repaint the box
+   later in this file, and any of them would bring back the stray corner dot.
+   Their cues move onto the chip instead (selected/flash rules below). */
+.is-invisible-field {
+  border-color: transparent !important; background: transparent !important;
+  box-shadow: none !important; transform: none !important;
+}
+.is-invisible-field > .field-overlay-icon { display: none; }
+.is-invisible-field.is-flashed .field-invisible-pin { animation: fieldOverlayFlash 1.4s ease-out; }
 .field-invisible-pin {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 22px;
+  box-sizing: border-box;
   height: 22px;
-  border-radius: 50%;
+  padding: 0 6px;
+  gap: 4px;
+  border-radius: 11px;
   background: var(--amber);
   border: 2px solid #fff;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.82rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   z-index: 4;
   cursor: pointer;
   box-shadow: 0 0 0 3px rgba(233, 162, 59, 0.3), 0 2px 5px rgba(30, 33, 51, 0.3);
   animation: invisibleFieldPulse 2s ease-in-out infinite;
 }
-/* layoutInvisibleFieldPins() overwrites left/top above with inline px values
-   (higher specificity than the percentage default) to keep the pin fully
-   inside the visible canvas and fan out ones that would otherwise land on
-   top of each other. This thin pointer back to the field's true (tiny)
-   position is drawn only when the pin had to move off of it to do that. */
-.field-invisible-pin-leader {
-  position: absolute;
-  height: 2px;
-  background: rgba(233, 162, 59, 0.6);
-  transform-origin: 0 50%;
-  pointer-events: none;
-  z-index: 3;
+.field-invisible-pin[data-label]:not([data-label=""])::after {
+  content: attr(data-label);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2px;
 }
-.field-overlay.required .field-invisible-pin-leader { background: rgba(230, 57, 70, 0.6); }
 .field-overlay.required .field-invisible-pin {
   background: var(--coral);
   animation-name: invisibleFieldPulseRequired;
 }
 .field-overlay.active .field-invisible-pin,
-.field-overlay:hover .field-invisible-pin {
+.field-overlay:hover .field-invisible-pin,
+.is-selected > .field-invisible-pin {
   animation-play-state: paused;
   box-shadow: 0 0 0 5px rgba(233, 162, 59, 0.22);
 }
@@ -5422,7 +5432,7 @@ body[data-active-section="metadata"] .field-overlay.is-hover {
 body[data-active-section="metadata"] .field-overlay.is-selected {
   border-style: solid; box-shadow: 0 0 0 3px color-mix(in srgb, var(--kind, var(--ocean)) 35%, transparent); z-index: 10;
 }
-.overview-hotspot .field-invisible-pin { color: var(--kind); }
+.overview-hotspot .field-invisible-pin { background: var(--kind); }
 
 /* Eye toggles: hide a kind's hotspots without re-rendering. */
 body[data-overview-hide~="signature"][data-active-section="metadata"] .field-overlay[data-overview-kind="signature"],
