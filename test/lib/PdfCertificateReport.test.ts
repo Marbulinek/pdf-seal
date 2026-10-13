@@ -4,6 +4,7 @@ import PdfSignatureTool from '../../lib/PdfSignatureTool';
 import { TRUST_NOTE } from '../../lib/CertificateChain';
 import { mint, mintStandardChain, type StandardChain } from './helpers/certificateFactory';
 import { buildSignedPdfFixture, buildUnsignedPdfFixture } from './helpers/pdfSigner';
+import { appendClassicIncrement } from './helpers/classicIncrement';
 
 let chain: StandardChain;
 let cleanReport: Awaited<ReturnType<typeof buildCertificateReport>>;
@@ -402,4 +403,30 @@ describe('buildCertificateReport: very large certificate sets', () => {
     expect(report.certificates).toHaveLength(100);
     expect(report.warnings.join(' ')).toMatch(/only the first 100 are listed/i);
   }, 120000);
+});
+
+describe('buildCertificateReport: revision coverage', () => {
+  it('maps the signed bytes to a revision and flags later revisions without a verdict', async () => {
+    const fx = await buildSignedPdfFixture({ docMdpLevel: 2 });
+    const clean = await buildCertificateReport(fx.bytes);
+    expect(clean.signatures[0].revisionCoverage).toEqual({ coveredRevision: 1, revisionCount: 1 });
+    expect(sigCheck(clean, 'sig.docMdp')?.status).toBe('pass');
+
+    const grown = appendClassicIncrement(Buffer.from(fx.bytes), 'Later edit');
+    const report = await buildCertificateReport(new Uint8Array(grown));
+
+    expect(report.signatures[0].revisionCoverage).toEqual({ coveredRevision: 1, revisionCount: 2 });
+    expect(sigCheck(report, 'sig.byteRangeCoverage')?.explanation).toMatch(/revision 1 of 2/);
+    expect(sigCheck(report, 'sig.messageDigest')?.status).toBe('pass');
+    expect(sigCheck(report, 'sig.cryptographic')?.status).toBe('pass');
+    expect(sigCheck(report, 'sig.docMdp')?.status).toBe('unknown');
+    expect(sigCheck(report, 'sig.docMdp')?.detail).toMatch(/not checked/i);
+  }, 30000);
+
+  it('still maps coverage when bytes trail the final revision', async () => {
+    const fx = await buildSignedPdfFixture({ appendTrailingBytes: 48 });
+    const report = await buildCertificateReport(fx.bytes);
+    expect(report.signatures[0].revisionCoverage.coveredRevision).toBe(1);
+    expect(report.signatures[0].revisionCoverage.revisionCount).toBe(1);
+  }, 30000);
 });

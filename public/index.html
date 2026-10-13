@@ -42,7 +42,7 @@
        starting a fetch once the parser gets that far down the page. -->
   <link rel="preload" href="/vendor/pdfjs/pdf.min.js" as="script">
 </head>
-<body data-active-section="signatures">
+<body data-active-section="metadata">
 
   <div id="notificationStack" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
 
@@ -68,7 +68,7 @@
 
   <div class="pending-changes-bar" id="pendingChangesBar" hidden>
     <div class="pending-changes-row">
-      <img class="pending-changes-icon" src="/assets/images/seal-apply-changes.jpg" alt="" aria-hidden="true">
+      <img class="pending-changes-icon" src="/assets/images/seal-apply-changes.webp" alt="" aria-hidden="true">
       <div class="pending-changes-summary">
         <span id="pendingChangesLabel">0 unsaved changes</span>
         <span id="pendingChangesDescription" class="pending-changes-desc"></span>
@@ -94,11 +94,11 @@
             <span class="icon icon-hamburger" aria-hidden="true"></span>
           </button>
           <nav class="section-nav" id="sectionNav" aria-label="Document sections">
-            <button type="button" class="section-nav-btn" id="navBtnMetaData" data-section="metadata">
+            <button type="button" class="section-nav-btn active" id="navBtnMetaData" data-section="metadata" aria-current="page">
               <span class="section-nav-icon" aria-hidden="true"><span class="icon icon-info-circle"></span></span>
               <span class="section-nav-label">Overview</span>
             </button>
-            <button type="button" class="section-nav-btn active" id="navBtnSignatures" data-section="signatures" aria-current="page">
+            <button type="button" class="section-nav-btn" id="navBtnSignatures" data-section="signatures">
               <span class="section-nav-icon" aria-hidden="true"><span class="icon icon-pen"></span></span>
               <span class="section-nav-label">Signatures</span>
             </button>
@@ -165,7 +165,7 @@
         <h3 id="extensionModalTitle">PDF Seal Portal is here!</h3>
         <button type="button" class="modal-close" id="closeExtensionModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
-      <img class="ext-modal-img" src="/assets/images/seal_news.png" alt="PDF Seal mascot with news">
+      <img class="ext-modal-img" src="/assets/images/seal_news.webp" alt="PDF Seal mascot with news">
       <p class="modal-hint">Big news: PDF Seal now has a Chrome extension! <strong>PDF Seal Portal</strong> sends any PDF you open in the browser straight into PDF Seal, so you can add signature fields in one click, with no downloading and re-uploading.</p>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelExtensionBtn">Maybe later</button>
@@ -314,7 +314,7 @@
       </div>
 
       <div class="help-hero-panel">
-        <img class="help-hero-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <img class="help-hero-seal" src="/assets/images/seal-curious.webp" alt="" aria-hidden="true">
         <div class="help-hero-copy">
           <p class="modal-hint">New here? Load the bundled sample agreement and see every feature in action, guided step by step — or just poke around on your own.</p>
           <div class="help-hero-actions">
@@ -334,7 +334,7 @@
         <details class="help-topic">
           <summary><span class="help-topic-title">Signatures</span><button type="button" class="btn btn-ghost btn-small help-show-me" data-tour-chapter="signatures">Show me</button></summary>
           <div class="help-topic-body">
-            <p>Add signature and text fields by placing them on the page, then drag to move or use the grip to resize. Selecting a field opens its edit panel; new and edited fields stage as pending changes until you Apply or Discard them, and every staged change can be undone/redone with the history buttons.</p>
+            <p>Add signature fields by placing them on the page, then drag to move or use the grip to resize. Selecting a field opens its edit panel; new and edited fields stage as pending changes until you Apply or Discard them, and every staged change can be undone/redone with the history buttons.</p>
           </div>
         </details>
         <details class="help-topic">
@@ -436,7 +436,7 @@
         <button type="button" class="modal-close" id="closeRemoveFieldModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <div class="remove-field-body">
-        <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <img class="remove-field-seal" src="/assets/images/seal-curious.webp" alt="" aria-hidden="true">
         <div class="remove-field-text">
           <p class="modal-hint remove-field-hint">Remove the field <strong id="removeFieldModalName"></strong> from this document?</p>
           <p class="modal-hint remove-field-hint">This is staged like any other change — you can still <strong>Discard</strong> it before hitting Apply.</p>
@@ -457,7 +457,7 @@
         <button type="button" class="modal-close" id="closeCloseDocumentModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <div class="remove-field-body">
-        <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <img class="remove-field-seal" src="/assets/images/seal-curious.webp" alt="" aria-hidden="true">
         <div class="remove-field-text">
           <p class="modal-hint remove-field-hint">Nothing is saved on a server — all changes will be lost.</p>
         </div>
@@ -525,7 +525,7 @@
         <button type="button" class="modal-close" id="closeDeleteTemplateModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <div class="remove-field-body">
-        <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <img class="remove-field-seal" src="/assets/images/seal-curious.webp" alt="" aria-hidden="true">
         <div class="remove-field-text">
           <p class="modal-hint remove-field-hint">Delete the template <strong id="deleteTemplateModalName"></strong><span id="deleteTemplateModalCount"></span>?</p>
           <p class="modal-hint remove-field-hint">Unlike field edits, this isn't staged — the template is removed from this browser straight away and can't be brought back.</p>
@@ -546,7 +546,7 @@
         <button type="button" class="modal-close" id="closeRemoveTemplateItemModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <div class="remove-field-body">
-        <img class="remove-field-seal" src="/assets/images/seal-curious.jpg" alt="" aria-hidden="true">
+        <img class="remove-field-seal" src="/assets/images/seal-curious.webp" alt="" aria-hidden="true">
         <div class="remove-field-text">
           <p class="modal-hint remove-field-hint">Remove <strong id="removeTemplateItemModalName"></strong> from <strong id="removeTemplateItemModalTemplateName"></strong>?</p>
           <p class="modal-hint remove-field-hint">This only removes it from the template — nothing already placed on your document is affected.</p>
@@ -724,8 +724,11 @@
            .section-column a fixed-height positioned box, so the Edit sheet can lie
            absolutely over the whole column instead of scrolling away with the panels. -->
       <div class="section-scroll">
+        <div class="back-to-document" id="backToDocumentBar" hidden>
+          <button type="button" class="btn btn-ghost btn-small" id="btnBackToFinding"><span aria-hidden="true">←</span> Back to document</button>
+        </div>
 
-        <section class="section-panel active section-panel-enter" id="sectionSignatures" data-section-panel="signatures">
+        <section class="section-panel" id="sectionSignatures" data-section-panel="signatures" hidden>
 
           <!-- Undo/redo used to be a full panel card. It carries one line of state, so
                it's a slim strip now and the height goes to the tabbed panel below. -->
@@ -741,6 +744,7 @@
                directions, so they share one panel and take turns. Editing is a
                different intent entirely -- that lives in #editSheet below. -->
           <div class="panel signature-panel">
+            <div id="sigSectionHero"></div>
             <div class="sig-tabs" id="sigTabs" role="tablist" aria-label="Signature tools">
               <button type="button" class="sig-tab is-active" id="sigTabAdd" data-sig-tab="add" role="tab" aria-selected="true" aria-controls="sigTabPanelAdd"><span class="icon icon-plus-bold" aria-hidden="true"></span> Add field</button>
               <button type="button" class="sig-tab" id="sigTabTemplates" data-sig-tab="templates" role="tab" aria-selected="false" aria-controls="sigTabPanelTemplates"><span class="icon icon-layers" aria-hidden="true"></span> Templates</button>
@@ -755,10 +759,6 @@
                    stay editable with no document open. -->
               <div class="panel-overlay" id="addSigPanelOverlay">
                 <div class="panel-overlay-text">Upload a document first to add a field</div>
-              </div>
-              <div class="field-type-tabs" id="fieldTypeTabs" role="tablist" aria-label="Field type">
-                <button type="button" class="field-type-tab active" id="fieldTypeTabSignature" data-field-type="signature" role="tab" aria-selected="true"><span class="icon icon-pen" aria-hidden="true"></span> Signature</button>
-                <button type="button" class="field-type-tab" id="fieldTypeTabText" data-field-type="text" role="tab" aria-selected="false"><span class="icon icon-file-text" aria-hidden="true"></span> TextBox</button>
               </div>
               <form id="addSigForm">
                 <div class="form-group">
@@ -776,13 +776,6 @@
                     <div class="checkbox-group-main">
                       <input type="checkbox" id="sigRequired">
                       <span>Required Field</span>
-                    </div>
-                  </label>
-
-                  <label class="checkbox-group checkbox-group-block" for="sigMultiline" id="sigMultilineGroup" hidden>
-                    <div class="checkbox-group-main">
-                      <input type="checkbox" id="sigMultiline">
-                      <span>Multiline</span>
                     </div>
                   </label>
                 </div>
@@ -846,13 +839,12 @@
           </div>
         </section>
 
-        <section class="section-panel" id="sectionMetaData" data-section-panel="metadata" hidden>
+        <section class="section-panel active section-panel-enter" id="sectionMetaData" data-section-panel="metadata">
           <div class="panel docinfo-panel" id="docInfoPanel">
             <div class="panel-overlay" id="docInfoPanelOverlay">
               <div class="panel-overlay-text">Upload a document first to see its overview</div>
             </div>
             <h3><span class="panel-dot dot-ocean"></span>Overview</h3>
-            <p class="revisions-hint">What this PDF is and what is on it. Click an item here, or its outline on the page, for details.</p>
 
             <div class="meta-overview" id="metaOverview">
               <p class="field-details-empty">No document loaded yet.</p>
@@ -868,6 +860,7 @@
               <div class="panel-overlay-text">Upload a document first to see version history</div>
             </div>
             <h3><span class="panel-dot dot-ocean"></span>Version History</h3>
+            <div id="revisionsHero"></div>
             <p class="revisions-hint">Every saved version of this document in this browser, oldest first. <em>Incremental update</em> means the save was appended to the file (earlier signatures stay intact); <em>Full rewrite</em> means the file was regenerated.</p>
 
             <label class="revisions-filter-toggle" id="revisionsFilterToggleLabel" hidden>
@@ -998,7 +991,7 @@
         <div class="edit-sheet-body">
           <div class="edit-signed-notice" id="editSignedNotice" hidden>
             <span class="icon icon-lock" aria-hidden="true"></span>
-            <div>This field has been signed. Its name, position and size are covered by the signature, so editing or removing it here would break it. The <strong>Certificates</strong> section shows what the signature contains.</div>
+            <div id="editSignedNoticeText">PDF Seal edits signature fields only. This field is shown for inspection.</div>
           </div>
           <form id="editFieldForm">
             <input type="hidden" id="editOriginalName">
@@ -1028,12 +1021,6 @@
                 </div>
               </label>
 
-              <label class="checkbox-group checkbox-group-block" for="editMultiline" id="editMultilineGroup" hidden>
-                <div class="checkbox-group-main">
-                  <input type="checkbox" id="editMultiline">
-                  <span>Multiline</span>
-                </div>
-              </label>
             </div>
 
             <details class="field-details" id="fieldDetailsBlock">
@@ -1284,7 +1271,7 @@
         <button type="button" class="modal-close" id="closeShareModalBtn" aria-label="Close"><span class="icon icon-close" aria-hidden="true"></span></button>
       </div>
       <div class="share-modal-hero-panel">
-        <img class="share-hero-seal" src="/assets/images/seal-sharing.jpg" alt="" aria-hidden="true">
+        <img class="share-hero-seal" src="/assets/images/seal-sharing.webp" alt="" aria-hidden="true">
         <div class="share-modal-hero-copy">
           <p class="modal-hint" id="shareDescription">Create a private link to this PDF. Only people you send it to can open it.</p>
           <div class="share-security-note" id="shareSecurityNote"><span class="icon icon-lock" aria-hidden="true"></span> Encrypted · link expires automatically</div>
@@ -1555,6 +1542,7 @@
     // lazy detail fetch finishes) can restore what the user had open
     // instead of collapsing every card back down.
     let expandedRevisionIndices = new Set();
+    let expandedVersionStacks = new Set(); // keyed by a stack's first rev.index
 
     // Visual Diff state
     let diffDocA = null;
@@ -1569,6 +1557,7 @@
     // the first time that tab is actually opened (see switchDiffTab), not on
     // every compare regardless of which tab the user lands on.
     let diffDetailsRendered = false;
+    let pendingDiffFilterTerm = null; // object-filter term to pre-fill once the in-flight compare renders (set by openVersionsDiff)
     let pendingDiffLandingTab = null; // which tab to switch to once the in-flight compare finishes (set by runQuickDiff)
     let viewerDiffActive = false; // true while the main viewer shows a revision snapshot/diff instead of the live document
     let hoveredDiffObjectKey = null;
@@ -1584,69 +1573,17 @@
     let isPlacing = false;        // true while waiting for the user's next click on the PDF
     let pendingField = null;      // { x, y, width, height } in PDF space, for the field being placed
     let pendingFieldPage = null;  // 0-indexed page the pending field belongs to
-    let addFieldType = 'signature'; // 'signature' | 'text' -- which kind the Add New panel is currently set to place
-
-    // Per-type defaults for the Add New panel (width/height, name placeholder,
-    // icon, and copy) -- swapped in by setAddFieldType() when the user toggles
-    // between Signature and Text Box.
+    // Only signature fields can be created; every other field type is inspect-only.
     const FIELD_TYPE_CONFIG = {
-      signature: {
-        label: 'Signature',
-        panelTitle: 'Add New Signature',
-        namePlaceholder: 'e.g. Signature1',
-        defaultWidth: 200,
-        defaultHeight: 60,
-        icon: 'icon-pen',
-        placeLabel: 'Place on Document',
-        placementHintIdle: 'Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.',
-      },
-      text: {
-        label: 'TextBox',
-        panelTitle: 'Add New TextBox',
-        namePlaceholder: 'e.g. TextField1',
-        defaultWidth: 200,
-        defaultHeight: 30,
-        icon: 'icon-file-text',
-        placeLabel: 'Place on Document',
-        placementHintIdle: 'Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.',
-      },
+      signature: { defaultWidth: 200, defaultHeight: 60 },
     };
+    const addFieldType = 'signature';
+    const PLACEMENT_HINT_IDLE = 'Name the field above, then click <strong>Place on Document</strong> and click anywhere on the PDF to drop it. Drag it to reposition, or drag the coral handle to resize.';
 
-    function setAddFieldType(type) {
-      if (!FIELD_TYPE_CONFIG[type] || isPlacing) return;
-      addFieldType = type;
-      const config = FIELD_TYPE_CONFIG[type];
-
-      document.querySelectorAll('.field-type-tab').forEach((tab) => {
-        const isActive = tab.dataset.fieldType === type;
-        tab.classList.toggle('active', isActive);
-        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      });
-
-      const panelTitleEl = document.getElementById('addFieldPanelTitle');
-      if (panelTitleEl) panelTitleEl.textContent = config.panelTitle;
-
-      const nameInput = document.getElementById('sigName');
-      if (nameInput) nameInput.placeholder = config.namePlaceholder;
-
-      const widthInput = document.getElementById('sigWidth');
-      const heightInput = document.getElementById('sigHeight');
-      if (widthInput) widthInput.value = config.defaultWidth;
-      if (heightInput) heightInput.value = config.defaultHeight;
-
-      const placeIcon = document.getElementById('btnPlaceFieldIcon');
-      if (placeIcon) placeIcon.className = `icon ${config.icon}`;
-      const placeLabel = document.getElementById('btnPlaceFieldLabel');
-      if (placeLabel) placeLabel.textContent = config.placeLabel;
-
-      const multilineGroup = document.getElementById('sigMultilineGroup');
-      if (multilineGroup) multilineGroup.hidden = type !== 'text';
-      if (type !== 'text') {
-        const multilineInput = document.getElementById('sigMultiline');
-        if (multilineInput) multilineInput.checked = false;
-      }
-
-      setPlacementHint(config.placementHintIdle, 'idle');
+    // The one rule for what the editor may move, resize, rename or delete:
+    // an unsigned signature field. Keep in sync with PdfSignatureTool._requireEditableField().
+    function isEditableField(f) {
+      return !!f && f.type === 'Signature' && f.signed !== true;
     }
 
     // Add and Templates share one panel and take turns. Nothing here is
@@ -2006,6 +1943,22 @@
       }
 
       return dividers;
+    }
+
+    // Runs of 2+ consecutive entries sharing the same non-empty key, never
+    // crossing a position in `breakPositions` -- drawn as one collapsible
+    // stack in the timeline. Mirrors versionStacks in lib/VersionHistory.ts.
+    function versionStacks(entries, keyOf, breakPositions = new Set()) {
+      const stacks = [];
+      let start = 0;
+      for (let i = 1; i <= entries.length; i++) {
+        const key = i < entries.length ? keyOf(entries[i]) : null;
+        const continues = key && !breakPositions.has(i) && key === keyOf(entries[start]);
+        if (continues) continue;
+        if (i - start > 1) stacks.push({ start, end: i - 1 });
+        start = i;
+      }
+      return stacks;
     }
 
     // Starts a version write: opens the DB (if not already open), then --
@@ -2947,6 +2900,7 @@
           if (target !== 'signatures' && activeField) deselectActiveField();
           if (target !== 'revisions') suspendRevisionsView();
           if (target !== 'metadata') closeOverviewSheet();
+          else clearDiagnosticOrigin();
           if (target !== 'certificates') { closeCertificateSheet(); closeCertificateModifySheet(); closeCertificateTimelineSheet(); }
           if (target === 'signatures' && templatesPanelDirty) {
             renderTemplatesPanel();
@@ -2985,8 +2939,7 @@
       const link = e.target.closest('[data-goto-section]');
       if (!link) return;
       const section = link.getAttribute('data-goto-section');
-      const navBtn = document.getElementById(`navBtn${section.charAt(0).toUpperCase()}${section.slice(1)}`);
-      navBtn?.click();
+      document.querySelector(`.section-nav-btn[data-section="${CSS.escape(section)}"]`)?.click();
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -3017,24 +2970,6 @@
       }
       processNewFile(file);
     }
-
-    // PDF Seal Portal extension hand-off (extension/background.js posts this
-    // into the main world). Same-window, same-origin messages only.
-    window.addEventListener('message', (e) => {
-      const d = e.data;
-      if (e.source !== window || e.origin !== location.origin || d?.type !== 'pdfseal:import') return;
-      console.log('[pdfseal:import] received', { name: d.name, base64Length: d.base64?.length });
-      try {
-        const bin = atob(d.base64);
-        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-        const name = /\.pdf$/i.test(d.name || '') ? d.name : `${d.name || 'document'}.pdf`;
-        console.log('[pdfseal:import] decoded', bytes.length, 'bytes as', name);
-        processNewFile(new File([bytes], name, { type: 'application/pdf' }));
-      } catch (err) {
-        console.error('[pdfseal:import] failed', err);
-        showNotification('Could not open the PDF sent from the extension.', 'error');
-      }
-    });
 
     function setDropZoneActive(target, active) {
       target.classList.toggle('drag-active', active);
@@ -3320,7 +3255,7 @@
       // A signed field is shown read-only: its name, /Rect and flags all live
       // inside the byte range its signature covers, so offering the edit and
       // then breaking the signature would be worse than not offering it.
-      const selectedFieldIsSigned = hasSelectedField && activeField.signed === true;
+      const selectedFieldIsSigned = hasSelectedField && !isEditableField(activeField);
       // The sheet's own header/close button is deliberately outside this loop --
       // it has to stay clickable while the sheet animates out.
       if (editForm) {
@@ -3344,11 +3279,7 @@
           }
         });
       }
-      document.querySelectorAll('.field-type-tab').forEach((tab) => {
-        tab.disabled = !hasDocument;
-      });
-
-      if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !activeField || activeField.signed === true;
+      if (removeFieldBtn) removeFieldBtn.disabled = !hasDocument || !isEditableField(activeField);
       const sigNameFilled = Boolean(document.getElementById('sigName').value.trim());
       if (placeFieldBtn) placeFieldBtn.disabled = !hasDocument || !sigNameFilled;
 
@@ -3451,7 +3382,8 @@
       updateViewerControlsState();
       document.getElementById('pdfContainer').style.display = 'none';
       document.getElementById('emptyStateViewer').style.display = 'flex';
-      document.getElementById('navBtnSignatures')?.click();
+      document.getElementById('navBtnMetaData')?.click();
+      renderSignaturesHero();
       loadMetadataIfNeeded();
       loadRevisionsIfNeeded();
       loadCertificatesIfNeeded();
@@ -3632,6 +3564,7 @@
     }
 
     async function processNewFile(file, options = {}) {
+      clearDiagnosticOrigin();
       const loadGeneration = ++documentLoadGeneration;
       const isCurrentLoad = () => loadGeneration === documentLoadGeneration;
       // Set for every call regardless of outcome; cleared below only once
@@ -4260,7 +4193,8 @@
         const invisibleSuffix = isInvisible ? ' — invisible field, no visible footprint on the page' : '';
         div.title = field.signed === true
           ? `${field.name} — signed, so it cannot be moved or removed without breaking the signature${invisibleSuffix}`
-          : (field.tooltip ? `${field.name} — ${field.tooltip}${invisibleSuffix}` : `${field.name || 'Signature field'}${invisibleSuffix}`);
+          : (field.tooltip ? `${field.name} — ${field.tooltip}${invisibleSuffix}` : `${field.name || 'Signature field'}${invisibleSuffix}`)
+            + (field.type !== 'Signature' ? ' — shown for inspection; PDF Seal edits signature fields only' : '');
         div.querySelector('.field-overlay-icon').innerHTML = field.signed === true
           ? ICONS.lock
           : (choiceFieldIcon(field.type) || (field.type === 'Signature' ? ICONS.pen : ICONS.fileText));
@@ -4273,7 +4207,10 @@
         // .field-invisible-pin's own unconditional `display: flex`.
         const pin = div.querySelector('.field-invisible-pin');
         pin.style.display = isInvisible ? '' : 'none';
-        if (isInvisible && choiceFieldIcon(field.type)) pin.innerHTML = choiceFieldIcon(field.type);
+        if (isInvisible && (choiceFieldIcon(field.type) || field.signed === true)) pin.innerHTML = field.signed === true ? ICONS.lock : choiceFieldIcon(field.type);
+        // The custom .field-label already shows the name/notes on hover, so an
+        // invisible field drops the native title tooltip that would duplicate it.
+        if (isInvisible) div.removeAttribute('title');
         if (isInvisible) invisibleFieldPins.push({ div, pin });
 
         const label = div.querySelector('.field-label');
@@ -4287,8 +4224,10 @@
         // moving, resizing or removing it corrupts that signature. Lock the
         // whole set of edit affordances rather than letting the edit be made
         // and fail later.
-        const isSignedField = field.signed === true;
+        // Locked = signed, or any non-signature field (inspect-only).
+        const isSignedField = !isEditableField(field);
         if (isSignedField) div.classList.add('is-signed');
+        if (isSignedField && field.signed !== true) div.classList.add('is-readonly');
 
         // Same cascade note as the pin above: .resize-handle's CSS only
         // shows it while the overlay is .active, but a *signed* field must
@@ -4352,6 +4291,8 @@
 
       // Overview mode: outline stamps/links/comments too, and mark the selection.
       if (document.body.dataset.activeSection === 'metadata') drawOverviewHotspots();
+      // Every field change ends in a redraw, so the Signatures hero stays current here.
+      renderSignaturesHero();
     }
 
     // One-time delegated listeners for every field overlay drawFieldOverlays()
@@ -4531,105 +4472,66 @@
       endDocumentFieldDrag();
     });
 
-    // Invisible-field pins are fixed-size, so a field parked hard against a
-    // page edge/corner (their most common spot) would otherwise have its pin
-    // half-clipped by the viewer's rounded, overflow:hidden frame. Nudge each
-    // pin's center back inside the visible canvas, and fan out any that land
-    // on top of each other (several invisible signatures often share the
-    // exact same corner). A thin leader line is drawn back to the field's
-    // true position whenever the pin had to move off it, so the marker still
-    // reads as "pointing at" that spot rather than "the field is right here".
+    // An invisible field's true position (a ~1x1pt rect, usually tucked into a
+    // page corner) means nothing to the user, and it typically sits under the
+    // viewer's rounded, overflow:hidden corner anyway. So each field gets a
+    // fixed-size chip instead, clamped far enough inside the page that the
+    // corner radius never clips it -- a field near a corner lands snapped into
+    // that corner. Chips that would overlap (several invisible signatures often
+    // share the exact same corner) stack vertically, inward from the nearer
+    // top/bottom edge.
     function layoutInvisibleFieldPins(entries) {
       const containerRect = overlayLayer.getBoundingClientRect();
-      const PIN_RADIUS = 11;
-      const EDGE_MARGIN = 4;
-      const minX = containerRect.left + PIN_RADIUS + EDGE_MARGIN;
-      const maxX = containerRect.right - PIN_RADIUS - EDGE_MARGIN;
-      const minY = containerRect.top + PIN_RADIUS + EDGE_MARGIN;
-      const maxY = containerRect.bottom - PIN_RADIUS - EDGE_MARGIN;
-      const clampX = (x) => Math.min(Math.max(x, minX), maxX);
-      const clampY = (y) => Math.min(Math.max(y, minY), maxY);
-      const SPACING = PIN_RADIUS * 2 + 4; // center-to-center gap that keeps neighboring pins from touching
+      const EDGE_INSET = 10; // clears .pdf-container's 14px border-radius
+      const GAP = 4;
 
-      // Read pass: every entry's current field rect, gathered up front. The
+      // Read pass: every field's and chip's geometry, gathered up front. The
       // placement math below only touches these plain numbers -- reading a
-      // fresh getBoundingClientRect() for pin N *after* pin N-1's style
+      // fresh getBoundingClientRect() for chip N *after* chip N-1's style
       // writes have already landed would force a synchronous layout
-      // recalculation per pin, which is the real cost on a document with
+      // recalculation per chip, which is the real cost on a document with
       // many invisible fields (a multi-signer PDF can easily have a dozen).
       const fieldRects = entries.map(({ div }) => div.getBoundingClientRect());
+      const pinRects = entries.map(({ pin }) => pin.getBoundingClientRect());
 
-      const placedCenters = [];
+      const placed = [];
       const placements = entries.map(({ div, pin }, i) => {
         const fieldRect = fieldRects[i];
+        const w = pinRects[i].width;
+        const h = pinRects[i].height;
+        const minX = containerRect.left + EDGE_INSET + w / 2;
+        const maxX = containerRect.right - EDGE_INSET - w / 2;
+        const minY = containerRect.top + EDGE_INSET + h / 2;
+        const maxY = containerRect.bottom - EDGE_INSET - h / 2;
         const anchorX = fieldRect.left + fieldRect.width / 2;
         const anchorY = fieldRect.top + fieldRect.height / 2;
+        const cx = Math.min(Math.max(anchorX, minX), maxX);
+        const baseY = Math.min(Math.max(anchorY, minY), maxY);
+        const dir = anchorY < containerRect.top + containerRect.height / 2 ? 1 : -1;
 
-        // Several invisible fields often share almost the exact same corner
-        // (e.g. every invisible signature on a multi-signer document landing
-        // at 0,0), so fan collisions out *along* whichever edge the anchor
-        // is pinned against, rather than toward/away from it -- offsetting
-        // toward the edge just re-clamps back to the same spot, which is
-        // the bug a naive "try points around the anchor" approach hits here.
-        let normalX = 0, normalY = 0;
-        if (anchorX < minX) normalX = 1; else if (anchorX > maxX) normalX = -1;
-        if (anchorY < minY) normalY = 1; else if (anchorY > maxY) normalY = -1;
-        if (!normalX && !normalY) normalX = 1; // an interior point: pick an arbitrary fan axis
-        const tangentX = -normalY;
-        const tangentY = normalX;
-
-        let cx = clampX(anchorX);
-        let cy = clampY(anchorY);
-
-        let step = 0;
-        while (
-          step < 12
-          && placedCenters.some((p) => Math.hypot(p.x - cx, p.y - cy) < SPACING)
-        ) {
-          step++;
-          // 0, +1, -1, +2, -2, ... so the fan grows outward from the corner
-          // in both directions along the edge instead of just one.
-          const n = Math.ceil(step / 2) * (step % 2 === 0 ? -1 : 1);
-          cx = clampX(anchorX + tangentX * SPACING * n);
-          cy = clampY(anchorY + tangentY * SPACING * n);
+        let cy = baseY;
+        const overlaps = () => placed.some((p) =>
+          Math.abs(p.x - cx) < (p.w + w) / 2 + GAP && Math.abs(p.y - cy) < (p.h + h) / 2 + GAP);
+        for (let step = 1; step <= 12 && overlaps(); step++) {
+          cy = Math.min(Math.max(baseY + dir * (h + GAP) * step, minY), maxY);
         }
-        placedCenters.push({ x: cx, y: cy });
+        placed.push({ x: cx, y: cy, w, h });
 
-        // `div` is the pin's offsetParent, so its own position is expressed
+        // `div` is the chip's offsetParent, so its own position is expressed
         // relative to div's box -- not the viewport.
-        const localX = cx - fieldRect.left;
-        const localY = cy - fieldRect.top;
-        const dx = anchorX - cx;
-        const dy = anchorY - cy;
-        const dist = Math.hypot(dx, dy);
-        return { div, pin, localX, localY, dist, angle: Math.atan2(dy, dx) };
+        return { div, pin, localX: cx - fieldRect.left, localY: cy - fieldRect.top };
       });
 
       // Write pass: no geometry reads below this point, so none of these
-      // style/dataset/DOM writes can trigger a layout recalc mid-loop.
-      placements.forEach(({ div, pin, localX, localY, dist, angle }) => {
+      // style/dataset writes can trigger a layout recalc mid-loop.
+      placements.forEach(({ div, pin, localX, localY }) => {
         pin.style.left = `${localX}px`;
         pin.style.top = `${localY}px`;
         // Read by positionInvisibleFieldLabel() so the hover label anchors
-        // to the pin's actual (possibly clamped/fanned-out) position rather
-        // than div's own near-zero box.
+        // to the chip's actual (clamped/stacked) position rather than div's
+        // own near-zero box.
         div.dataset.pinLocalX = String(localX);
         div.dataset.pinLocalY = String(localY);
-
-        let leader = div.querySelector('.field-invisible-pin-leader');
-        if (dist > 3) {
-          if (!leader) {
-            leader = document.createElement('div');
-            leader.className = 'field-invisible-pin-leader';
-            div.insertBefore(leader, pin);
-          }
-          leader.style.left = `${localX}px`;
-          leader.style.top = `${localY}px`;
-          leader.style.width = `${dist}px`;
-          leader.style.transform = `rotate(${angle}rad)`;
-        } else if (leader) {
-          leader.remove();
-        }
       });
     }
 
@@ -4750,18 +4652,19 @@
       document.getElementById('editHeight').value = field.rect.height.toFixed(1);
       document.getElementById('editRequired').checked = field.required;
 
-      const multilineGroup = document.getElementById('editMultilineGroup');
-      const isTextField = field.type === 'TextField';
-      if (multilineGroup) multilineGroup.hidden = !isTextField;
-      document.getElementById('editMultiline').checked = isTextField && !!field.multiline;
-
       // The inputs themselves are disabled by updateViewerControlsState(), which
       // owns that decision and runs after this; this only explains why.
       const signedNotice = document.getElementById('editSignedNotice');
-      if (signedNotice) signedNotice.hidden = field.signed !== true;
+      if (signedNotice) signedNotice.hidden = isEditableField(field);
+      const noticeText = document.getElementById('editSignedNoticeText');
+      if (noticeText) {
+        noticeText.textContent = field.signed === true
+          ? 'This field has been signed. Its name, position and size are covered by the signature, so editing or removing it here would break it. The Certificates section shows what the signature contains.'
+          : 'PDF Seal edits signature fields only. This field is shown for inspection.';
+      }
       // "Dragging edits these too" would contradict the notice directly above.
       const geometryNote = document.getElementById('fieldGeometryNote');
-      if (geometryNote) geometryNote.hidden = field.signed === true;
+      if (geometryNote) geometryNote.hidden = !isEditableField(field);
 
       renderFieldDetails(field);
     }
@@ -4834,13 +4737,6 @@
       updatePendingChangesUi();
     });
 
-    document.getElementById('editMultiline').addEventListener('change', () => {
-      if (!activeField || activeField.type !== 'TextField') return;
-      pushFieldHistory();
-      activeField.multiline = document.getElementById('editMultiline').checked;
-      updatePendingChangesUi();
-    });
-
     // --- New Field Placement (click-to-drop, then drag/resize) ---
 
     // Screen (canvas pixel) rect -> PDF-space rect, inverse of the transform in drawFieldOverlays.
@@ -4884,7 +4780,7 @@
     // bounds rather than assumed from the field's on-page position.
     function positionFieldLabel(div, label) {
       // An invisible field's pin (see layoutInvisibleFieldPins) can sit
-      // anywhere inside div's box -- clamped off a page edge, fanned out
+      // anywhere inside div's box -- clamped off a page edge, stacked
       // from a cluster of other pins at the same corner -- so the label has
       // to be anchored to the pin's actual position, not centered above
       // div's own (usually near-zero, often off in a corner) box like a
@@ -4970,10 +4866,6 @@
 
     document.getElementById('sigName').addEventListener('input', updateViewerControlsState);
 
-    document.querySelectorAll('.field-type-tab').forEach((tab) => {
-      tab.addEventListener('click', () => setAddFieldType(tab.dataset.fieldType));
-    });
-
     document.querySelectorAll('.sig-tab').forEach((tab) => {
       tab.addEventListener('click', () => setSignatureTab(tab.dataset.sigTab));
     });
@@ -5043,9 +4935,8 @@
 
       stageNewField({
         name,
-        type: addFieldType === 'text' ? 'TextField' : 'Signature',
+        type: 'Signature',
         required: document.getElementById('sigRequired').checked,
-        multiline: addFieldType === 'text' && document.getElementById('sigMultiline').checked,
         page: pendingFieldPage,
         rect: { x: pendingField.x, y: pendingField.y, width: pendingField.width, height: pendingField.height },
       });
@@ -5067,16 +4958,14 @@
     // batch instead, so a single Undo takes the batch back out.
     // Likewise `{ redraw: false }` lets a batch redraw once at the end
     // rather than once per field.
-    function stageNewField({ name, type, required, multiline, page, rect }, options = {}) {
+    function stageNewField({ name, required, page, rect }, options = {}) {
       const { history = true, redraw = true } = options;
       if (history) pushFieldHistory();
-      const resolvedType = type === 'TextField' || type === 'text' ? 'TextField' : 'Signature';
       documentFields.push({
         name,
-        type: resolvedType,
+        type: 'Signature',
         required: !!required,
         readOnly: false,
-        multiline: resolvedType === 'TextField' && !!multiline,
         tooltip: '',
         page,
         rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
@@ -5093,7 +4982,7 @@
       isPlacing = false;
       pdfContainer.classList.remove('placing-mode');
       setAddSigActionsVisible(false);
-      setPlacementHint(FIELD_TYPE_CONFIG[addFieldType].placementHintIdle, 'idle');
+      setPlacementHint(PLACEMENT_HINT_IDLE, 'idle');
       updateViewerControlsState();
     }
 
@@ -5199,7 +5088,8 @@
     // Turns a field already placed on the document into a template item --
     // the only way items are created. `id` is passed in so this stays pure.
     function templateItemFromField(field, id) {
-      const type = field.type === 'TextField' || field.type === 'text' ? 'text' : 'signature';
+      if (field.type !== 'Signature' && field.type !== 'signature') return null;
+      const type = 'signature';
       const defaults = TEMPLATE_DEFAULT_SIZE[type];
       const rect = field.rect || {};
       return {
@@ -5212,7 +5102,7 @@
         y: roundTemplatePoint(rect.y),
         page: Math.max(0, Math.round(templateToFiniteNumber(field.page, 0))),
         required: field.required === true,
-        multiline: type === 'text' && field.multiline === true,
+        multiline: false,
       };
     }
 
@@ -5265,6 +5155,12 @@
       for (const item of Array.isArray(items) ? items : []) {
         if (!item) continue;
 
+        // Legacy TextBox items stay stored/exported but are never created.
+        if (item.type === 'text') {
+          skipped.push({ name: item.name, page: item.page, reason: 'unsupported-type' });
+          continue;
+        }
+
         // An item saved against page 5 is meaningless in a 3-page document,
         // and the server would reject the add outright.
         if (!Number.isFinite(pageCount) || item.page < 0 || item.page >= pageCount) {
@@ -5278,7 +5174,7 @@
           name,
           type: item.type,
           required: !!item.required,
-          multiline: item.type === 'text' && !!item.multiline,
+          multiline: false,
           page: item.page,
           rect: { x: item.x, y: item.y, width: item.width, height: item.height },
         });
@@ -5413,7 +5309,7 @@
     // tooltip rather than taking up space in the list.
     function templateItemSummary(item) {
       const parts = [
-        item.type === 'text' ? 'TextBox' : 'Signature',
+        item.type === 'text' ? 'TextBox — not placeable' : 'Signature',
         `${formatTemplateNumber(item.width)} × ${formatTemplateNumber(item.height)} pt`,
         `page ${item.page + 1}`,
         `X ${formatTemplateNumber(item.x)}, Y ${formatTemplateNumber(item.y)}`,
@@ -5739,6 +5635,10 @@
       if (!template || !field) return;
 
       const item = templateItemFromField(field, makeTemplateId('itm'));
+      if (!item) {
+        showNotification('Only signature fields can be saved to a template.', 'error');
+        return;
+      }
       if (!item.name) {
         showNotification('Give the field a name before saving it to a template.', 'error');
         return;
@@ -5841,6 +5741,10 @@
     // placing; a dragged field belongs where the user dropped it. Only its
     // name, type, size, required and multiline flags come from the template.
     function placeTemplateItemAt(item, clickX, clickY) {
+      if (item.type === 'text') {
+        showNotification(`Skipped "${item.name}" — text fields are no longer created.`, 'error');
+        return;
+      }
       const scaleX = currentViewport.scaleX ?? currentViewport.scale;
       const scaleY = currentViewport.scaleY ?? scaleX;
 
@@ -5854,9 +5758,7 @@
       const name = uniqueFieldName(item.name, new Set(documentFields.map((f) => f.name)));
       stageNewField({
         name,
-        type: item.type,
         required: item.required,
-        multiline: item.multiline,
         page: pageNum - 1,
         rect: screenRectToPdf(screenLeft, screenTop, screenW, screenH),
       });
@@ -5873,30 +5775,24 @@
       const template = getSelectedTemplate();
       if (!template || !pdfDoc || !template.items.length) return;
 
-      const signatureCount = documentFields.filter((f) => f.type !== 'TextField').length;
-      const textCount = documentFields.filter((f) => f.type === 'TextField').length;
+      // Only unsigned signature fields are ever replaceable; everything else stays.
+      const signatureCount = documentFields.filter(isEditableField).length;
 
-      if (signatureCount || textCount) {
+      if (signatureCount) {
         pendingPlaceTemplate = template;
-        openPlaceTemplateCleanupModal(signatureCount, textCount);
+        openPlaceTemplateCleanupModal(signatureCount);
         return;
       }
 
       runPlaceTemplateBatch(template, null);
     }
 
-    // removeKind: null/'none'/'both' places every item in the template;
-    // 'signature' or 'text' scopes the batch to just that item type -- it
-    // both strips that kind out of documentFields first AND limits what
-    // gets placed to matching template items, so "Text boxes only" doesn't
-    // also drop in the template's signature fields. One history entry for
-    // the whole batch (removals included), so a single Undo takes it all
-    // back out.
+    // removeKind: 'signature' strips the document's editable (unsigned
+    // signature) fields first; anything else keeps what's there. One history
+    // entry for the whole batch (removals included), so a single Undo takes
+    // it all back out.
     function runPlaceTemplateBatch(template, removeKind) {
-      const items = removeKind === 'signature' || removeKind === 'text'
-        ? template.items.filter((item) => item.type === removeKind)
-        : template.items;
-      const plan = planAutoPlacement(items, new Set(documentFields.map((f) => f.name)), pdfDoc.numPages);
+      const plan = planAutoPlacement(template.items, new Set(documentFields.map((f) => f.name)), pdfDoc.numPages);
 
       if (plan.placements.length || (removeKind && removeKind !== 'none')) {
         pushFieldHistory();
@@ -5904,13 +5800,7 @@
         let removedCount = 0;
         if (removeKind && removeKind !== 'none') {
           const before = documentFields.length;
-          documentFields = documentFields.filter((f) => {
-            const isText = f.type === 'TextField';
-            if (removeKind === 'both') return false;
-            if (removeKind === 'text') return !isText;
-            if (removeKind === 'signature') return isText;
-            return true;
-          });
+          documentFields = documentFields.filter((f) => !isEditableField(f));
           removedCount = before - documentFields.length;
           if (activeField && !documentFields.includes(activeField)) deselectActiveField();
         }
@@ -5938,8 +5828,11 @@
 
       if (plan.skipped.length) {
         const names = plan.skipped.map((s) => `"${s.name}" (page ${s.page + 1})`).join(', ');
+        const textOnly = plan.skipped.every((s) => s.reason === 'unsupported-type');
         showNotification(
-          `Skipped ${plan.skipped.length} field${plan.skipped.length === 1 ? '' : 's'} — this document only has ${pdfDoc.numPages} page${pdfDoc.numPages === 1 ? '' : 's'}: ${names}.`,
+          textOnly
+            ? `Skipped ${plan.skipped.length} TextBox item${plan.skipped.length === 1 ? '' : 's'} — text fields are no longer created: ${names}.`
+            : `Skipped ${plan.skipped.length} field${plan.skipped.length === 1 ? '' : 's'} — not placeable (missing page or TextBox item; this document has ${pdfDoc.numPages} page${pdfDoc.numPages === 1 ? '' : 's'}): ${names}.`,
           'error',
           12000,
         );
@@ -5952,44 +5845,32 @@
 
     // Held between open and confirm: the counts already on the document
     // (fixed for the life of the modal) and the currently-picked radio value.
-    let placeTemplateCleanupCounts = { docSig: 0, docText: 0 };
+    let placeTemplateCleanupCounts = { docSig: 0 };
     let placeTemplateCleanupValue = 'none';
 
     function pluralize(count, singular, plural = `${singular}s`) {
       return `${count} ${count === 1 ? singular : plural}`;
     }
 
-    // Each option's copy is generated from real counts rather than fixed
-    // strings, so the modal always describes exactly what will happen --
-    // including the fact that a scoped option leaves the other field type
-    // (on both the document and the template) untouched.
+    // Copy is generated from real counts so the modal always describes exactly
+    // what will happen. Signed signatures and non-signature fields are never removed.
     function buildPlaceTemplateCleanupOptions(template) {
-      const { docSig, docText } = placeTemplateCleanupCounts;
+      const { docSig } = placeTemplateCleanupCounts;
       const tplSig = template.items.filter((i) => i.type !== 'text').length;
-      const tplText = template.items.filter((i) => i.type === 'text').length;
+      const tplText = template.items.length - tplSig;
+      const textNote = tplText ? ` ${pluralize(tplText, 'TextBox item')} will be skipped (text fields are no longer created).` : '';
 
       return [
         {
           value: 'none',
           title: 'Keep existing fields',
-          desc: `Adds the template's ${pluralize(tplSig, 'signature field')} and ${pluralize(tplText, 'text box', 'text boxes')} alongside what's already on the document.`,
+          desc: `Adds the template's ${pluralize(tplSig, 'signature field')} alongside what's already on the document.${textNote}`,
         },
         {
           value: 'signature',
-          title: 'Replace signature fields only',
-          desc: `Removes the document's ${pluralize(docSig, 'existing signature field')}, then places the template's ${pluralize(tplSig, 'signature field')}. Text boxes on either side are left alone.`,
+          title: 'Replace unsigned signature fields',
+          desc: `Removes the document's ${pluralize(docSig, 'unsigned signature field')}, then places the template's ${pluralize(tplSig, 'signature field')}. Signed signatures and other fields are left alone.${textNote}`,
           disabled: !docSig && !tplSig,
-        },
-        {
-          value: 'text',
-          title: 'Replace text boxes only',
-          desc: `Removes the document's ${pluralize(docText, 'existing text box', 'existing text boxes')}, then places the template's ${pluralize(tplText, 'text box', 'text boxes')}. Signature fields on either side are left alone.`,
-          disabled: !docText && !tplText,
-        },
-        {
-          value: 'both',
-          title: 'Replace everything',
-          desc: `Removes every existing field (${docSig + docText}), then places every field in the template (${tplSig + tplText}).`,
         },
       ];
     }
@@ -6032,11 +5913,11 @@
       }));
     }
 
-    function openPlaceTemplateCleanupModal(signatureCount, textCount) {
-      placeTemplateCleanupCounts = { docSig: signatureCount, docText: textCount };
+    function openPlaceTemplateCleanupModal(signatureCount) {
+      placeTemplateCleanupCounts = { docSig: signatureCount };
       placeTemplateCleanupValue = 'none';
       placeTemplateCleanupHint.textContent =
-        `“${pendingPlaceTemplate?.name}” is about to add to a document that already has ${pluralize(signatureCount, 'signature field')} and ${pluralize(textCount, 'text box', 'text boxes')}. Choose what happens to them.`;
+        `“${pendingPlaceTemplate?.name}” is about to add to a document that already has ${pluralize(signatureCount, 'unsigned signature field')}. Choose what happens to them.`;
       renderPlaceTemplateCleanupChoices();
       placeTemplateCleanupModal.classList.add('is-open');
       placeTemplateCleanupModal.setAttribute('aria-hidden', 'false');
@@ -6577,6 +6458,11 @@
         tooltip: f.tooltip,
         page: f.page,
         signed: f.signed === true,
+        // Immutable on the client; carried by reference so Field Details and
+        // radio markers survive Discard and undo/redo.
+        raw: f.raw,
+        extraWidgets: f.extraWidgets,
+        objectRefs: f.objectRefs,
         rect: f.rect ? { x: f.rect.x, y: f.rect.y, width: f.rect.width, height: f.rect.height } : null,
       }));
     }
@@ -6857,8 +6743,7 @@
     function isFieldStaged(field) {
       const base = fieldsBaseline.find((f) => f.name === field.name);
       if (!base) return true;
-      return !rectsEqual(base.rect, field.rect) || !!base.required !== !!field.required
-        || !!base.multiline !== !!field.multiline;
+      return !rectsEqual(base.rect, field.rect) || !!base.required !== !!field.required;
     }
 
     // Diffs the working `documentFields` against the last server-confirmed
@@ -6883,11 +6768,10 @@
           ops.push({
             op: 'add',
             name: field.name,
-            type: field.type === 'TextField' ? 'text' : 'signature',
+            type: 'signature',
             page: field.page,
             x: field.rect.x, y: field.rect.y, width: field.rect.width, height: field.rect.height,
             required: !!field.required,
-            multiline: field.type === 'TextField' && !!field.multiline,
           });
           continue;
         }
@@ -6896,22 +6780,19 @@
         const positionChanged = !coordsEqual(base.rect, field.rect);
         const sizeChanged = !sizeEqual(base.rect, field.rect);
         const requiredChanged = !!base.required !== !!field.required;
-        const multilineChanged = field.type === 'TextField' && !!base.multiline !== !!field.multiline;
-        if (renamed || positionChanged || sizeChanged || requiredChanged || multilineChanged) {
+        if (renamed || positionChanged || sizeChanged || requiredChanged) {
           ops.push({
             op: 'edit',
             originalName: baselineKey,
             name: field.name,
             x: field.rect.x, y: field.rect.y, width: field.rect.width, height: field.rect.height,
             required: !!field.required,
-            multiline: field.type === 'TextField' ? !!field.multiline : undefined,
             // UI-only markers for describePendingFieldChanges() -- stripped
             // before the ops payload is sent to the server (see the replacer
             // in applyPendingFieldChanges()).
             _positionChanged: positionChanged,
             _sizeChanged: sizeChanged,
             _requiredChanged: requiredChanged,
-            _multilineChanged: multilineChanged,
           });
         }
       }
@@ -6987,7 +6868,6 @@
       const moved = nonRenamedEdits.filter((op) => op._positionChanged).length;
       const resized = nonRenamedEdits.filter((op) => op._sizeChanged).length;
       const requiredChanged = nonRenamedEdits.filter((op) => op._requiredChanged).length;
-      const multilineChanged = nonRenamedEdits.filter((op) => op._multilineChanged).length;
       const removed = ops.filter((op) => op.op === 'remove').length;
       const parts = [];
       if (added) parts.push(`Added ${added} field${added === 1 ? '' : 's'}`);
@@ -6995,7 +6875,6 @@
       if (moved) parts.push(`Moved ${moved} field${moved === 1 ? '' : 's'}`);
       if (resized) parts.push(`Resized ${resized} field${resized === 1 ? '' : 's'}`);
       if (requiredChanged) parts.push(`Changed ${requiredChanged} field requirement${requiredChanged === 1 ? '' : 's'}`);
-      if (multilineChanged) parts.push(`Changed multiline on ${multilineChanged} field${multilineChanged === 1 ? '' : 's'}`);
       if (removed) parts.push(`Removed ${removed} field${removed === 1 ? '' : 's'}`);
       return parts.join(', ');
     }
@@ -7015,7 +6894,6 @@
           if (op._positionChanged) tags.push({ cls: 'move', text: 'Moved' });
           if (op._sizeChanged) tags.push({ cls: 'resize', text: 'Resized' });
           if (op._requiredChanged) tags.push({ cls: 'required', text: 'Required' });
-          if (op._multilineChanged) tags.push({ cls: 'multiline', text: 'Multiline' });
         }
         const fromName = op.op === 'edit' && op.name !== op.originalName ? op.originalName : null;
         return { name: op.name, fromName, tags };
@@ -8327,6 +8205,33 @@ const OVERVIEW_GROUPS = [
 let overviewHiddenKinds = new Set(); // kinds whose hotspots are hidden on the PDF
 let activeOverviewItem = null;       // { kind, key } shown in the sheet
 
+// Where a jump out of the Overview sheet started, so a "← Back to <label>"
+// button can reopen the same finding. Cleared on return and on a new document.
+let diagnosticOrigin = null;         // { kind, key, label }
+function renderBackToFinding() {
+  const bar = document.getElementById('backToDocumentBar');
+  if (!bar) return;
+  bar.hidden = !diagnosticOrigin;
+  const btn = document.getElementById('btnBackToFinding');
+  if (btn) btn.title = diagnosticOrigin ? `Back to “${diagnosticOrigin.label}” in the document` : '';
+}
+function rememberDiagnosticOrigin() {
+  if (!activeOverviewItem) return;
+  const { kind, key } = activeOverviewItem;
+  diagnosticOrigin = { kind, key, label: overviewItemFor(kind, key)?.label || key };
+  renderBackToFinding();
+}
+function clearDiagnosticOrigin() {
+  diagnosticOrigin = null;
+  renderBackToFinding();
+}
+document.getElementById('btnBackToFinding')?.addEventListener('click', () => {
+  const origin = diagnosticOrigin;
+  if (!origin) return;
+  document.getElementById('navBtnMetaData')?.click(); // also clears the origin
+  activateOverviewItem(origin.kind, origin.key);
+});
+
 function applyOverviewHiddenKinds() {
   document.body.dataset.overviewHide = [...overviewHiddenKinds].join(' ');
 }
@@ -8339,41 +8244,48 @@ function overviewItemFor(kind, key) {
   return currentOverviewItems().find((i) => i.kind === kind && i.key === key) || null;
 }
 
-function overviewDateHtml(label, value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const day = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' }).format(d);
+// A date as an ovFacts() tile: day in bold, time muted next to it.
+function ovDateFact(label, value) {
+  const d = value ? new Date(value) : null;
+  if (!d || Number.isNaN(d.getTime())) return { label, value: null };
   const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(d);
-  return `<div class="overview-date"><span class="overview-date-label">${escapeHtml(label)}</span><time datetime="${d.toISOString()}"><span class="overview-date-day">${escapeHtml(day)}</span><span class="overview-date-time">${escapeHtml(time)}</span></time></div>`;
+  return { label, value: d.toISOString(), html: `<time datetime="${d.toISOString()}">${escapeHtml(ovShortDate(d))} <span class="ov-fact-sub">${escapeHtml(time)}</span></time>` };
 }
 
+// Same hero + tiles as the detail sheet (see ovHeroHtml/ovFacts).
 function overviewHeaderHtml() {
   const info = documentOverview?.documentInfo || null;
-  const title = (info?.title || '').trim() || activeFile?.name || 'Untitled document';
+  const fileName = activeFile?.name || '';
+  const title = (info?.title || '').trim() || fileName || 'Untitled document';
   const pageCount = info?.pageCount ?? pdfDoc?.numPages ?? null;
-  const parts = [];
-  if (pageCount) {
-    let pageLine = `${pageCount} page${pageCount === 1 ? '' : 's'}`;
-    const groups = documentOverview?.pages?.length ? groupPages(documentOverview.pages) : [];
-    if (groups.length === 1) pageLine += ` · ${groups[0].sizeName} ${String(groups[0].orientation || '').toLowerCase()}`;
-    else if (groups.length > 1) pageLine += ' · mixed sizes';
-    parts.push(pageLine);
+
+  const pages = documentOverview?.pages || [];
+  const groups = pages.length ? groupPages(pages) : [];
+  let format = null;
+  if (groups.length === 1) {
+    const p = pages[0];
+    const [w, h] = p.rotation % 180 ? [p.height, p.width] : [p.width, p.height];
+    const mm = (pt) => Math.round((pt * 25.4) / 72);
+    format = { value: groups[0].sizeName, html: `${escapeHtml(groups[0].sizeName)} <span class="ov-fact-sub">${escapeHtml(groups[0].orientation)} · ${mm(w)} × ${mm(h)} mm</span>` };
+  } else if (groups.length > 1) {
+    format = { value: 'Mixed sizes' };
   }
-  const size = formatFileSize(info?.fileSize ?? activeFile?.size ?? null);
-  if (size) parts.push(size);
-  if (info?.pdfVersion) parts.push(`PDF ${info.pdfVersion}`);
-
-  const dates = [overviewDateHtml('Created', info?.creationDate), overviewDateHtml('Modified', info?.modificationDate)].filter(Boolean);
   const madeWith = [...new Set([info?.creator, info?.producer].filter(Boolean))].join(' / ');
+  const subtitle = [info?.author, title !== fileName ? fileName : null].filter(Boolean).join(' · ');
 
-  return `<div class="meta-card overview-header">
-    <h4 class="overview-title">${escapeHtml(title)}</h4>
-    ${info?.author ? `<p class="overview-author">${escapeHtml(info.author)}</p>` : ''}
-    ${parts.length ? `<p class="overview-line">${escapeHtml(parts.join(' · '))}</p>` : ''}
-    ${dates.length ? `<div class="overview-dates">${dates.join('')}</div>` : ''}
-    ${madeWith ? `<p class="overview-line overview-madewith">Made with ${escapeHtml(madeWith)}</p>` : ''}
+  const hero = `<div class="ov-hero is-document">
+    <span class="ov-hero-lead" aria-hidden="true"><span class="icon icon-file-text"></span></span>
+    <div class="ov-hero-main"><h4 class="ov-hero-label">${escapeHtml(title)}</h4>${subtitle ? `<p class="ov-hero-sub">${escapeHtml(subtitle)}</p>` : ''}</div>
+    ${info?.pdfVersion ? ovPill(`PDF ${info.pdfVersion}`, 'neutral') : ''}
   </div>`;
+  return `<div class="overview-header">${hero}${ovFacts([
+    { label: 'Pages', value: pageCount ? String(pageCount) : null },
+    { label: 'File size', value: formatFileSize(info?.fileSize ?? activeFile?.size ?? null) },
+    { label: 'Format', value: format?.value, html: format?.html, wide: true },
+    ovDateFact('Created', info?.creationDate),
+    ovDateFact('Modified', info?.modificationDate),
+    { label: 'Made with', value: madeWith, wide: true },
+  ])}</div>`;
 }
 
 function overviewChipsHtml() {
@@ -8559,6 +8471,7 @@ function drawOverviewHotspots() {
       const pin = document.createElement('div');
       pin.className = 'field-invisible-pin';
       pin.innerHTML = `<span class="icon ${OVERVIEW_KINDS[item.kind].icon}" aria-hidden="true"></span>`;
+      pin.dataset.label = item.label || '';
       div.appendChild(pin);
       pins.push({ div, pin });
     }
@@ -8623,15 +8536,340 @@ function closeOverviewSheet() {
   });
 }
 
-function ovBool(v) {
-  return v ? 'Yes' : 'No';
+/* ---------- Diagnostics: element history + signature evidence ---------- */
+
+// Hand-mirrored from lib/VersionHistory.ts elementVersionHistory() -- keep in sync.
+function elementVersionHistory(versions, element) {
+  if (!element.key || !['field', 'signature', 'stamp'].includes(element.kind)) return null;
+  const usable = versions.filter((v) => !v.parseError && (v.fields || v.signatures || v.stamps));
+  let firstIndex = null;
+  let signedIndex = null;
+  for (const v of usable) {
+    const signed = (v.signatures || []).some((x) => x.fieldName === element.key);
+    const present = element.kind === 'stamp'
+      ? (v.stamps || []).some((x) => x.id === element.key)
+      : signed || (v.fields || []).some((x) => x.name === element.key);
+    if (present && firstIndex === null) firstIndex = v.index;
+    if (signed && signedIndex === null) signedIndex = v.index;
+  }
+  if (firstIndex === null) return null;
+  const pos = versions.findIndex((v) => v.index === firstIndex);
+  return {
+    firstIndex,
+    signedIndex,
+    presentFromStart: pos <= 0,
+    previousIndex: pos > 0 ? versions[pos - 1].index : null,
+  };
 }
 
+// Whether local version i is boundary i of THIS file's own native chain (so a
+// revision number from the signature report can be linked to a stored
+// version): every save is initial/incremental and the count matches.
+async function localVersionsAreNativeChain(revisionCount) {
+  if (!documentSessionId || !Number.isInteger(revisionCount) || revisionCount < 2) return false;
+  const metas = await listVersionMetaForSession(documentSessionId);
+  return metas.length === revisionCount
+    && metas.every((m) => m.saveKind === 'initial' || m.saveKind === 'incremental');
+}
+
+function overviewHistoryHtml(item) {
+  if (!['signature', 'field', 'stamp'].includes(item.kind)) return '';
+  // Results land in the footer, right above the trigger button, so they stay in view.
+  return `<div class="overview-history" data-ov-history data-kind="${item.kind}" data-key="${escapeHtml(item.key)}"></div>`;
+}
+
+async function findElementHistory(host) {
+  const kind = host.dataset.kind;
+  const key = host.dataset.key;
+  host.innerHTML = '<p class="field-details-empty">Looking through stored versions…</p>';
+  const sessionId = documentSessionId;
+  let line;
+  let compare = null;
+  try {
+    const metas = await listVersionMetaForSession(sessionId);
+    const revs = metas.map((m) => ({
+      ...(m.summary ? { ...m.summary, loaded: true } : { loaded: false }),
+      index: m.index,
+      versionKey: m.versionKey,
+    }));
+    await ensureSummariesLoaded(sessionId, revs);
+    if (sessionId !== documentSessionId) return;
+    const h = elementVersionHistory(revs, { kind, key });
+    if (!h) {
+      line = 'Not tracked by name in the stored versions. Open Versions to inspect manually.';
+    } else {
+      const lines = [];
+      if (h.presentFromStart) lines.push('Present since the first stored version.');
+      else lines.push(`First appears in Version ${h.firstIndex}.`);
+      if (h.signedIndex !== null) lines.push(`Signed in Version ${h.signedIndex}.`);
+      line = lines.join(' ');
+      if (!h.presentFromStart && h.previousIndex !== null) compare = { from: h.previousIndex, to: h.firstIndex };
+    }
+  } catch (err) {
+    line = `Could not read version history: ${err.message || err}`;
+  }
+  host.innerHTML = `<p class="overview-callout">${escapeHtml(line)}</p>${compare
+    ? `<button type="button" class="btn btn-ghost btn-small" data-evidence-action="compare-versions" data-from="${compare.from}" data-to="${compare.to}" data-term="${escapeHtml(key)}">Compare ${compare.from} → ${compare.to}</button>`
+    : ''}`;
+}
+
+// Switch to Versions and open the diff for from → to, optionally pre-filtering
+// the raw-object list. The compare selectors fill in once the section's
+// timeline loads, so wait for both indexes to appear.
+async function openVersionsDiff(from, to, tab, term) {
+  rememberDiagnosticOrigin();
+  document.getElementById('navBtnRevisions')?.click();
+  const sessionId = documentSessionId;
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if (sessionId !== documentSessionId) return;
+    const have = new Set(compareSelectorRevisions.map((r) => r.index));
+    if (have.has(from) && have.has(to)) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  pendingDiffFilterTerm = term || null;
+  runQuickDiff(from, to, tab);
+}
+
+// One fact per row. Never a verdict: "unknown" and "not checked" are printed
+// literally.
+function signatureEvidenceRows(sig) {
+  const cov = sig.revisionCoverage;
+  const check = (id) => sig.checks.find((c) => c.id === id);
+  const rows = [];
+
+  if (cov) {
+    rows.push({ label: 'Signed bytes', text: cov.coveredRevision !== null
+      ? `End at revision ${cov.coveredRevision} of ${cov.revisionCount} in this file`
+      : 'Do not end at a revision boundary' });
+  }
+  const digest = check('sig.messageDigest');
+  if (digest) rows.push({ label: 'Digest', text: digest.detail, status: digest.status });
+  const cms = check('sig.cryptographic');
+  if (cms) rows.push({ label: 'CMS signature', text: cms.detail, status: cms.status });
+  if (cov && cov.coveredRevision !== null) {
+    const later = cov.revisionCount - cov.coveredRevision;
+    rows.push({ label: 'Later revisions', text: later > 0 ? `${later} later revision${later === 1 ? '' : 's'}` : 'None', slot: later > 0 ? cov : null });
+  }
+  const mdp = check('sig.docMdp');
+  if (mdp) rows.push({ label: 'Certification (DocMDP)', text: mdp.detail, status: mdp.status });
+  rows.push({ label: 'Trust and revocation', text: 'Unknown — not evaluated', status: 'unknown' });
+  return rows;
+}
+
+// A compact card: one row per fact, status dot on the left, label above the
+// value, any action underneath. One column at every width, so it can't overflow.
+function signatureEvidenceHtml(sig) {
+  const rows = signatureEvidenceRows(sig).map((r) => {
+    const dot = r.status ? certDot(r.status) : '<span class="evidence-dot" aria-hidden="true">i</span>';
+    const slot = r.slot
+      ? `<span class="evidence-action" data-evidence-slot="after-signing" data-from="${r.slot.coveredRevision}" data-to="${r.slot.revisionCount}"></span>`
+      : '';
+    return `<div class="evidence-row">${dot}<div class="evidence-main"><span class="evidence-label">${escapeHtml(r.label)}</span><span class="evidence-text">${escapeHtml(r.text)}</span>${slot}</div></div>`;
+  });
+  return `<div class="evidence">${rows.join('')}</div>`;
+}
+
+// Adds "Show changes after signing" to each slot, but only when the stored
+// versions really are this file's native chain; otherwise the slot stays empty.
+async function fillEvidenceSlots(root) {
+  if (!root) return;
+  for (const slot of root.querySelectorAll('[data-evidence-slot="after-signing"]')) {
+    const from = Number(slot.dataset.from);
+    const to = Number(slot.dataset.to);
+    if (await localVersionsAreNativeChain(to).catch(() => false)) {
+      slot.innerHTML = `<button type="button" class="btn btn-ghost btn-small" data-evidence-action="compare-versions" data-from="${from}" data-to="${to}" data-tab="overview">Show changes after signing</button>`;
+    }
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-evidence-action]');
+  if (!btn) return;
+  const action = btn.dataset.evidenceAction;
+  if (action === 'find-history') {
+    const host = document.querySelector('#overviewSheetFooter [data-ov-history]');
+    if (host) findElementHistory(host);
+  } else if (action === 'compare-versions') {
+    openVersionsDiff(Number(btn.dataset.from), Number(btn.dataset.to), btn.dataset.tab || 'details', btn.dataset.term || null);
+  }
+});
+
+// Label-above-value tiles for the detail sheet, two per row (`wide` spans
+// both). Empty rows are dropped.
+function ovFacts(rows) {
+  const items = rows.filter((r) => r.value !== null && r.value !== undefined && r.value !== '');
+  if (!items.length) return '';
+  return `<dl class="ov-facts">${items.map((r) => `<div class="ov-fact${r.wide ? ' is-wide' : ''}"><dt>${escapeHtml(r.label)}</dt><dd>${r.html || escapeHtml(String(r.value))}</dd></div>`).join('')}</dl>`;
+}
+
+// Yes/no properties as one row of chips instead of a "Required: No" row each.
+function ovFlags(flags) {
+  return `<ul class="ov-flags">${flags.map(([label, on]) => `<li class="ov-flag${on ? ' is-on' : ''}"><span class="icon ${on ? 'icon-check' : 'icon-minus'}" aria-hidden="true"></span>${escapeHtml(label)}<span class="sr-only">: ${on ? 'yes' : 'no'}</span></li>`).join('')}</ul>`;
+}
+
+function ovSection(icon, title) {
+  return `<p class="overview-section-title"><span class="icon ${icon}" aria-hidden="true"></span> ${escapeHtml(title)}</p>`;
+}
+
+// Free text from the PDF (comment body, stamp text) -- shown as a quote, never as HTML.
+function ovQuote(text) {
+  return text ? `<blockquote class="ov-quote">${escapeHtml(text)}</blockquote>` : '';
+}
+
+function ovPill(text, tone) {
+  return `<span class="ov-pill is-${tone}">${escapeHtml(text)}</span>`;
+}
+
+function ovInitials(name) {
+  return String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
+}
+
+// `icon` lets the section heroes (Signatures, Versions, Certificates) use a kind
+// that isn't an Overview item.
+function ovHeroHtml(item, { label, subtitle, badge, avatar, icon } = {}) {
+  const lead = avatar
+    ? `<span class="ov-hero-lead is-avatar" aria-hidden="true">${escapeHtml(avatar)}</span>`
+    : `<span class="ov-hero-lead" aria-hidden="true"><span class="icon ${icon || OVERVIEW_KINDS[item.kind].icon}"></span></span>`;
+  return `<div class="ov-hero is-${item.kind}">${lead}<div class="ov-hero-main"><p class="ov-hero-label">${escapeHtml(label || item.label)}</p>${subtitle ? `<p class="ov-hero-sub">${escapeHtml(subtitle)}</p>` : ''}</div>${badge || ''}</div>`;
+}
+
+// Signatures section header: how many signature fields still wait to be signed.
+function renderSignaturesHero() {
+  const host = document.getElementById('sigSectionHero');
+  if (!host) return;
+  if (!activeFile) {
+    host.innerHTML = ovHeroHtml({ kind: 'signature' }, { label: 'Signature fields', subtitle: 'Upload a document to place fields' });
+    return;
+  }
+  const sigs = documentFields.filter((f) => f.type === 'Signature');
+  const unsigned = sigs.filter(isEditableField).length;
+  const signed = sigs.length - unsigned;
+  const badge = !sigs.length ? ovPill('None yet', 'neutral')
+    : unsigned ? ovPill(`${unsigned} to sign`, 'pending')
+    : ovPill('All signed', 'positive');
+  host.innerHTML = ovHeroHtml({ kind: 'signature' }, {
+    label: `${sigs.length} signature field${sigs.length === 1 ? '' : 's'}`,
+    subtitle: sigs.length ? `${unsigned} unsigned · ${signed} signed` : 'Add one below, then place it on the page',
+    badge,
+  });
+}
+renderSignaturesHero();
+
+function ovShortDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' }).format(d);
+}
+
+// Snippet + mini page map; filled in by fillOverviewVisuals() once the page is loaded.
+function ovPlacementHtml(item) {
+  const r = item.rect;
+  const mm = (n) => Math.round((n * 25.4) / 7.2) / 10;
+  const lines = [`Page ${item.page + 1}`];
+  if (r && Number.isFinite(r.width)) lines.push(`${mm(r.width)} × ${mm(r.height)} mm`);
+  const extra = (item.source.extraWidgets || []).filter((w) => Number.isInteger(w.page));
+  if (extra.length) lines.push(`Also on ${[...new Set(extra.map((w) => `page ${w.page + 1}`))].join(', ')}`);
+  const pt = r ? ` title="${Math.round(r.width * 10) / 10} × ${Math.round(r.height * 10) / 10} pt at ${Math.round(r.x)}, ${Math.round(r.y)} pt from bottom-left"` : '';
+  return `${r ? `<div class="ov-snippet" data-ov-snippet><span class="ov-snippet-loading">Rendering preview…</span></div>` : ''}
+    <div class="ov-placement">
+      ${r ? '<div class="ov-pagemap" data-ov-pagemap aria-hidden="true"></div>' : ''}
+      <div class="ov-placement-text"${pt}>${lines.map((l, i) => `<span${i ? '' : ' class="ov-placement-page"'}>${escapeHtml(l)}</span>`).join('')}</div>
+    </div>`;
+}
+
+// The rendered crop and page map for the item in the sheet, kept so a
+// re-render (e.g. once the Certificates report arrives) doesn't redraw them.
+let ovVisualCache = null; // { id, file, snippet, map }
+
+async function fillOverviewVisuals(item) {
+  const body = document.getElementById('overviewSheetBody');
+  const snippetSlot = body?.querySelector('[data-ov-snippet]');
+  const mapSlot = body?.querySelector('[data-ov-pagemap]');
+  if (!mapSlot || !item.rect || !pdfDoc) return;
+  const id = `${item.kind}\u0000${item.key}`;
+  if (ovVisualCache?.id === id && ovVisualCache.file === activeFile) {
+    snippetSlot?.replaceChildren(ovVisualCache.snippet);
+    mapSlot.replaceChildren(ovVisualCache.map);
+    return;
+  }
+  const file = activeFile;
+  const stillShown = () => file === activeFile && activeOverviewItem?.kind === item.kind && activeOverviewItem?.key === item.key;
+
+  let page;
+  try {
+    page = await pdfDoc.getPage(item.page + 1);
+  } catch (_e) {
+    snippetSlot?.remove();
+    return;
+  }
+  if (!stillShown()) return;
+
+  // Viewport space (top-left origin, rotation applied), in points.
+  const base = page.getViewport({ scale: 1 });
+  const r = item.rect;
+  const [x1, y1, x2, y2] = base.convertToViewportRectangle([r.x, r.y, r.x + r.width, r.y + r.height]);
+  const box = { left: Math.min(x1, x2), top: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) };
+  const pct = (v, of) => `${Math.max(0, Math.min(100, (v / of) * 100))}%`;
+
+  const map = document.createElement('div');
+  map.className = 'ov-pagemap-page';
+  map.style.aspectRatio = `${base.width} / ${base.height}`;
+  map.innerHTML = `<span class="ov-pagemap-mark" style="left:${pct(box.left, base.width)};top:${pct(box.top, base.height)};width:${pct(box.width, base.width)};height:${pct(box.height, base.height)}"></span>`;
+  mapSlot.replaceChildren(map);
+
+  let snippet;
+  if (isRectPracticallyInvisible(item.rect, item.source.type)) {
+    snippet = document.createElement('p');
+    snippet.className = 'ov-snippet-note';
+    snippet.textContent = 'Not visible on the page — this object has no visible area.';
+  } else {
+    const pad = 18;
+    const crop = {
+      left: Math.max(0, box.left - pad),
+      top: Math.max(0, box.top - pad),
+      right: Math.min(base.width, box.left + box.width + pad),
+      bottom: Math.min(base.height, box.top + box.height + pad),
+    };
+    const w = crop.right - crop.left;
+    const h = crop.bottom - crop.top;
+    // ponytail: fixed 560×280px budget (~2x the sheet width); tie to devicePixelRatio if it looks soft.
+    const scale = Math.min(3, 560 / w, 280 / h);
+    const canvasEl = document.createElement('canvas');
+    canvasEl.width = Math.max(1, Math.ceil(w * scale));
+    canvasEl.height = Math.max(1, Math.ceil(h * scale));
+    try {
+      await page.render({
+        canvasContext: canvasEl.getContext('2d'),
+        viewport: page.getViewport({ scale }),
+        transform: [1, 0, 0, 1, -crop.left * scale, -crop.top * scale],
+      }).promise;
+    } catch (_e) {
+      snippetSlot?.remove();
+      return;
+    }
+    snippet = document.createElement('div');
+    snippet.className = 'ov-snippet-frame';
+    snippet.appendChild(canvasEl);
+    const mark = document.createElement('span');
+    mark.className = 'ov-snippet-mark';
+    mark.style.cssText = `left:${pct(box.left - crop.left, w)};top:${pct(box.top - crop.top, h)};width:${pct(box.width, w)};height:${pct(box.height, h)}`;
+    snippet.appendChild(mark);
+  }
+  if (!stillShown()) return;
+  ovVisualCache = { id, file, snippet, map };
+  // The body may have been re-rendered while the page was drawing.
+  document.querySelector('#overviewSheetBody [data-ov-snippet]')?.replaceChildren(snippet);
+  document.querySelector('#overviewSheetBody [data-ov-pagemap]')?.replaceChildren(map);
+}
+
+// Returns { hero, html, actions }: the header card, the kind-specific body,
+// and footer buttons.
 function overviewSheetBody(item, opts) {
   const s = item.source;
   const parts = [];
   const actions = [];
-  const table = (rows) => metaKvTable(rows);
+  let hero;
 
   if (item.kind === 'signature') {
     if (item.status === 'Signed') {
@@ -8643,94 +8881,99 @@ function overviewSheetBody(item, opts) {
           ? (slot.coversWholeFile ? 'Covers the whole file' : `${slot.trailingBytes} byte${slot.trailingBytes === 1 ? '' : 's'} added after signing`)
           : null;
         const when = sig.signedAttributes?.signingTime || sig.signingTimeClaimed;
-        parts.push(table([
-          { label: 'Status', value: sig.status, html: certBadge(sig.status), keep: true },
-          { label: 'Signer', value: sig.name },
-          { label: 'Signed', value: when, html: when ? escapeHtml(formatDisplayDate(when)) : null },
-          { label: 'Reason', value: sig.reason },
+        hero = ovHeroHtml(item, {
+          avatar: sig.name ? ovInitials(sig.name) : null,
+          subtitle: [sig.name ? `Signed by ${sig.name}` : 'Signed', ovShortDate(when)].filter(Boolean).join(' · '),
+          badge: certBadge(sig.status),
+        });
+        parts.push(ovFacts([
+          { ...ovDateFact('Signed', when), wide: true },
+          { label: 'Reason', value: sig.reason, wide: true },
           { label: 'Location', value: sig.location },
           { label: 'Coverage', value: coverage },
-          { label: 'Timestamp', value: ovBool(sig.hasTimestampToken), keep: true },
           { label: 'Field', value: s.name },
         ]));
+        parts.push(ovFlags([['Timestamped', sig.hasTimestampToken]]));
+        parts.push(`${ovSection('icon-shield', 'Signature evidence')}${signatureEvidenceHtml(sig)}`);
         actions.push(`<button type="button" class="btn btn-primary" data-ov-action="open-certificates" data-ov-field="${escapeHtml(s.name)}">Open in Certificates</button>`);
       } else {
-        parts.push(table([
-          { label: 'Status', value: 'Signed', keep: true },
-          { label: 'Field', value: s.name },
-        ]));
+        hero = ovHeroHtml(item, { subtitle: 'Signed', badge: ovPill('Signed', 'positive') });
         parts.push(`<p class="field-details-empty">${opts?.settled ? 'Signature details could not be read.' : 'Loading signature details…'}</p>`);
       }
     } else {
-      parts.push('<p class="overview-callout">Waiting to be signed.</p>');
-      parts.push(table([
-        { label: 'Field', value: s.name },
-        { label: 'Required', value: ovBool(s.required), keep: true },
-        { label: 'Read-only', value: ovBool(s.readOnly), keep: true },
-        { label: 'Tooltip', value: s.tooltip },
-      ]));
+      hero = ovHeroHtml(item, { subtitle: 'Waiting to be signed', badge: ovPill('Unsigned', 'pending') });
+      parts.push(ovFacts([{ label: 'Tooltip', value: s.tooltip, wide: true }]));
+      parts.push(ovFlags([['Required', s.required], ['Read-only', s.readOnly]]));
       actions.push(`<button type="button" class="btn btn-primary" data-ov-action="edit-signature" data-ov-field="${escapeHtml(s.name)}">Edit in Signatures</button>`);
     }
   } else if (item.kind === 'field') {
-    parts.push(table([
-      { label: 'Name', value: s.name },
-      { label: 'Type', value: s.type },
-      { label: 'Value', value: item.status, keep: true },
-      { label: 'Required', value: ovBool(s.required), keep: true },
-      { label: 'Read-only', value: ovBool(s.readOnly), keep: true },
-      { label: 'Tooltip', value: s.tooltip },
-    ]));
+    const typeLabel = { TextField: 'Text field', CheckBox: 'Checkbox', RadioGroup: 'Radio group', Dropdown: 'Dropdown', OptionList: 'List box', Button: 'Button' }[s.type] || s.type || 'Form field';
+    hero = ovHeroHtml(item, { subtitle: typeLabel, badge: ovPill(item.status, FIELD_STATE_FILLED.has(item.status) ? 'positive' : 'neutral') });
+    parts.push(ovFacts([{ label: 'Tooltip', value: s.tooltip, wide: true }]));
+    parts.push(ovFlags([['Required', s.required], ['Read-only', s.readOnly]]));
   } else if (item.kind === 'stamp') {
     const kindLabel = s.kind === 'text' ? 'Text stamp' : s.kind === 'image' ? 'Image stamp' : 'Stamp from another tool';
-    parts.push(table([
-      { label: 'Kind', value: kindLabel, keep: true },
-      { label: 'Text', value: s.text },
-      { label: 'Author', value: s.author },
-      { label: 'Note', value: s.note },
-      { label: 'Created by pdf-seal', value: ovBool(s.createdByPdfSeal), keep: true },
-      { label: 'Locked', value: ovBool(s.locked), keep: true },
-      { label: 'Opacity', value: `${Math.round((s.opacity ?? 1) * 100)}%`, keep: true },
+    const opacity = Math.round((s.opacity ?? 1) * 100);
+    hero = ovHeroHtml(item, { subtitle: [kindLabel, s.author].filter(Boolean).join(' · '), badge: ovPill(item.status, 'neutral') });
+    parts.push(ovQuote(s.text));
+    parts.push(ovFacts([
+      { label: 'Note', value: s.note === item.label ? null : s.note, wide: true },
+      { label: 'Opacity', value: `${opacity}%`, html: `<span class="ov-meter" aria-hidden="true"><span style="width:${opacity}%"></span></span> ${opacity}%` },
     ]));
+    parts.push(ovFlags([['Locked', s.locked]]));
   } else if (item.kind === 'link') {
     if (s.uri) {
+      let host = '';
+      try { host = new URL(s.uri).host; } catch (_e) { /* not a URL pdf-seal can parse; show it raw */ }
+      hero = ovHeroHtml(item, { subtitle: host || 'External link', badge: ovPill('URL', 'neutral') });
       // Plain text on purpose: this is untrusted content from the PDF.
-      parts.push(`<p class="overview-url">${escapeHtml(s.uri)}</p>`);
+      parts.push(`<div class="overview-url">${host ? `<span class="overview-url-host">${escapeHtml(host)}</span>` : ''}<span class="overview-url-full">${escapeHtml(s.uri)}</span></div>`);
       actions.push(`<button type="button" class="btn btn-ghost" data-ov-action="copy" data-ov-text="${escapeHtml(s.uri)}"><span class="icon icon-copy" aria-hidden="true"></span> Copy link</button>`);
     } else if (Number.isInteger(s.destPage)) {
-      parts.push(`<p class="overview-callout">Goes to page ${s.destPage + 1}.</p>`);
+      hero = ovHeroHtml(item, { subtitle: `Goes to page ${s.destPage + 1}`, badge: ovPill(`Page ${s.destPage + 1}`, 'neutral') });
       actions.push(`<button type="button" class="btn btn-primary" data-ov-action="goto-page" data-ov-page="${s.destPage}">Go to page ${s.destPage + 1}</button>`);
     } else {
+      hero = ovHeroHtml(item, { subtitle: 'No destination' });
       parts.push('<p class="field-details-empty">This link has no destination pdf-seal can show.</p>');
     }
   } else {
-    parts.push(table([
-      { label: 'Type', value: s.subtype === 'Text' ? 'Note' : s.subtype === 'FreeText' ? 'Text box' : s.subtype, keep: true },
-      { label: 'Author', value: s.author },
-      { label: 'Text', value: s.contents },
-      { label: 'Modified', value: s.modified, html: s.modified ? escapeHtml(formatDisplayDate(s.modified)) : null },
-    ]));
+    const type = s.subtype === 'Text' ? 'Note' : s.subtype === 'FreeText' ? 'Text box' : s.subtype;
+    // The comment text gets its own quote below, so the hero names only the type.
+    hero = ovHeroHtml(item, { label: s.contents ? type : null, avatar: s.author ? ovInitials(s.author) : null, subtitle: [s.author, ovShortDate(s.modified)].filter(Boolean).join(' · ') });
+    parts.push(ovQuote(s.contents));
+    parts.push(ovFacts([ovDateFact('Modified', s.modified)]));
   }
+
+  // The visual preview sits right under the hero, before the facts.
+  parts.unshift(ovPlacementHtml(item));
 
   const tech = curateRawEntries(s.raw);
   const ref = s.ref || (s.objectRefs && s.objectRefs[0]) || null;
   if (tech.length || ref) {
-    // Friendly label, the raw PDF key (/T, /FT, /Rect...), then the curated value.
+    // Friendly label with the raw PDF key (/T, /FT, /Rect...) as a tag, then the curated value.
     const rows = [...(ref ? [{ label: 'Object', key: 'ref', value: ref }] : []), ...tech];
-    const body = rows.map((r) => `<tr><th>${escapeHtml(r.label)}</th><td class="overview-tech-key">${r.key === 'ref' ? '' : `/${escapeHtml(r.key)}`}</td><td>${escapeHtml(r.value)}</td></tr>`).join('');
-    parts.push(`<details class="overview-tech"><summary>Technical details</summary><table class="field-details-table meta-kv-table"><thead><tr><th>Name</th><th>PDF key</th><th>Value</th></tr></thead><tbody>${body}</tbody></table></details>`);
+    const body = rows.map((r) => `<div class="ov-tech-row"><dt>${escapeHtml(r.label)}${r.key === 'ref' ? '' : ` <code class="ov-tech-key">/${escapeHtml(r.key)}</code>`}</dt><dd>${escapeHtml(r.value)}</dd></div>`).join('');
+    parts.push(`<details class="overview-tech"><summary><span class="icon icon-code" aria-hidden="true"></span> Technical details <span class="overview-count">${rows.length}</span></summary><dl class="ov-tech">${body}</dl></details>`);
   }
-  return { html: parts.join(''), actions };
+  return { hero, html: parts.join(''), actions };
 }
 
 function renderOverviewSheet(item, opts) {
   const meta = OVERVIEW_KINDS[item.kind];
   document.getElementById('overviewSheetTitle').innerHTML = `<span class="icon ${meta.icon}" aria-hidden="true"></span> ${escapeHtml(meta.single)}`;
   document.getElementById('overviewSheetSubject').textContent = `Page ${item.page + 1}`;
-  const { html, actions } = overviewSheetBody(item, opts);
-  document.getElementById('overviewSheetBody').innerHTML = `<p class="overview-sheet-label">${escapeHtml(item.label)}</p>${html}`;
+  const { hero, html, actions: bodyActions } = overviewSheetBody(item, opts);
+  const actions = [...bodyActions];
+  if (['signature', 'field', 'stamp'].includes(item.kind)) {
+    actions.push(`<button type="button" class="btn btn-ghost" data-evidence-action="find-history"><span class="icon icon-clock" aria-hidden="true"></span> Find in version history</button>`);
+  }
+  const body = document.getElementById('overviewSheetBody');
+  body.innerHTML = `${hero}${html}`;
   const footer = document.getElementById('overviewSheetFooter');
-  footer.innerHTML = actions.join('');
+  footer.innerHTML = overviewHistoryHtml(item) + actions.join('');
   footer.hidden = !actions.length;
+  fillEvidenceSlots(body);
+  fillOverviewVisuals(item);
 }
 
 // Row click: go to the page, flash the object, open its sheet.
@@ -8747,9 +8990,11 @@ overviewSheet?.addEventListener('click', (e) => {
   const action = btn.getAttribute('data-ov-action');
   if (action === 'open-certificates') {
     const field = btn.getAttribute('data-ov-field');
+    rememberDiagnosticOrigin();
     closeOverviewSheet();
     focusCertificateForField(field);
   } else if (action === 'edit-signature') {
+    rememberDiagnosticOrigin();
     showSignatureFieldOnDocument(btn.getAttribute('data-ov-field'));
   } else if (action === 'copy') {
     copyCertificateText(btn.getAttribute('data-ov-text'), 'Link');
@@ -10079,6 +10324,26 @@ const TAG_LABEL_DESCRIPTION = {
   'Earlier signatures may not verify': 'This save fully rewrote a version that had a signature on it -- that earlier signature may no longer validate against these bytes.',
 };
 
+// Same hero + tiles as the Overview header. Hidden by CSS whenever the timeline is.
+function renderRevisionsHero(revisions) {
+  const host = document.getElementById('revisionsHero');
+  if (!host) return;
+  const latest = revisions[revisions.length - 1];
+  const modified = latest?.metadata?.modificationDate ? formatDisplayDate(latest.metadata.modificationDate) : null;
+  const count = (pred) => revisions.filter(pred).length;
+  const signedCount = count((r) => r.signatures && r.signatures.length);
+  host.innerHTML = `<div class="overview-header">${ovHeroHtml({ kind: 'versions' }, {
+    icon: 'icon-clock',
+    label: `${revisions.length} version${revisions.length === 1 ? '' : 's'}`,
+    subtitle: [latest ? `Current: Version ${latest.index}` : null, modified ? `modified ${modified}` : null].filter(Boolean).join(' · '),
+    badge: latest?.signatures?.length ? ovPill('Signed', 'positive') : '',
+  })}${ovFacts([
+    { label: 'Incremental updates', value: String(count((r) => r.saveKind === 'incremental')) },
+    { label: 'Full rewrites', value: String(count((r) => r.saveKind === 'rewrite')) },
+    { label: 'Signed versions', value: String(signedCount), wide: true },
+  ])}</div>`;
+}
+
 function renderRevisionsTimeline(revisions) {
   const timeline = document.getElementById('revisionsTimeline');
   const emptyState = document.getElementById('revisionsEmptyState');
@@ -10088,6 +10353,7 @@ function renderRevisionsTimeline(revisions) {
 
   emptyState.hidden = true;
   errorState.hidden = true;
+  renderRevisionsHero(revisions);
 
   // The filter only means anything when there's a genuine mix of incremental
   // and non-incremental saves to split apart -- with only one group present
@@ -10109,16 +10375,22 @@ function renderRevisionsTimeline(revisions) {
   // on, the hidden rewrites aren't there to be grouped).
   const groupDividers = new Map(versionGroupDividers(displayRevisions).map((divider) => [divider.position, divider]));
 
-  timeline.innerHTML = displayRevisions
-    .map((rev, displayIndex) => {
-      const prevEntry = revisions[revisions.indexOf(rev) - 1];
+  const badgesFor = (rev) => versionBadges(rev, revisions[revisions.indexOf(rev) - 1], !!rev.isFinal);
+  const tagHtml = (badge) => `<span class="revision-tag ${TAG_LABEL_CLASS[badge.label] || 'tag-original'}" title="${escapeHtml(TAG_LABEL_DESCRIPTION[badge.label] || '')}">${escapeHtml(badge.label)}</span>`;
+  const dividerHtmlAt = (displayIndex) => {
+    const divider = groupDividers.get(displayIndex);
+    return divider
+      ? `<li class="revision-group-divider is-${divider.kind}"><span class="revision-group-divider-label">${escapeHtml(divider.label)}</span></li>`
+      : '';
+  };
+
+  const cardHtml = (rev, displayIndex) => {
       // The "vs previous" action compares against whatever is immediately
       // before this card in the *displayed* (possibly filtered) list, not
       // necessarily rev.index - 1 -- with the incremental-only filter on,
       // that earlier version may not be shown at all.
       const prevDisplayed = displayRevisions[displayIndex - 1];
-      const badges = versionBadges(rev, prevEntry, !!rev.isFinal);
-      const tags = badges.map((badge) => `<span class="revision-tag ${TAG_LABEL_CLASS[badge.label] || 'tag-original'}" title="${escapeHtml(TAG_LABEL_DESCRIPTION[badge.label] || '')}">${escapeHtml(badge.label)}</span>`);
+      const tags = badgesFor(rev).map(tagHtml);
       const isSigned = !!(rev.signatures && rev.signatures.length);
 
       let sigCell = '';
@@ -10158,9 +10430,7 @@ function renderRevisionsTimeline(revisions) {
           { label: 'Signature',        value: changeSummary.signatureCount    ?? 0 },
         ];
         bodyInnerHtml = `
-            <div class="revision-change-summary">
-              ${summaryItems.map((item) => `<div class="revision-summary-pill"><span class="revision-summary-label">${escapeHtml(item.label)}</span><span class="revision-summary-value">${escapeHtml(String(item.value))}</span></div>`).join('')}
-            </div>
+            ${ovFacts(summaryItems.map((item) => ({ label: item.label, value: String(item.value) })))}
             ${sigCell}
             ${subHtml}
             ${errorHtml}`;
@@ -10168,16 +10438,11 @@ function renderRevisionsTimeline(revisions) {
 
       const isExpanded = expandedRevisionIndices.has(rev.index);
 
-      const divider = groupDividers.get(displayIndex);
-      const dividerHtml = divider
-        ? `<li class="revision-group-divider is-${divider.kind}"><span class="revision-group-divider-label">${escapeHtml(divider.label)}</span></li>`
-        : '';
       // The connector stub below a card would otherwise point straight into
       // the divider that follows it.
       const isGroupEnd = groupDividers.has(displayIndex + 1);
 
       return `
-        ${dividerHtml}
         <li class="revision-card ${isExpanded ? 'is-expanded' : 'is-collapsed'}${rev.parseError ? ' has-error' : ''}${isSigned ? ' is-signed' : ''}${isGroupEnd ? ' is-group-end' : ''}">
           <button type="button" class="revision-card-head" data-rev-toggle="${rev.index}" aria-label="Toggle revision details" aria-expanded="${isExpanded}">
             <div class="revision-card-head-top">
@@ -10199,9 +10464,74 @@ function renderRevisionsTimeline(revisions) {
             </div>
           </div>
         </li>`;
-    })
-    .join('');
+  };
+
+  // A burst of quick edits leaves several consecutive versions with the same
+  // displayed modification time -- draw each such run as one collapsible
+  // stack (still one card per version inside) instead of a long flat list.
+  // Stacks never cross a group divider, so a divider only ever sits before
+  // a stack's first card.
+  const modifiedLabel = (rev) => (rev.metadata && rev.metadata.modificationDate ? formatDisplayDate(rev.metadata.modificationDate) : null);
+  const stackAt = new Map(versionStacks(displayRevisions, modifiedLabel, new Set(groupDividers.keys())).map((stack) => [stack.start, stack]));
+
+  const stackHtml = ({ start, end }) => {
+    const members = displayRevisions.slice(start, end + 1);
+    const first = members[0];
+    const last = members[members.length - 1];
+    const isOpen = expandedVersionStacks.has(first.index) || members.some((rev) => expandedRevisionIndices.has(rev.index));
+    const isSigned = members.some((rev) => rev.signatures && rev.signatures.length);
+    const seen = new Set();
+    const tags = members.flatMap(badgesFor).filter((badge) => !seen.has(badge.label) && seen.add(badge.label)).map(tagHtml);
+    const range = `${first.index}–${last.index}`;
+    return `
+      <li class="revision-stack${isOpen ? ' is-open' : ''}${isSigned ? ' is-signed' : ''}${last.isFinal ? ' is-current' : ''}${groupDividers.has(end + 1) ? ' is-group-end' : ''}">
+        <button type="button" class="revision-stack-head" data-stack-toggle="${first.index}" aria-label="Toggle versions ${range}" aria-expanded="${isOpen}">
+          <div class="revision-card-head-top">
+            <div class="revision-card-title">
+              <span class="revision-index-badge is-range" title="Versions ${range}">${range}</span>
+              <span>Versions ${range}</span>
+              <span class="revision-stack-count">${members.length} saves</span>
+            </div>
+            <span class="revision-expand-btn" aria-hidden="true">${isOpen ? ICONS.chevronDown : ICONS.chevronRight}</span>
+          </div>
+          <div class="revision-row-sub">modified ${escapeHtml(modifiedLabel(first))}</div>
+          ${tags.length ? `<div class="revision-row-tags">${tags.join(' ')}</div>` : ''}
+        </button>
+        <ul class="revision-stack-items">
+          ${members.map((rev, i) => cardHtml(rev, start + i)).join('')}
+        </ul>
+      </li>`;
+  };
+
+  let timelineHtml = '';
+  for (let displayIndex = 0; displayIndex < displayRevisions.length; displayIndex++) {
+    timelineHtml += dividerHtmlAt(displayIndex);
+    const stack = stackAt.get(displayIndex);
+    if (stack) {
+      timelineHtml += stackHtml(stack);
+      displayIndex = stack.end;
+    } else {
+      timelineHtml += cardHtml(displayRevisions[displayIndex], displayIndex);
+    }
+  }
+  timeline.innerHTML = timelineHtml;
   timeline.hidden = false;
+
+  timeline.querySelectorAll('.revision-stack-head').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const firstIndex = parseInt(btn.getAttribute('data-stack-toggle'), 10);
+      if (btn.getAttribute('aria-expanded') === 'true') {
+        expandedVersionStacks.delete(firstIndex);
+        // Collapse the cards inside too -- an expanded member would otherwise
+        // hold the stack open on re-render.
+        btn.closest('.revision-stack').querySelectorAll('[data-rev-toggle]')
+          .forEach((cardBtn) => expandedRevisionIndices.delete(parseInt(cardBtn.getAttribute('data-rev-toggle'), 10)));
+      } else {
+        expandedVersionStacks.add(firstIndex);
+      }
+      renderRevisionsTimeline(revisions);
+    });
+  });
 
   timeline.querySelectorAll('.revision-card-head').forEach((btn) => {
     btn.addEventListener('click', async (event) => {
@@ -10806,9 +11136,9 @@ async function drawHoveredDiffObjectOverlay(pdfRects) {
     }
     overlayLayer.appendChild(overlay);
   });
-  // Same edge-clamp/fan-out treatment as the Signatures viewer's pins (see
+  // Same corner-chip treatment as the Signatures viewer (see
   // layoutInvisibleFieldPins) -- a located field right at a page edge would
-  // otherwise have its marker half-clipped by the viewer's rounded frame.
+  // otherwise have its marker clipped by the viewer's rounded frame.
   if (invisiblePins.length) layoutInvisibleFieldPins(invisiblePins);
   overlayLayer.querySelector('.diff-object-hover-overlay')?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
 }
@@ -11491,8 +11821,10 @@ function renderDiffDetails(diff, fromRev, toRev) {
   // A new comparison starts filters fresh -- the previous pair's search term
   // or category toggles carrying over into a different diff would just be
   // confusing.
-  rawObjectFilter = { term: '', categories: new Set(), locatableOnly: false };
+  rawObjectFilter = { term: pendingDiffFilterTerm || '', categories: new Set(), locatableOnly: false };
+  pendingDiffFilterTerm = null;
   attachRawObjectFilterHandlers(container);
+  if (rawObjectFilter.term) applyRawObjectFilters();
 }
 
 document.getElementById('btnCompareRevisions').addEventListener('click', async () => {
@@ -12660,7 +12992,7 @@ function renderCertificatesPanel(report) {
     emptyEl.hidden = false;
 
     const unsigned = report.unsignedSignatureFieldNames || [];
-    let html = `<p>${escapeHtml(report.summary.headline)}</p>`;
+    let html = ovHeroHtml({ kind: 'certificates' }, { icon: 'icon-shield', label: report.summary.headline, subtitle: 'No digital signatures in this file', badge: ovPill('Not signed', 'neutral') });
     html += '<p>pdf-seal prepares signature fields; it does not sign documents itself. Certificates appear here once the document has been signed somewhere else and loaded back in.</p>';
     if (unsigned.length) {
       html += `<p><strong>Waiting to be signed:</strong> ${unsigned.map((n) => escapeHtml(n)).join(', ')} — place and edit these in the Signatures section.</p>`;
@@ -12715,17 +13047,13 @@ function renderCertificateSummary(report) {
   ).length;
 
   el.innerHTML = `
-    <div class="cert-stat-row">
-      <div class="cert-stat">
-        <div class="cert-stat-value">${certCount}</div>
-        <div class="cert-stat-label">certificate${certCount === 1 ? '' : 's'}</div>
-      </div>
-      <div class="cert-stat">
-        <div class="cert-stat-value">${sigCount}</div>
-        <div class="cert-stat-label">signature${sigCount === 1 ? '' : 's'}</div>
-      </div>
+    <div class="overview-header">
+      ${ovHeroHtml({ kind: 'certificates' }, { icon: 'icon-shield', label: report.summary.headline, subtitle: 'Checked against what this file contains', badge: certBadge(report.summary.status) })}
+      ${ovFacts([
+        { label: 'Certificates', value: String(certCount) },
+        { label: 'Signatures', value: String(sigCount) },
+      ])}
     </div>
-    <p class="cert-headline">${certBadge(report.summary.status)} ${escapeHtml(report.summary.headline)}</p>
     ${rows.length ? `
     <div class="cert-toolbar">
       <div class="cert-filter-chips">
@@ -13067,13 +13395,13 @@ function renderCertificateSignatureList(report) {
 
   list.innerHTML = report.signatures.map((sig, i) => {
     const chain = report.chains.find((c) => c.id === sig.chainId);
+    // Plain text: ovHeroHtml escapes it.
     const meta = [];
-    if (sig.name) meta.push(`<strong>${escapeHtml(sig.name)}</strong>`);
     if (sig.page !== null && sig.page !== undefined) meta.push(`Page ${sig.page + 1}`);
-    meta.push(`Field: ${escapeHtml(sig.fieldName)}`);
-    if (sig.reason) meta.push(escapeHtml(sig.reason));
+    meta.push(`Field: ${sig.fieldName}`);
+    if (sig.reason) meta.push(sig.reason);
     const signedAt = certFormatDate(sig.signedAttributes?.signingTime || sig.signingTimeClaimed);
-    if (signedAt) meta.push(`Claimed ${escapeHtml(signedAt)}`);
+    if (signedAt) meta.push(`Claimed ${signedAt}`);
 
     const chainChecks = chain ? [...chain.checks, ...chain.links.flatMap((l) => l.checks)] : [];
     const chainCertChecks = chain
@@ -13089,18 +13417,21 @@ function renderCertificateSignatureList(report) {
     const isInvisibleField = Boolean(fieldOnDoc) && isRectPracticallyInvisible(fieldOnDoc.rect);
 
     return `
-      <article class="cert-signature-card" data-cert-signature-card="${escapeHtml(sig.fieldName)}" style="--i:${i}">
-        <div class="cert-signature-head">
-          <span class="icon icon-lock" aria-hidden="true"></span>
-          <span class="cert-signature-title">Signature ${i + 1}</span>
-          ${isInvisibleField ? `<span class="cert-invisible-badge" title="This field's /Rect is at or near zero size, so it has no visible footprint on the page.">${ICONS.eyeOff} Invisible field</span>` : ''}
-          ${certBadge(sig.status)}
-        </div>
-        <p class="cert-signature-meta">${meta.join(' &middot; ')}</p>
+      <details class="cert-signature-card" data-cert-signature-card="${escapeHtml(sig.fieldName)}" style="--i:${i}">
+        <summary class="cert-signature-summary">
+        ${ovHeroHtml({ kind: 'signature' }, {
+          avatar: sig.name ? ovInitials(sig.name) : null,
+          label: sig.name ? `Signature ${i + 1} · ${sig.name}` : `Signature ${i + 1}`,
+          subtitle: meta.join(' · '),
+          badge: certBadge(sig.status),
+        })}
+        ${isInvisibleField ? `<span class="cert-invisible-badge" title="This field's /Rect is at or near zero size, so it has no visible footprint on the page.">${ICONS.eyeOff} Invisible field</span>` : ''}
+        </summary>
         ${isInvisibleField ? `
         <button type="button" class="btn btn-ghost btn-small cert-locate-btn" data-cert-action="show-field" data-cert-signature-field="${escapeHtml(sig.fieldName)}">
           ${ICONS.eyeOff} Locate on page
         </button>` : ''}
+        <div class="cert-evidence"><p class="cert-section-title">Signature evidence</p>${signatureEvidenceHtml(sig)}</div>
         ${renderCertByteMap(sig)}
         ${renderCertificateChain(report, chain, sig)}
         ${renderValidityTimeline(report, chain, sig)}
@@ -13119,8 +13450,9 @@ function renderCertificateSignatureList(report) {
             ${chainCertChecks.length ? `<p class="cert-section-title" style="margin-top:12px">Certificates</p>${renderValidationList(chainCertChecks)}` : ''}
           </div>
         </details>
-      </article>`;
+      </details>`;
   }).join('');
+  fillEvidenceSlots(list);
 }
 
 function renderOtherCertificates(report) {
@@ -13723,7 +14055,9 @@ function flashElement(el) {
 async function focusCertificateForField(fieldName) {
   document.getElementById('navBtnCertificates')?.click();
   await loadCertificatesIfNeeded();
-  flashElement(document.querySelector(`[data-cert-signature-card="${CSS.escape(fieldName)}"]`));
+  const sigCard = document.querySelector(`[data-cert-signature-card="${CSS.escape(fieldName)}"]`);
+  if (sigCard) sigCard.open = true;
+  flashElement(sigCard);
 }
 
 /** Certificates -> Signatures: open the section and select that field. */
@@ -14575,7 +14909,7 @@ function buildTourSteps() {
     {
       id: 'sig-overlays', chapter: 'signatures', target: '#pdfContainer', placement: 'left',
       title: 'Signature fields on the page',
-      body: 'Fields are drawn right on the page. Drag one to move it, or use its corner grip to resize — this document has two signature fields and two text fields on page 2.',
+      body: 'Fields are drawn right on the page. Drag one to move it, or use its corner grip to resize — this document has two signature fields on page 2, plus two text fields shown read-only — PDF Seal edits signature fields only.',
       enter: async () => { await tourGoToSection('navBtnSignatures'); deselectActiveField(); await tourGoToPage(2); },
     },
     {
@@ -14604,7 +14938,6 @@ function buildTourSteps() {
         deselectActiveField();
         closeEditSheet();
         setSignatureTab('add');
-        setAddFieldType('signature');
         const nameInput = document.getElementById('sigName');
         if (nameInput) nameInput.value = 'Witness_Signature';
         await tourGoToPage(2);
@@ -14936,7 +15269,7 @@ function exitTour() {
   tourRestoreTemplateSandbox();
   tourDemoTemplateId = null;
 
-  tourGoToSection('navBtnSignatures');
+  tourGoToSection('navBtnMetaData');
 }
 
 function tourKeydownHandler(e) {

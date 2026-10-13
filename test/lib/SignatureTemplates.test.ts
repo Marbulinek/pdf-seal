@@ -208,8 +208,8 @@ describe('planAutoPlacement', () => {
   });
 
   it('carries the item type and required flag through to the placement', () => {
-    const plan = planAutoPlacement([item({ type: 'text', required: true })], new Set(), 1);
-    expect(plan.placements[0].type).toBe('text');
+    const plan = planAutoPlacement([item({ type: 'signature', required: true })], new Set(), 1);
+    expect(plan.placements[0].type).toBe('signature');
     expect(plan.placements[0].required).toBe(true);
   });
 });
@@ -412,6 +412,15 @@ describe('mergeTemplateStores', () => {
   });
 });
 
+describe('planAutoPlacement legacy text items', () => {
+  it('skips text items as unsupported-type and places signatures', () => {
+    const base = { id: 'a', name: 'S', type: 'signature', x: 1, y: 1, width: 10, height: 10, page: 0, required: false, multiline: false } as const;
+    const plan = planAutoPlacement([base, { ...base, id: 'b', name: 'T', type: 'text' }], [], 1);
+    expect(plan.placements.map((p) => p.name)).toEqual(['S']);
+    expect(plan.skipped).toEqual([{ name: 'T', page: 0, reason: 'unsupported-type' }]);
+  });
+});
+
 describe('templateItemFromField', () => {
   const field = {
     name: 'Signature1',
@@ -436,25 +445,21 @@ describe('templateItemFromField', () => {
     });
   });
 
-  it("maps pdf-lib's TextField onto the template's own type name", () => {
-    expect(templateItemFromField({ ...field, type: 'TextField' }, 'i').type).toBe('text');
-    expect(templateItemFromField({ ...field, type: 'Signature' }, 'i').type).toBe('signature');
-  });
-
-  it('captures the multiline flag for text fields but not signature fields', () => {
-    expect(templateItemFromField({ ...field, type: 'TextField', multiline: true }, 'i').multiline).toBe(true);
-    expect(templateItemFromField({ ...field, type: 'Signature', multiline: true }, 'i').multiline).toBe(false);
+  it('only captures signature fields', () => {
+    expect(templateItemFromField({ ...field, type: 'TextField' }, 'i')).toBeNull();
+    expect(templateItemFromField({ ...field, type: 'CheckBox' }, 'i')).toBeNull();
+    expect(templateItemFromField({ ...field, type: 'Signature' }, 'i')?.type).toBe('signature');
   });
 
   it('trims the name and treats a missing required flag as optional', () => {
-    const item = templateItemFromField({ ...field, name: '  Sig  ', required: undefined }, 'i');
+    const item = templateItemFromField({ ...field, name: '  Sig  ', required: undefined }, 'i')!;
     expect(item.name).toBe('Sig');
     expect(item.required).toBe(false);
   });
 
   it('falls back to the type default for a rect that has no usable size', () => {
     const broken = { ...field, rect: { x: NaN, y: NaN, width: 0, height: -5 } };
-    const item = templateItemFromField(broken, 'i');
+    const item = templateItemFromField(broken, 'i')!;
     expect(item.width).toBe(1);
     expect(item.height).toBe(1);
     expect(item.x).toBe(0);
@@ -462,7 +467,7 @@ describe('templateItemFromField', () => {
   });
 
   it('clamps a negative page to the first one', () => {
-    expect(templateItemFromField({ ...field, page: -3 }, 'i').page).toBe(0);
+    expect(templateItemFromField({ ...field, page: -3 }, 'i')!.page).toBe(0);
   });
 });
 

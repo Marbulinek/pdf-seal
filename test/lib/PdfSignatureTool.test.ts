@@ -853,7 +853,6 @@ describe('applyFieldOps', () => {
 
     tool.applyFieldOps([
       { op: 'add', page: 0, name: 'NewSig', type: 'signature', x: 100, y: 100, width: 200, height: 60, required: true },
-      { op: 'add', page: 0, name: 'NewText', type: 'text', x: 100, y: 200, width: 150, height: 24 },
       { op: 'edit', originalName: 'ToEdit', name: 'Edited', x: 20, y: 50, width: 60, height: 25, required: true },
       { op: 'remove', name: 'ToRemove' },
     ]);
@@ -866,15 +865,42 @@ describe('applyFieldOps', () => {
     const reloaded = await PdfSignatureTool.fromBytes(bytes);
     const reloadedFields = reloaded.listFields();
 
-    expect(afterSave).toEqual(['Edited', 'NewSig', 'NewText']);
-    expect(reloadedFields.map((f: any) => f.name).sort()).toEqual(['Edited', 'NewSig', 'NewText']);
+    expect(afterSave).toEqual(['Edited', 'NewSig']);
+    expect(reloadedFields.map((f: any) => f.name).sort()).toEqual(['Edited', 'NewSig']);
 
     const edited = reloadedFields.find((f: any) => f.name === 'Edited');
     expect(edited?.required).toBe(true);
     expect(edited?.rect).toMatchObject({ x: 20, y: 50, width: 60, height: 25 });
+  });
 
-    const newText = reloadedFields.find((f: any) => f.name === 'NewText');
-    expect(newText?.type).toBe('TextField');
+  it("refuses to create text fields and to edit/remove non-signature or signed fields", async () => {
+    const fixture = await buildSignedPdfFixture({ fieldName: 'SignedField' });
+    const tool = await PdfSignatureTool.fromBytes(fixture.bytes);
+    tool.addTextField(0, 'Txt', { x: 10, y: 10, width: 80, height: 20 });
+
+    expect(() => tool.applyFieldOps([{ op: 'add', page: 0, name: 'T2', type: 'text' }])).toThrow(/can't be created/);
+    for (const name of ['Txt', 'SignedField']) {
+      expect(() => tool.applyFieldOps([{ op: 'edit', originalName: name, name: 'X' }])).toThrow(/unsigned signature/);
+      expect(() => tool.applyFieldOps([{ op: 'remove', name }])).toThrow(/unsigned signature/);
+    }
+  });
+
+  it('leaves unrelated text fields untouched on save (no appearance regeneration)', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'Empty', { x: 10, y: 10, width: 80, height: 20 });
+    tool.addSignatureField(0, 'Sig', { x: 10, y: 50, width: 80, height: 20 });
+    const first = await PdfSignatureTool.fromBytes(await tool.toBytes());
+    const before = first.listFields().find((f: any) => f.name === 'Empty');
+
+    first.applyFieldOps([
+      { op: 'add', page: 0, name: 'Sig2', type: 'signature', x: 10, y: 90, width: 80, height: 20 },
+      { op: 'edit', originalName: 'Sig', name: 'Sig', x: 20, y: 50, width: 80, height: 20 },
+    ]);
+    const after = (await PdfSignatureTool.fromBytes(await first.toBytes())).listFields().find((f: any) => f.name === 'Empty');
+
+    expect(after?.raw).toEqual(before?.raw);
+    expect(after?.rect).toEqual(before?.rect);
   });
 
   it('bumps the modification date and clears any embedded revision chain', async () => {

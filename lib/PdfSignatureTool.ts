@@ -1066,16 +1066,14 @@ class PdfSignatureTool {
           height: parseFloat(op.height) || 60,
           required: op.required === true || op.required === 'true',
         };
-        if (op.type === 'text') {
-          this.addTextField(page, name, { ...fieldOptions, multiline: op.multiline === true || op.multiline === 'true' });
-        } else {
-          this.addSignatureField(page, name, fieldOptions);
-        }
+        if (op.type === 'text') throw new Error("Text fields can't be created in PDF Seal.");
+        this.addSignatureField(page, name, fieldOptions);
       } else if (op.op === 'edit') {
         const originalName = String(op.originalName || '');
         const newName = String(op.name || originalName);
         if (!originalName) throw new Error('Field name is required.');
 
+        this._requireEditableField(originalName);
         if (originalName !== newName) {
           this.renameField(originalName, newName);
         }
@@ -1089,15 +1087,10 @@ class PdfSignatureTool {
         }
 
         this.setFieldRequired(newName, op.required === true || op.required === 'true');
-        if (op.multiline !== undefined) {
-          const fieldInfo = this.listFields().find((f: any) => f.name === newName);
-          if (fieldInfo?.type === 'TextField') {
-            this.setFieldMultiline(newName, op.multiline === true || op.multiline === 'true');
-          }
-        }
       } else if (op.op === 'remove') {
         const name = String(op.name || '');
         if (!name) throw new Error('Field name is required.');
+        this._requireEditableField(name);
         this.removeField(name);
       } else {
         throw new Error(`Unknown operation "${op.op}".`);
@@ -1794,7 +1787,9 @@ class PdfSignatureTool {
 
   /** Serialize the document to bytes. */
   async toBytes() {
-    return this.pdfDoc.save();
+    // Signature fields never need generated appearances; skipping the pass
+    // keeps unrelated text/choice fields byte-for-byte as they were.
+    return this.pdfDoc.save({ updateFieldAppearances: false });
   }
 
   /**
@@ -1827,6 +1822,16 @@ class PdfSignatureTool {
     const form = this.pdfDoc.getForm();
     const field = form.getFieldMaybe(name);
     if (!field) throw new Error(`No form field named "${name}" was found.`);
+    return field;
+  }
+
+  /** Only unsigned signature fields may be edited or removed through applyFieldOps(). */
+  _requireEditableField(name: string) {
+    const field = this._requireField(name);
+    const signed = field.acroField.dict.lookup(PDFName.of('V')) instanceof PDFDict;
+    if (fieldTypeName(field) !== 'Signature' || signed) {
+      throw new Error(`Field "${name}" is not an unsigned signature field and can't be changed.`);
+    }
     return field;
   }
 

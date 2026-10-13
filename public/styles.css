@@ -1700,52 +1700,64 @@ canvas { display: block; }
 
 /* Invisible signature field: its /Rect is at or near zero size (commonly
    placed by external tools that attach a signature without a visible
-   appearance) and often tucked into a page corner, so the real overlay box
-   is too small to ever notice. A fixed-size pin sits centered on that same
-   spot instead, always on (not just on hover/select like a normal field's
-   border) so the page doesn't just look empty where it actually has a
-   signature field. It's a real child element (not just decoration) so
-   hovering/clicking the pin still hits the parent overlay's handlers. */
+   appearance) and often tucked into a page corner, under the viewer's
+   rounded overflow:hidden frame. The field's own box is made transparent
+   and a fixed-size chip (icon + name, see layoutInvisibleFieldPins) stands
+   in for it, clamped inside the corner radius -- always on, not just on
+   hover/select like a normal field's border, so the page doesn't look empty
+   where it actually has a field. It's a real child element (not just
+   decoration) so hovering/clicking the chip still hits the parent overlay's
+   handlers. */
+/* !important: hover/active/selected/signed/diff rules all repaint the box
+   later in this file, and any of them would bring back the stray corner dot.
+   Their cues move onto the chip instead (selected/flash rules below). */
+.is-invisible-field {
+  border-color: transparent !important; background: transparent !important;
+  box-shadow: none !important; transform: none !important;
+}
+.is-invisible-field > .field-overlay-icon { display: none; }
+.is-invisible-field.is-flashed .field-invisible-pin { animation: fieldOverlayFlash 1.4s ease-out; }
 .field-invisible-pin {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 22px;
+  box-sizing: border-box;
   height: 22px;
-  border-radius: 50%;
+  padding: 0 6px;
+  gap: 4px;
+  border-radius: 11px;
   background: var(--amber);
   border: 2px solid #fff;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.82rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   z-index: 4;
   cursor: pointer;
   box-shadow: 0 0 0 3px rgba(233, 162, 59, 0.3), 0 2px 5px rgba(30, 33, 51, 0.3);
   animation: invisibleFieldPulse 2s ease-in-out infinite;
 }
-/* layoutInvisibleFieldPins() overwrites left/top above with inline px values
-   (higher specificity than the percentage default) to keep the pin fully
-   inside the visible canvas and fan out ones that would otherwise land on
-   top of each other. This thin pointer back to the field's true (tiny)
-   position is drawn only when the pin had to move off of it to do that. */
-.field-invisible-pin-leader {
-  position: absolute;
-  height: 2px;
-  background: rgba(233, 162, 59, 0.6);
-  transform-origin: 0 50%;
-  pointer-events: none;
-  z-index: 3;
+/* Icon-only pin (field overlays): a plain circle; the text lives in the tooltip. */
+.field-invisible-pin:not([data-label]) { width: 22px; padding: 0; }
+.field-invisible-pin[data-label]:not([data-label=""])::after {
+  content: attr(data-label);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2px;
 }
-.field-overlay.required .field-invisible-pin-leader { background: rgba(230, 57, 70, 0.6); }
 .field-overlay.required .field-invisible-pin {
   background: var(--coral);
   animation-name: invisibleFieldPulseRequired;
 }
 .field-overlay.active .field-invisible-pin,
-.field-overlay:hover .field-invisible-pin {
+.field-overlay:hover .field-invisible-pin,
+.is-selected > .field-invisible-pin {
   animation-play-state: paused;
   box-shadow: 0 0 0 5px rgba(233, 162, 59, 0.22);
 }
@@ -1763,6 +1775,10 @@ canvas { display: block; }
 }
 .field-label-invisible { font-weight: 700; color: var(--amber); opacity: 1; }
 .field-overlay.required .field-label-invisible { color: #ffcfa3; }
+/* Invisible fields: the hover label matches the amber pin in every section
+   (!important: required/signed/Overview rules all recolour .field-label). */
+.field-overlay.is-invisible-field .field-label { background: var(--amber) !important; }
+.field-overlay.is-invisible-field .field-label-invisible { color: #fff !important; }
 
 /* Field overlays are only meant to be manipulated from the Signatures
    section -- elsewhere (MetaData, Revisions, ...) pointer-events stay on
@@ -3057,7 +3073,8 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
    (14px card padding + 10px badge radius = 24px), gives the list a
    timeline feel without any absolute-positioned overlay tracking card
    height across collapsed/expanded state. */
-.revision-card:not(:last-child)::after {
+.revision-card:not(:last-child)::after,
+.revision-stack:not(:last-child)::after {
   content: '';
   position: absolute;
   left: 24px;
@@ -3067,20 +3084,23 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   background: var(--ice);
 }
 
+/* Same row look as the Overview list (.overview-row). */
 .revision-card {
   position: relative;
   border: 1px solid var(--ice);
-  border-radius: var(--radius-m);
+  border-radius: 10px;
   padding: 10px 14px;
-  background: var(--cream);
-  box-shadow: 0 2px 8px rgba(30, 33, 51, 0.07);
+  background: #fff;
   min-width: 0;
   overflow-wrap: anywhere;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-.revision-card.is-signed { border-color: var(--coral); box-shadow: 0 2px 8px rgba(249, 115, 22, 0.16); }
+.revision-card:hover { border-color: var(--ocean); }
+.revision-card.is-signed { border-color: var(--coral); }
 .revision-card.has-error { background: #fff; border-style: dashed; }
 
-.revision-card-head {
+.revision-card-head,
+.revision-stack-head {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -3131,7 +3151,10 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   background: var(--ice); color: var(--navy);
   font-weight: 700; font-size: 0.66rem; flex-shrink: 0;
 }
-.revision-card:last-child .revision-index-badge { background: var(--ocean); color: #ffffff; }
+.revisions-timeline > .revision-card:last-child .revision-index-badge,
+.revision-stack.is-current .revision-card:last-child .revision-index-badge,
+.revision-stack.is-current .revision-stack-head .revision-index-badge { background: var(--ocean); color: #ffffff; }
+.revision-index-badge.is-range { width: auto; padding: 0 7px; border-radius: 999px; }
 
 .revision-row-tags { display: flex; flex-wrap: wrap; gap: 3px; }
 .revision-row-sub { font-size: 0.7rem; color: var(--ocean-dark); margin: -2px 0 4px; }
@@ -3174,7 +3197,7 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   background: var(--ice);
 }
 .revision-group-divider-label {
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -3184,7 +3207,35 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 .revision-group-divider.is-incremental .revision-group-divider-label { color: var(--success-dark); }
 /* The last card of a group has a divider, not another card, beneath it --
    drop the connector stub so it doesn't point into the rule. */
-.revision-card.is-group-end::after { content: none; }
+.revision-card.is-group-end::after,
+.revision-stack.is-group-end::after { content: none; }
+
+/* Consecutive versions sharing a modification time, drawn as one card with
+   an offset "paper" layer behind it; opening it reveals the individual
+   version cards, indented on a rail. */
+.revision-stack {
+  position: relative;
+  border: 1px solid var(--ice);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: #fff;
+  box-shadow: 4px 4px 0 -1px #fff, 4px 4px 0 0 var(--ice);
+  min-width: 0;
+}
+.revision-stack.is-signed { border-color: var(--coral); }
+.revision-stack.is-open { box-shadow: none; }
+.revision-stack-count { font-size: 0.7rem; font-weight: 600; color: var(--ocean-dark); }
+.revision-stack-items {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 10px 0 0 9px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--ice);
+}
+.revision-stack.is-open .revision-stack-items { display: flex; }
+.revision-stack-items .revision-card::after { content: none; }
 
 .revisions-filter-toggle {
   display: flex;
@@ -3213,44 +3264,7 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 .revision-card.is-expanded .revision-card-body {
   display: flex;
 }
-.revision-change-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  margin: 0 0 6px;
-}
-.revision-summary-pill {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 5px 7px;
-  border: 1px solid var(--ice);
-  border-radius: 7px;
-  background: #fff;
-  color: var(--navy);
-  min-height: 24px;
-}
-.revision-summary-label {
-  font-size: 0.56rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ocean-dark);
-  line-height: 1.1;
-}
-.revision-summary-value {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--navy);
-  line-height: 1.1;
-}
-
-@media (max-width: 560px) {
-  .revision-change-summary {
-    grid-template-columns: 1fr;
-  }
-}
+.revision-card-body .ov-facts { margin: 0 0 6px; }
 .revision-card-signatures {
   font-size: 0.76rem;
   color: var(--coral-dark);
@@ -3293,7 +3307,8 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 }
 .revision-card.is-selected {
   border-color: var(--ocean);
-  box-shadow: 0 0 0 2px rgba(69, 123, 157, 0.16), 0 2px 8px rgba(30, 33, 51, 0.08);
+  background: var(--cream);
+  box-shadow: 0 0 0 2px rgba(69, 123, 157, 0.16);
 }
 
 
@@ -3754,10 +3769,9 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 
 
 /* ---------- Pill tab bars ----------
-   The Signatures panel's field-type switch and the compare sheet's view
+   The Templates mode switch and the compare sheet's view
    switch are the same control; only the active colour differs. */
 .revisions-view-tabs,
-.field-type-tabs,
 .template-mode-tabs {
   display: flex;
   gap: 3px;
@@ -3769,7 +3783,6 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
 }
 .revisions-view-tabs[hidden] { display: none; }
 .revisions-view-tab,
-.field-type-tab,
 .template-mode-tab {
   flex: 1 1 0;
   min-width: 0;
@@ -3789,7 +3802,6 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   transition: all var(--transition-fast);
 }
 .revisions-view-tab:hover:not(.active):not(:disabled),
-.field-type-tab:hover:not(.active):not(:disabled),
 .template-mode-tab:hover:not(.active):not(:disabled) {
   background: rgba(69, 123, 157, 0.12);
   color: var(--navy);
@@ -3799,7 +3811,6 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   color: #fff;
   box-shadow: 0 2px 6px rgba(69, 123, 157, 0.35);
 }
-.field-type-tab.active,
 .template-mode-tab.active {
   background: var(--coral);
   color: #fff;
@@ -4154,8 +4165,8 @@ button.revision-check-item:focus-visible {
 .template-picker { margin-bottom: 12px; }
 .template-picker label {
   display: block; margin-bottom: 6px;
-  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--ocean-dark);
+  font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ocean-dark);
 }
 .template-picker-row { display: flex; gap: 8px; align-items: center; }
 .template-picker-row .select-field { flex: 1; min-width: 0; }
@@ -4211,37 +4222,38 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 
 /* The saved-fields list, collapsed by default so a long list of templates
    doesn't push the placement controls below the fold. */
-.template-item-list-details { margin-bottom: 14px; }
+/* Same collapsible card as the Overview's .overview-more. */
+.template-item-list-details { margin-bottom: 14px; border: 1px solid var(--ice); border-radius: 14px; background: #fff; overflow: hidden; }
 .template-item-list-summary {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 2px;
-  font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--ocean-dark);
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px;
+  font-size: 0.82rem; font-weight: 700; color: var(--ocean-dark);
   cursor: pointer;
   list-style: none;
+  user-select: none;
 }
 .template-item-list-summary::-webkit-details-marker { display: none; }
 .template-item-list-caret { transition: transform 0.15s ease; flex-shrink: 0; }
 .template-item-list-details[open] .template-item-list-caret { transform: rotate(90deg); }
-.template-item-list-details .template-item-list { margin-top: 8px; }
+.template-item-list-details .template-item-list { margin: 0; padding: 0 12px 12px; }
 
 .template-item-list { display: flex; flex-direction: column; gap: 6px; }
 
+/* Same row look as the Overview list (.overview-row). */
 .template-item-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 7px 8px 7px 10px;
-  background: var(--cream);
-  border: 1.5px solid var(--ice);
-  border-radius: var(--radius-s);
+  padding: 8px 8px 8px 10px;
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 10px;
   font-size: 0.82rem;
   color: var(--navy);
-  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 .template-item-row.is-draggable { cursor: grab; }
 .template-item-row.is-draggable:hover {
   border-color: var(--ocean);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(30, 33, 51, 0.08);
+  background: var(--cream);
 }
 .template-item-row.is-draggable:active { cursor: grabbing; }
 .template-item-row.is-dragging { opacity: 0.45; }
@@ -4440,23 +4452,6 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 .cert-empty p:last-child { margin-bottom: 0; }
 .cert-empty-error { border-color: rgba(230, 57, 70, 0.5); background: rgba(230, 57, 70, 0.06); color: var(--coral-dark); }
 
-.cert-stat-row { display: flex; gap: 10px; margin-bottom: 10px; }
-.cert-stat {
-  flex: 1 1 0;
-  padding: 8px 11px;
-  background: var(--cream);
-  border: 1.5px solid var(--ice);
-  border-radius: var(--radius-m);
-}
-.cert-stat-value { font-size: 1.05rem; font-weight: 700; line-height: 1.1; color: var(--navy); }
-.cert-stat-label { margin-top: 2px; font-size: 0.68rem; font-weight: 600; color: var(--ocean-dark); }
-
-.cert-headline {
-  margin: 0 0 10px;
-  font-size: 0.8rem; line-height: 1.55; font-weight: 600;
-  color: var(--navy);
-}
-
 /* One toolbar row: filter chips, the search input, and the copy actions all
    sit side by side and wrap together on narrow widths -- replaces the old
    stacked .cert-copy-actions + .cert-filter-bar blocks. */
@@ -4475,13 +4470,14 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
   cursor: pointer; text-decoration: underline;
 }
 .cert-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Same chip as .overview-chip. */
 .cert-filter-chip {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 9px;
-  font-size: 0.7rem; font-weight: 600;
-  color: var(--ocean-dark);
-  background: var(--surface);
-  border: 1.5px solid var(--ice);
+  padding: 4px 10px;
+  font: inherit; font-size: 0.76rem; font-weight: 600;
+  color: var(--navy);
+  background: #fff;
+  border: 1px solid var(--ice);
   border-radius: 999px;
   cursor: pointer;
   opacity: 0.55;
@@ -4492,7 +4488,10 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 .cert-filter-chip.is-warn.is-active    { border-color: var(--amber); }
 .cert-filter-chip.is-pass.is-active    { border-color: var(--success); }
 .cert-filter-chip.is-unknown.is-active { border-color: var(--ocean); }
-.cert-filter-chip-count { color: var(--navy); }
+.cert-filter-chip-count {
+  display: inline-block; min-width: 1.4em; padding: 0 6px; border-radius: 999px; text-align: center;
+  background: var(--ice); color: var(--navy); font-size: 0.7rem;
+}
 .cert-filter-search {
   flex: 1 1 160px;
   min-width: 120px;
@@ -4509,10 +4508,10 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 .cert-status-row {
   display: flex; gap: 9px; align-items: flex-start;
   padding: 9px 11px;
-  background: var(--surface);
-  border: 1.5px solid var(--ice);
+  background: #fff;
+  border: 1px solid var(--ice);
   border-left-width: 3px;
-  border-radius: var(--radius-s);
+  border-radius: 10px;
   font-size: 0.79rem; line-height: 1.45;
   color: var(--navy);
   /* Reuses the existing keyframe; the stagger makes the list read top-down as
@@ -4668,26 +4667,17 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
 /* ---------- Signature cards ---------- */
 .cert-signature-list, .cert-card-list { display: flex; flex-direction: column; gap: 14px; }
 
+/* Same card as .overview-more; the summary is an .ov-hero (see section heroes). */
 .cert-signature-card {
-  padding: 14px 16px;
-  background: var(--surface);
-  border: 1.5px solid var(--ice);
-  border-radius: var(--radius-m);
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 14px;
   animation: fadeInUp 0.36s ease both;
   animation-delay: calc(var(--i, 0) * 70ms);
 }
-.cert-signature-head {
-  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
-  margin-bottom: 4px;
-}
-.cert-signature-title { font-size: 0.92rem; font-weight: 700; color: var(--navy); }
-.cert-signature-head .cert-badge { margin-left: auto; }
-.cert-signature-meta {
-  margin: 0 0 12px;
-  font-size: 0.75rem; line-height: 1.5;
-  color: var(--ocean-dark);
-}
-.cert-signature-meta strong { color: var(--navy); font-weight: 600; }
+.cert-signature-summary { cursor: pointer; list-style: none; }
+.cert-signature-summary::-webkit-details-marker { display: none; }
 
 /* Flags a signature whose field has an (at or near) zero-size /Rect --
    it exists on the document but there's nothing to see, so the badge and
@@ -4749,19 +4739,18 @@ body.is-capturing-field .template-dropzone { display: flex; border-color: var(--
   display: flex; align-items: flex-start; gap: 9px;
   width: 100%;
   padding: 9px 11px;
-  background: var(--surface);
-  border: 1.5px solid var(--ice);
+  background: #fff;
+  border: 1px solid var(--ice);
   border-left-width: 3px;
-  border-radius: var(--radius-s);
+  border-radius: 10px;
   font-family: var(--font-body);
   text-align: left;
   cursor: pointer;
   transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 button.cert-node-body:hover {
-  transform: translateX(2px);
   border-color: var(--ocean);
-  box-shadow: 0 2px 10px rgba(29, 53, 87, 0.08);
+  background: var(--cream);
 }
 button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-offset: 2px; }
 .cert-chain-node.is-pass    > .cert-node-body { border-left-color: var(--success); }
@@ -4812,7 +4801,7 @@ button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-o
 
 .cert-chain-heading {
   margin: 0 0 8px;
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--ocean-dark);
 }
 
@@ -4824,7 +4813,7 @@ button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-o
 .cert-section:last-child { margin-bottom: 0; }
 .cert-section-title {
   margin: 0 0 8px;
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--ocean-dark);
 }
 .cert-field-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
@@ -4866,9 +4855,9 @@ button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-o
 .cert-ext-row {
   padding: 9px 11px;
   margin-bottom: 7px;
-  background: var(--surface);
-  border: 1.5px solid var(--ice);
-  border-radius: var(--radius-s);
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 10px;
   font-size: 0.76rem;
 }
 .cert-ext-head { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
@@ -4886,10 +4875,10 @@ button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-o
   display: flex; gap: 9px; align-items: flex-start;
   padding: 10px 11px;
   margin-bottom: 7px;
-  background: var(--surface);
-  border: 1.5px solid var(--ice);
+  background: #fff;
+  border: 1px solid var(--ice);
   border-left-width: 3px;
-  border-radius: var(--radius-s);
+  border-radius: 10px;
 }
 .cert-check-row.is-pass    { border-left-color: var(--success); }
 .cert-check-row.is-warn    { border-left-color: var(--amber); }
@@ -4906,24 +4895,26 @@ button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-o
 .cert-check-why { margin-top: 4px; font-size: 0.72rem; line-height: 1.5; color: var(--ocean-dark); }
 
 /* ---------- "What was checked" disclosure ---------- */
+/* Same collapsible card as .overview-more. */
 .cert-details-block {
   margin-top: 12px;
-  border: 1.5px solid var(--ice);
-  border-radius: var(--radius-s);
+  border: 1px solid var(--ice);
+  border-radius: 14px;
+  background: #fff;
   overflow: hidden;
 }
 .cert-details-summary {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   flex-wrap: wrap;
-  padding: 9px 11px;
-  background: var(--cream);
+  padding: 10px 14px;
+  background: #fff;
   cursor: pointer;
   list-style: none;
   -webkit-user-select: none; user-select: none;
   transition: background var(--transition-fast);
 }
 .cert-details-summary::-webkit-details-marker { display: none; }
-.cert-details-summary:hover { background: var(--ice); }
+.cert-details-summary:hover { background: var(--cream); }
 .cert-details-summary:focus-visible { outline: 2px solid var(--ocean); outline-offset: -2px; }
 .cert-details-summary-main { display: flex; align-items: center; gap: 7px; }
 .cert-details-caret {
@@ -4932,13 +4923,10 @@ button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-o
   transition: transform var(--transition-fast);
 }
 .cert-details-block[open] .cert-details-caret { transform: rotate(90deg); }
-.cert-details-summary-label { font-size: 0.79rem; font-weight: 700; color: var(--navy); }
+.cert-details-summary-label { font-size: 0.82rem; font-weight: 700; color: var(--ocean-dark); }
 .cert-details-summary-total {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--ice);
-  color: var(--ocean-dark);
-  font-size: 0.68rem; font-weight: 700;
+  display: inline-block; min-width: 1.4em; padding: 0 6px; border-radius: 999px; text-align: center;
+  background: var(--ice); color: var(--navy); font-size: 0.7rem;
 }
 .cert-details-summary-counts { display: flex; align-items: center; gap: 5px; }
 .cert-check-count {
@@ -4952,9 +4940,9 @@ button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-o
 .cert-check-count.is-fail    { background: rgba(230, 57, 70, 0.13);  color: var(--coral-dark); }
 .cert-check-count.is-unknown { background: rgba(69, 123, 157, 0.12); color: var(--ocean-dark); }
 .cert-details-body {
-  padding: 11px;
-  background: var(--surface);
-  border-top: 1.5px solid var(--ice);
+  padding: 11px 14px 14px;
+  background: #fff;
+  border-top: 1px solid var(--ice);
   animation: fadeInUp 0.22s ease both;
 }
 .cert-details-body .cert-check-row:last-child { margin-bottom: 0; }
@@ -5004,7 +4992,6 @@ body.hide-trust-simulation-panel #certificatesTrustSimPanel { display: none; }
 body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: none; }
 
 @media (max-width: 640px) {
-  .cert-stat-row { flex-direction: column; }
   .cert-field-table th { width: 42%; }
   .cert-toolbar { flex-direction: column; }
   .cert-toolbar-copy { align-self: flex-end; }
@@ -5032,6 +5019,18 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
   cursor: default;
 }
 .field-overlay.is-signed:hover { border-color: var(--ocean-dark); }
+/* Locked (signed / read-only) boxes stay blue even when also "required", and
+   their tooltip + pin match the box. Overview colours its own kinds (above). */
+body:not([data-active-section="metadata"]) .field-overlay.is-signed,
+body:not([data-active-section="metadata"]) .field-overlay.is-signed.required,
+body:not([data-active-section="metadata"]) .field-overlay.is-signed.required.active {
+  border-color: var(--ocean); background: rgba(69, 123, 157, 0.1); box-shadow: none;
+}
+body:not([data-active-section="metadata"]) .field-overlay.is-signed:hover,
+body:not([data-active-section="metadata"]) .field-overlay.is-signed.required:hover { border-color: var(--ocean-dark); background: rgba(69, 123, 157, 0.18); }
+body:not([data-active-section="metadata"]) .field-overlay.is-signed .field-label,
+body:not([data-active-section="metadata"]) .field-overlay.is-signed.required .field-label { background: var(--ocean); }
+body:not([data-active-section="metadata"]) .field-overlay.is-signed .field-label-invisible { color: #fff; }
 
 .edit-signed-notice {
   display: flex; gap: 10px; align-items: flex-start;
@@ -5332,16 +5331,33 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
 }
 
 /* ---------- Overview: header, chips, list ---------- */
-.overview-header { padding: 14px 16px; }
-.overview-title { margin: 0; font-size: 1.05rem; color: var(--navy); word-break: break-word; }
-.overview-author { margin: 2px 0 0; font-size: 0.85rem; color: var(--ocean-dark); }
-.overview-line { margin: 6px 0 0; font-size: 0.78rem; color: var(--navy); opacity: 0.75; }
-.overview-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 12px; }
-.overview-date { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 8px; background: rgba(0, 0, 0, 0.025); }
-.overview-date-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ocean-dark); }
-.overview-date time { display: flex; flex-direction: column; }
-.overview-date-day { font-size: 0.88rem; font-weight: 600; color: var(--navy); }
-.overview-date-time { font-size: 0.78rem; font-variant-numeric: tabular-nums; color: var(--navy); opacity: 0.7; }
+/* Header reuses the detail sheet's .ov-hero + .ov-facts (see below). */
+.ov-hero.is-document { --kind: var(--ocean); }
+.overview-header .ov-hero { margin-bottom: 8px; }
+.overview-header .ov-facts { margin: 0; }
+
+/* Section heroes: Signatures, Versions and Certificates open with the same
+   hero + tiles as the Overview header. */
+.ov-hero.is-versions { --kind: var(--ocean); }
+.ov-hero.is-certificates { --kind: var(--navy); }
+#sigSectionHero .ov-hero { margin-bottom: 16px; }
+#revisionsHero .overview-header { margin-bottom: 16px; }
+.revisions-list-panel:has(#revisionsTimeline[hidden]) #revisionsHero { display: none; }
+#certificatesSummary .overview-header { margin-bottom: 14px; }
+.cert-empty .ov-hero { text-align: left; }
+/* Signature card: the hero is the <summary>, so it's the click target. */
+.cert-signature-summary .ov-hero { margin: 0; cursor: pointer; padding: 8px 10px; gap: 10px; }
+/* Compact per-signature hero: smaller lead/text, subtitle capped at 2 lines. */
+.cert-signature-summary .ov-hero-lead { width: 32px; height: 32px; border-radius: 9px; font-size: 0.95rem; box-shadow: none; }
+.cert-signature-summary .ov-hero-lead.is-avatar { border-radius: 50%; font-size: 0.78rem; }
+.cert-signature-summary .ov-hero-label { font-size: 0.9rem; }
+.cert-signature-summary .ov-hero-sub {
+  font-size: 0.74rem; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+}
+.cert-signature-summary .ov-hero > .cert-badge { align-self: center; }
+.cert-signature-summary .cert-invisible-badge { margin-top: 8px; }
+.cert-signature-card[open] > .cert-signature-summary { margin-bottom: 12px; }
 
 .overview-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .overview-chip {
@@ -5422,7 +5438,11 @@ body[data-active-section="metadata"] .field-overlay.is-hover {
 body[data-active-section="metadata"] .field-overlay.is-selected {
   border-style: solid; box-shadow: 0 0 0 3px color-mix(in srgb, var(--kind, var(--ocean)) 35%, transparent); z-index: 10;
 }
-.overview-hotspot .field-invisible-pin { color: var(--kind); }
+.overview-hotspot .field-invisible-pin { background: var(--kind); }
+/* Overview: tooltip label follows the outline's kind colour, not required/coral. */
+body[data-active-section="metadata"] .field-overlay .field-label,
+body[data-active-section="metadata"] .field-overlay.required .field-label { background: var(--kind, var(--navy)); }
+body[data-active-section="metadata"] .field-overlay .field-label-invisible { color: #fff; }
 
 /* Eye toggles: hide a kind's hotspots without re-rendering. */
 body[data-overview-hide~="signature"][data-active-section="metadata"] .field-overlay[data-overview-kind="signature"],
@@ -5435,14 +5455,115 @@ body[data-overview-hide~="comment"][data-active-section="metadata"] .overview-ho
 
 /* ---------- Overview: detail sheet ---------- */
 #overviewSheet .edit-sheet-header h3 { display: flex; align-items: center; gap: 6px; }
-.overview-sheet-label { margin: 0 0 10px; font-weight: 700; color: var(--navy); word-break: break-word; }
-.overview-callout { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--cream); font-size: 0.85rem; }
-.overview-url {
-  margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--cream);
-  font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.78rem; word-break: break-all; user-select: all;
+/* Same per-kind colours as .overview-dot / hotspots. */
+.ov-hero.is-signature, #overviewSheetBody:has(.ov-hero.is-signature) { --kind: #10b981; }
+.ov-hero.is-stamp, #overviewSheetBody:has(.ov-hero.is-stamp) { --kind: #8b5cf6; }
+.ov-hero.is-field, #overviewSheetBody:has(.ov-hero.is-field) { --kind: #3b82f6; }
+.ov-hero.is-link, #overviewSheetBody:has(.ov-hero.is-link) { --kind: #0ea5e9; }
+.ov-hero.is-comment, #overviewSheetBody:has(.ov-hero.is-comment) { --kind: #f59e0b; }
+
+/* Hero: icon (or initials) tile, name, one-line summary, status pill. */
+.ov-hero {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 14px; padding: 14px;
+  border-radius: var(--radius-m); border: 1px solid color-mix(in srgb, var(--kind) 28%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--kind) 12%, #fff), #fff 70%);
 }
-.overview-tech { margin-top: 14px; border: 1px solid var(--ice); border-radius: 12px; padding: 8px 12px; }
-.overview-tech > summary { cursor: pointer; font-weight: 700; font-size: 0.8rem; color: var(--ocean-dark); }
-.overview-tech .meta-kv-table td { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.72rem; word-break: break-word; }
-.overview-tech .overview-tech-key { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.72rem; color: var(--ocean-dark); white-space: nowrap; width: 1%; }
-.overview-tech thead th { font-size: 0.7rem; opacity: 0.7; text-align: left; }
+.ov-hero-lead {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; border-radius: 12px; font-size: 1.2rem;
+  background: var(--kind); color: #fff; box-shadow: 0 4px 10px color-mix(in srgb, var(--kind) 35%, transparent);
+}
+.ov-hero-lead.is-avatar { border-radius: 50%; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.02em; }
+.ov-hero-main { flex: 1; min-width: 0; }
+.ov-hero-label { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--navy); overflow-wrap: anywhere; }
+.ov-hero-sub { margin: 2px 0 0; font-size: 0.82rem; color: var(--ocean-dark); overflow-wrap: anywhere; }
+.ov-hero > .cert-badge, .ov-hero > .ov-pill { flex: none; align-self: flex-start; }
+.ov-pill { padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.ov-pill.is-positive { background: rgba(42, 157, 143, 0.14); color: var(--success-dark); }
+.ov-pill.is-pending { background: rgba(233, 162, 59, 0.18); color: var(--amber-dark); }
+.ov-pill.is-neutral { background: rgba(69, 123, 157, 0.12); color: var(--ocean-dark); }
+
+/* Key facts: two tiles per row, long values span both. */
+.ov-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+.ov-fact { padding: 9px 11px; border-radius: 10px; background: #fff; border: 1px solid rgba(0, 0, 0, 0.07); }
+.ov-fact.is-wide { grid-column: 1 / -1; }
+.ov-fact dt { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ocean-dark); }
+.ov-fact dd { margin: 3px 0 0; font-size: 0.88rem; font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
+.ov-fact-sub { margin-left: 4px; font-size: 0.76rem; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ocean-dark); }
+
+.ov-flags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; }
+.ov-flag {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px;
+  font-size: 0.76rem; font-weight: 600; background: rgba(0, 0, 0, 0.04); color: rgba(29, 53, 87, 0.55);
+}
+.ov-flag.is-on { background: rgba(42, 157, 143, 0.14); color: var(--success-dark); }
+
+.ov-quote {
+  margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--kind); border-radius: 0 10px 10px 0;
+  background: color-mix(in srgb, var(--kind) 7%, #fff); font-size: 0.9rem; color: var(--navy);
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow: auto;
+}
+.ov-meter { display: inline-block; width: 64px; height: 6px; margin-right: 6px; vertical-align: middle; border-radius: 3px; background: rgba(0, 0, 0, 0.08); overflow: hidden; }
+.ov-meter > span { display: block; height: 100%; background: var(--kind); }
+
+/* On the page: rendered crop of the object + a mini page map. */
+.ov-snippet {
+  display: flex; justify-content: center; margin: 0 0 10px; padding: 10px; border-radius: var(--radius-m);
+  background: repeating-conic-gradient(rgba(0, 0, 0, 0.035) 0 25%, transparent 0 50%) 0 0 / 16px 16px, #f6f7f9;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+}
+.ov-snippet-loading, .ov-snippet-note { margin: 0; padding: 18px 0; font-size: 0.8rem; color: var(--ocean-dark); }
+.ov-snippet-frame { position: relative; max-width: 100%; line-height: 0; box-shadow: 0 2px 10px rgba(29, 53, 87, 0.14); border-radius: 4px; overflow: hidden; }
+.ov-snippet-frame canvas { display: block; max-width: 100%; height: auto; background: #fff; }
+.ov-snippet-mark { position: absolute; border: 2px dashed var(--kind); border-radius: 3px; background: color-mix(in srgb, var(--kind) 8%, transparent); pointer-events: none; }
+.ov-placement { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.ov-pagemap { flex: none; width: 44px; }
+.ov-pagemap-page { position: relative; width: 100%; background: #fff; border: 1px solid rgba(29, 53, 87, 0.25); border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.ov-pagemap-mark { position: absolute; min-width: 4px; min-height: 4px; border-radius: 1px; background: var(--kind); }
+.ov-placement-text { display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem; color: var(--ocean-dark); }
+.ov-placement-page { font-size: 0.9rem; font-weight: 700; color: var(--navy); }
+
+.overview-callout { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--cream); font-size: 0.85rem; }
+.overview-url { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--cream); }
+.overview-url-host { font-weight: 700; color: var(--navy); overflow-wrap: anywhere; }
+.overview-url-full { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ocean-dark); word-break: break-all; user-select: all; }
+
+.overview-tech { margin-top: 14px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: var(--radius-m); background: #fff; }
+.overview-tech > summary { display: flex; align-items: center; gap: 6px; padding: 10px 12px; cursor: pointer; font-weight: 700; font-size: 0.8rem; color: var(--ocean-dark); }
+.ov-tech { margin: 0; padding: 0 12px 6px; }
+.ov-tech-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; padding: 7px 0; border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.ov-tech-row dt { font-size: 0.78rem; font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
+.ov-tech-row dd { margin: 0; font-family: var(--font-mono); font-size: 0.72rem; color: var(--navy); overflow-wrap: anywhere; }
+.ov-tech-key { padding: 0 4px; border-radius: 4px; background: rgba(69, 123, 157, 0.1); font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; color: var(--ocean-dark); white-space: nowrap; }
+
+/* Overview sheet -> another section: one-click return to the finding. */
+/* Sticky "Back to document" bar at the top of the section column -- lives in
+   the panel, not the navbar, so it never competes with the nav for width. */
+.back-to-document {
+  position: sticky; top: 0; z-index: 5;
+  padding: 8px 0;
+  background: var(--cream);
+}
+.back-to-document[hidden] { display: none; }
+
+/* Signature evidence + element history (Overview sheet and Certificates card). */
+.evidence { margin: 0 0 12px; border: 1px solid var(--ice); border-radius: 12px; overflow: hidden; background: #fff; }
+.evidence-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; }
+.evidence-row + .evidence-row { border-top: 1px solid var(--ice); }
+.evidence-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  font-size: 0.7rem; font-weight: 700; font-style: italic;
+  background: rgba(69, 123, 157, 0.12); color: var(--ocean-dark);
+}
+.evidence-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.evidence-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ocean-dark); }
+.evidence-text { font-size: 0.85rem; overflow-wrap: anywhere; }
+.evidence-action { margin-top: 6px; }
+.evidence-action:empty { display: none; }
+.cert-evidence { margin: 10px 0; }
+.overview-section-title { margin: 14px 0 6px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ocean-dark); }
+.overview-history { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.overview-history .overview-callout { margin: 0; }
+#overviewSheetFooter:not([hidden]) { display: flex; flex-wrap: wrap; gap: 10px; }
+.overview-history:empty { display: none; }
