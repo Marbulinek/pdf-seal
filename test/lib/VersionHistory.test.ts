@@ -7,6 +7,7 @@ import {
   versionBadges,
   filterVersions,
   versionGroupDividers,
+  versionStacks,
   findRevisionEndOffsets,
   classifySaveAgainstBlob,
   planVersionStorage,
@@ -14,6 +15,7 @@ import {
   batchBySize,
   parseRevisionChain,
   VersionEntryLike,
+  elementVersionHistory,
 } from '../../lib/VersionHistory';
 import PdfSignatureTool from '../../lib/PdfSignatureTool';
 import PdfRevisionTool from '../../lib/PdfRevisionTool';
@@ -148,6 +150,26 @@ describe('filterVersions', () => {
   it('handles a non-array input defensively', () => {
     // @ts-expect-error deliberately passing a bad type
     expect(filterVersions(null, true)).toBe(null);
+  });
+});
+
+describe('versionStacks', () => {
+  const id = (k: string | null) => k;
+
+  it('groups a run of equal keys', () => {
+    expect(versionStacks(['a', 'b', 'b', 'b', 'c'], id)).toEqual([{ start: 1, end: 3 }]);
+  });
+
+  it('ignores single entries and empty keys', () => {
+    expect(versionStacks(['a', null, null, 'b', 'a'], id)).toEqual([]);
+    expect(versionStacks([], id)).toEqual([]);
+  });
+
+  it('splits a run at a break position', () => {
+    expect(versionStacks(['a', 'a', 'a', 'a', 'a'], id, new Set([2]))).toEqual([
+      { start: 0, end: 1 },
+      { start: 2, end: 4 },
+    ]);
   });
 });
 
@@ -426,5 +448,50 @@ describe('parseRevisionChain', () => {
   it('drops malformed entries within an otherwise valid array', () => {
     const raw = JSON.stringify([{ index: 1, bytes: 'YQ==' }, { bytes: 42 }, null, { index: 2, bytes: 'Yg==' }]);
     expect(parseRevisionChain(raw)).toEqual([{ index: 1, bytes: 'YQ==' }, { index: 2, bytes: 'Yg==' }]);
+  });
+});
+
+describe('elementVersionHistory', () => {
+  const v = (index: number, fields: string[], signed: string[] = [], stamps: string[] = [], extra = {}) => ({
+    index,
+    fields: fields.map((name) => ({ name })),
+    signatures: signed.map((fieldName) => ({ fieldName })),
+    stamps: stamps.map((id) => ({ id })),
+    ...extra,
+  });
+
+  it('finds the version a field first appears in, and the one before it', () => {
+    const versions = [v(1, ['A']), v(2, ['A']), v(3, ['A', 'B'])];
+    expect(elementVersionHistory(versions, { kind: 'field', key: 'B' })).toEqual({
+      firstIndex: 3, signedIndex: null, presentFromStart: false, previousIndex: 2,
+    });
+  });
+
+  it('reports a field present from the first stored version', () => {
+    const h = elementVersionHistory([v(1, ['A']), v(2, ['A'])], { kind: 'field', key: 'A' });
+    expect(h?.presentFromStart).toBe(true);
+    expect(h?.previousIndex).toBeNull();
+  });
+
+  it('finds the version a signature was signed in', () => {
+    const versions = [v(1, ['Sig']), v(2, ['Sig'], ['Sig']), v(3, ['Sig'], ['Sig'])];
+    const h = elementVersionHistory(versions, { kind: 'signature', key: 'Sig' });
+    expect(h).toMatchObject({ firstIndex: 1, signedIndex: 2, presentFromStart: true });
+  });
+
+  it('looks stamps up by id', () => {
+    const versions = [v(1, []), v(2, [], [], ['stamp-1'])];
+    expect(elementVersionHistory(versions, { kind: 'stamp', key: 'stamp-1' })?.firstIndex).toBe(2);
+  });
+
+  it('returns null for a missing/renamed element, and for links and comments', () => {
+    const versions = [v(1, ['Old'])];
+    expect(elementVersionHistory(versions, { kind: 'field', key: 'Renamed' })).toBeNull();
+    expect(elementVersionHistory(versions, { kind: 'link', key: 'ref:1 0' })).toBeNull();
+  });
+
+  it('skips versions that failed to parse or are not summarized yet', () => {
+    const versions = [{ index: 1 }, v(2, ['A'], [], [], { parseError: 'bad' }), v(3, ['A'])];
+    expect(elementVersionHistory(versions, { kind: 'field', key: 'A' })?.firstIndex).toBe(3);
   });
 });

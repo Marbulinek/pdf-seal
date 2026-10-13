@@ -21,6 +21,7 @@
 // produces when it replaces a signer certificate.
 
 import { createHash } from 'node:crypto';
+import { findRevisionEndOffsets } from './VersionHistory';
 import * as pkijs from 'pkijs';
 import {
   certificateDisplayName,
@@ -44,8 +45,16 @@ import {
   type ExtractedSignature,
 } from './PdfCertificateExtractor';
 
+/** Which file revision a signature's ByteRange ends at (1-based), out of how many the file has. */
+export interface RevisionCoverage {
+  /** null when the signed bytes don't end at a revision boundary (or the range is unreadable). */
+  coveredRevision: number | null;
+  revisionCount: number;
+}
+
 export interface ReportSignature extends ExtractedSignature {
   chainId: string | null;
+  revisionCoverage: RevisionCoverage;
   checks: ValidationResult[];
   status: ValidationStatus;
 }
@@ -101,6 +110,7 @@ async function checkSignature(
   signature: ExtractedSignature,
   bytes: Uint8Array,
   certificatesById: Map<string, ParsedCertificate>,
+  coverage: RevisionCoverage,
 ): Promise<ValidationResult[]> {
   const checks: ValidationResult[] = [];
 
@@ -145,7 +155,10 @@ async function checkSignature(
         'pass',
         'Covers the whole document',
         'The two byte ranges this signature covers account for every byte of the file except the ' +
-          'signature itself, so nothing lies outside what was signed.',
+          'signature itself, so nothing lies outside what was signed.' +
+          (coverage.coveredRevision !== null
+            ? ` The signed bytes end at revision ${coverage.coveredRevision} of ${coverage.revisionCount}.`
+            : ''),
       ),
     );
   } else {
@@ -156,9 +169,13 @@ async function checkSignature(
         'warn',
         `${slot.trailingBytes} byte(s) after the signed region`,
         `This signature covers the file up to byte ${slot.byteRange[2] + slot.byteRange[3]}, and ` +
-          `${slot.trailingBytes} byte(s) follow it. That is normally a later incremental update — ` +
-          'the Revisions section shows what changed — but those bytes are not covered by this ' +
-          'signature.',
+          `${slot.trailingBytes} byte(s) follow it. ` +
+          (coverage.coveredRevision !== null
+            ? `The signed bytes end at revision ${coverage.coveredRevision} of ${coverage.revisionCount}; ` +
+              `${coverage.revisionCount - coverage.coveredRevision} later revision(s) follow. `
+            : 'The signed bytes do not end at a revision boundary of this file. ') +
+          'That is normally a later incremental update — the Versions section shows what changed — ' +
+          'but those bytes are not covered by this signature.',
       ),
     );
   }
@@ -362,15 +379,25 @@ async function checkSignature(
       2: 'form filling and signing are permitted',
       3: 'form filling, signing and annotations are permitted',
     };
+    const grew = signature.cmsSlot
+      ? !signature.cmsSlot.coversWholeFile
+      : false;
     checks.push(
       result(
         'sig.docMdp',
         'Certifying signature',
-        'pass',
-        `DocMDP level ${signature.docMdpLevel}`,
+        // Later changes are never evaluated against P, so don't imply compliance.
+        grew ? 'unknown' : 'pass',
+        grew
+          ? `DocMDP level ${signature.docMdpLevel} — later changes not checked against permissions`
+          : `DocMDP level ${signature.docMdpLevel}`,
         `This is a certifying signature: it states that after it was applied, ${
           meanings[signature.docMdpLevel] ?? 'a restricted set of changes is permitted'
-        }.`,
+        }.` +
+          (grew
+            ? ' The file has grown since signing, and PDF Seal does not check those later changes ' +
+              'against this permission level.'
+            : ''),
       ),
     );
   }
@@ -495,6 +522,26 @@ function buildHeadline(report: {
 }
 
 /**
+ * Which revision the signature's signed bytes (ByteRange end = c + d) finish
+ * at. Only whitespace may sit between that revision's `%%EOF` and the range
+ * end (signers include the trailing EOL); anything else is "no boundary".
+ */
+function coverageFor(signature: ExtractedSignature, ends: number[], bytes: Uint8Array): RevisionCoverage {
+  const br = signature.cmsSlot?.byteRange;
+  const revisionCount = ends.length;
+  if (!br) return { coveredRevision: null, revisionCount };
+  const signedEnd = br[2] + br[3];
+  const i = ends.findIndex((end) => {
+    if (end > signedEnd) return false;
+    for (let p = end; p < signedEnd; p++) {
+      if (bytes[p] !== 0x0a && bytes[p] !== 0x0d && bytes[p] !== 0x20) return false;
+    }
+    return true;
+  });
+  return { coveredRevision: i === -1 ? null : i + 1, revisionCount };
+}
+
+/**
  * Read a PDF and produce the whole certificate report for it.
  *
  * Never throws for a document-shaped reason: an unopenable file, an unsigned
@@ -536,13 +583,16 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
       })),
   );
 
+  const revisionEnds = findRevisionEndOffsets(bytes);
   const signatures: ReportSignature[] = [];
   for (const signature of extraction.signatures) {
-    const checks = await checkSignature(signature, bytes, certificatesById);
+    const revisionCoverage = coverageFor(signature, revisionEnds, bytes);
+    const checks = await checkSignature(signature, bytes, certificatesById, revisionCoverage);
     const chain = chains.find((c) => c.signatureFieldName === signature.fieldName);
     signatures.push({
       ...signature,
       chainId: chain?.id ?? null,
+      revisionCoverage,
       checks,
       status: rollUp(checks),
     });

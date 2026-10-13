@@ -138,7 +138,7 @@ const uploadLimiter = rateLimit({
 
 app.get("/share/:sessionId", (req: Request, res: Response) => {
   const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
-  if (!SESSION_ID_PATTERN.test(sessionId)) return res.status(404).send("Share session not found.");
+  if (!SESSION_ID_PATTERN.test(sessionId)) return res.status(404).sendFile(path.resolve("public/404.html"));
   log("info", "share", "page-opened", { sessionId });
   res.sendFile(path.resolve("public/index.html"));
 });
@@ -250,147 +250,6 @@ app.post("/api/info", uploadLimiter, upload.single("pdfDocument"), async (req: R
     res.status(500).json({ error: error?.message ?? "Unexpected error" });
   } finally {
     cleanupFiles(file.path);
-  }
-});
-
-// --- API Endpoint: Add Signature Field ---
-app.post(
-  "/api/add-signature",
-  uploadLimiter,
-  upload.single("pdfDocument"),
-  async (req: Request, res: Response) => {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-    let outputPath: string | null = null;
-
-    try {
-      const safePath = resolveUploadPath(file.path);
-      const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-
-      // Parse incoming form data
-      const page = parseInt(req.body.page, 10) || 0;
-      const name = req.body.name || `SigField_${Date.now()}`;
-      const x = parseFloat(req.body.x) || 50;
-      const y = parseFloat(req.body.y) || 50;
-      const width = parseFloat(req.body.width) || 200;
-      const height = parseFloat(req.body.height) || 60;
-      const required = req.body.required === "true";
-      const multiline = req.body.multiline === "true";
-      const fieldType = req.body.type === "text" ? "text" : "signature";
-
-      if (fieldType === "text") {
-        tool.addTextField(page, name, { x, y, width, height, required, multiline });
-      } else {
-        tool.addSignatureField(page, name, { x, y, width, height, required });
-      }
-      tool.setMetadata({ modificationDate: new Date() });
-      // Always strip any revision-history chain that may have been embedded
-      // in the uploaded file, so the output stays lean regardless of input.
-      tool.clearRevisionSnapshotChain();
-
-      outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
-      await tool.save(outputPath, { baseDir: UPLOADS_DIR });
-
-      // Send the modified file back to the client, then clean up both temp files
-      // regardless of whether the download itself succeeded.
-      res.download(outputPath, "signed-document.pdf", () => {
-        cleanupFiles(file.path, outputPath);
-      });
-    } catch (error: any) {
-      logError("api-add-signature", error, { filePath: file.path });
-      cleanupFiles(file.path, outputPath);
-      res.status(500).json({ error: error?.message ?? "Unexpected error" });
-    }
-  },
-);
-
-// --- API Endpoint: Edit Existing Field ---
-app.post("/api/edit-field", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-  let outputPath: string | null = null;
-
-  try {
-    const safePath = resolveUploadPath(file.path);
-    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-
-    const originalName = req.body.originalName || req.body.name;
-    const newName = req.body.name || originalName;
-    const x = parseFloat(req.body.x);
-    const y = parseFloat(req.body.y);
-    const width = parseFloat(req.body.width);
-    const height = parseFloat(req.body.height);
-    const required = String(req.body.required).toLowerCase() === "true";
-
-    if (!originalName) {
-      throw new Error("Field name is required.");
-    }
-
-    if (originalName !== newName) {
-      tool.renameField(originalName, newName);
-    }
-
-    if ([x, y, width, height].every((value) => Number.isFinite(value))) {
-      tool.setFieldRect(newName, { x, y, width, height });
-    }
-
-    tool.setFieldRequired(newName, required);
-    if (req.body.multiline !== undefined) {
-      const fieldInfo = tool.listFields().find((f: any) => f.name === newName);
-      if (fieldInfo?.type === "TextField") {
-        tool.setFieldMultiline(newName, String(req.body.multiline).toLowerCase() === "true");
-      }
-    }
-    tool.setMetadata({ modificationDate: new Date() });
-
-    tool.clearRevisionSnapshotChain();
-
-    outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
-    await tool.save(outputPath, { baseDir: UPLOADS_DIR });
-
-    res.download(outputPath, "signed-document.pdf", () => {
-      cleanupFiles(file.path, outputPath);
-    });
-  } catch (error: any) {
-    logError("api-edit-field", error, { filePath: file.path });
-    cleanupFiles(file.path, outputPath);
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
-  }
-});
-
-// --- API Endpoint: Remove Existing Field ---
-app.post("/api/remove-field", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: "No file uploaded" });
-
-  let outputPath: string | null = null;
-
-  try {
-    const safePath = resolveUploadPath(file.path);
-    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
-    const name = req.body.name || req.body.originalName;
-
-    if (!name) {
-      throw new Error("Field name is required.");
-    }
-
-    tool.removeField(name);
-    tool.setMetadata({ modificationDate: new Date() });
-
-    tool.clearRevisionSnapshotChain();
-
-    outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
-    await tool.save(outputPath, { baseDir: UPLOADS_DIR });
-
-    res.download(outputPath, "signed-document.pdf", () => {
-      cleanupFiles(file.path, outputPath);
-    });
-  } catch (error: any) {
-    logError("api-remove-field", error, { filePath: file.path });
-    cleanupFiles(file.path, outputPath);
-    res.status(500).json({ error: error?.message ?? "Unexpected error" });
   }
 });
 
@@ -848,6 +707,12 @@ app.get('/api/share-config', (_req: Request, res: Response) => {
     ...configuredTurnServers(),
   ];
   res.json({ iceServers, stunUrls: configuredStunUrls(), sessionTtlSeconds: SHARE_SESSION_TTL_MS / 1000 });
+});
+
+// Last route: anything unmatched is a 404 -- JSON for the API, a page for browsers.
+app.use((req: Request, res: Response) => {
+  if (req.path.startsWith("/api/")) return res.status(404).json({ error: "Not found" });
+  res.status(404).sendFile(path.resolve("public/404.html"));
 });
 
 const shareWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });

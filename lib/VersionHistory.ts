@@ -190,6 +190,34 @@ export function versionGroupDividers(entries: VersionEntryLike[]): VersionGroupD
   return dividers;
 }
 
+export interface VersionStack {
+  start: number; // inclusive position in `entries`
+  end: number; // inclusive position in `entries`
+}
+
+// Runs of 2+ consecutive entries sharing the same non-empty key (the
+// timeline passes each version's displayed modification time), so a burst
+// of quick edits can be drawn as one collapsible stack instead of a long
+// flat run of near-identical cards. A run never crosses a position in
+// `breakPositions` -- pass the versionGroupDividers() positions so stacks
+// stay inside their incremental/rewrite group.
+export function versionStacks<T>(
+  entries: T[],
+  keyOf: (entry: T) => string | null | undefined,
+  breakPositions: Set<number> = new Set(),
+): VersionStack[] {
+  const stacks: VersionStack[] = [];
+  let start = 0;
+  for (let i = 1; i <= entries.length; i++) {
+    const key = i < entries.length ? keyOf(entries[i]) : null;
+    const continues = key && !breakPositions.has(i) && key === keyOf(entries[start]);
+    if (continues) continue;
+    if (i - start > 1) stacks.push({ start, end: i - 1 });
+    start = i;
+  }
+  return stacks;
+}
+
 // ---------------------------------------------------------------------
 // v2 storage helpers (IndexedDB `pdfseal-versions`, full copies + deltas,
 // streamed hydration). Still pure -- no IndexedDB, no DOM, no pdf.js -- so
@@ -407,6 +435,60 @@ export function parseRevisionChain(raw: string | null | undefined): RevisionChai
   return entries.slice().sort((a, b) => a.index - b.index);
 }
 
+// Where an element first shows up in the locally-stored version list, from
+// the per-version summaries (fields[{name}], signatures[{fieldName}],
+// stamps[{id}]). Looks up by name/id only -- a rename, or a link/comment
+// (not in the summaries), comes back null: "not tracked", never a guess.
+export interface ElementVersionLike {
+  index: number;
+  parseError?: string | null;
+  fields?: { name?: string }[];
+  signatures?: { fieldName?: string }[];
+  stamps?: { id?: string }[];
+}
+
+export interface ElementHistory {
+  /** First stored version (by `index`) that contains the element. */
+  firstIndex: number;
+  /** First version where the element is a signed signature, if ever. */
+  signedIndex: number | null;
+  /** True when it is already in the oldest stored version. */
+  presentFromStart: boolean;
+  /** The version just before `firstIndex`, or null when there is none. */
+  previousIndex: number | null;
+}
+
+export function elementVersionHistory(
+  versions: ElementVersionLike[],
+  element: { kind: string; key: string },
+): ElementHistory | null {
+  if (!element.key || !['field', 'signature', 'stamp'].includes(element.kind)) return null;
+  // Versions that failed to parse, or whose summary isn't loaded, can't answer.
+  const usable = versions.filter((v) => !v.parseError && (v.fields || v.signatures || v.stamps));
+  let firstIndex: number | null = null;
+  let signedIndex: number | null = null;
+
+  for (const v of usable) {
+    const signed = (v.signatures || []).some((s) => s.fieldName === element.key);
+    const present = element.kind === 'stamp'
+      ? (v.stamps || []).some((s) => s.id === element.key)
+      : signed || (v.fields || []).some((f) => f.name === element.key);
+    if (present && firstIndex === null) firstIndex = v.index;
+    if (signed && signedIndex === null) signedIndex = v.index;
+  }
+
+  if (firstIndex === null) return null;
+  // The neighbour in the full list (not just the usable ones), so "compare
+  // k-1 -> k" always means the version stored right before k.
+  const pos = versions.findIndex((v) => v.index === firstIndex);
+  return {
+    firstIndex,
+    signedIndex,
+    presentFromStart: pos <= 0,
+    previousIndex: pos > 0 ? versions[pos - 1].index : null,
+  };
+}
+
 export default {
   bytesEqual,
   classifySave,
@@ -419,4 +501,5 @@ export default {
   versionReadPlan,
   batchBySize,
   parseRevisionChain,
+  elementVersionHistory,
 };

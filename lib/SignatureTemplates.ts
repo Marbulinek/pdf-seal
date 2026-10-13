@@ -52,7 +52,7 @@ export interface Placement {
 // Why an item couldn't be placed. Only one reason exists today; it's a string
 // union rather than a boolean so the UI can grow new skip cases without
 // changing this contract.
-export type SkipReason = 'page-missing';
+export type SkipReason = 'page-missing' | 'unsupported-type';
 
 export interface SkippedPlacement {
   name: string;
@@ -243,6 +243,12 @@ export function planAutoPlacement(
   for (const item of Array.isArray(items) ? items : []) {
     if (!item) continue;
 
+    // Legacy TextBox items stay stored/exported but PDF Seal no longer creates them.
+    if (item.type === 'text') {
+      skipped.push({ name: item.name, page: item.page, reason: 'unsupported-type' });
+      continue;
+    }
+
     // An item saved against page 5 is meaningless in a 3-page document, and
     // the server would reject the add outright -- skip it and let the caller
     // tell the user which ones didn't make it.
@@ -257,7 +263,7 @@ export function planAutoPlacement(
       name,
       type: item.type,
       required: !!item.required,
-      multiline: item.type === 'text' && !!item.multiline,
+      multiline: false,
       page: item.page,
       rect: { x: item.x, y: item.y, width: item.width, height: item.height },
     });
@@ -441,8 +447,10 @@ function roundPoint(value: number): number {
 //
 // `id` is passed in rather than minted here so the caller owns id generation
 // (and so this stays pure/testable).
-export function templateItemFromField(field: DocumentFieldLike, id: string): TemplateItem {
-  const type: TemplateItemType = field.type === 'TextField' || field.type === 'text' ? 'text' : 'signature';
+export function templateItemFromField(field: DocumentFieldLike, id: string): TemplateItem | null {
+  // Only signature fields are capturable; anything else would silently become one.
+  if (field.type !== 'Signature' && field.type !== 'signature') return null;
+  const type: TemplateItemType = 'signature';
   const defaults = DEFAULT_SIZE[type];
   const rect = field.rect || ({} as DocumentFieldLike['rect']);
 
@@ -456,7 +464,7 @@ export function templateItemFromField(field: DocumentFieldLike, id: string): Tem
     y: roundPoint(rect.y),
     page: Math.max(0, Math.round(toFiniteNumber(field.page, 0))),
     required: field.required === true,
-    multiline: type === 'text' && field.multiline === true,
+    multiline: false,
   };
 }
 
