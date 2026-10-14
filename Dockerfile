@@ -3,7 +3,7 @@
 # --- Stage 1: build the server bundle and the Angular UI ---------------------
 # Needs devDependencies (typescript, esbuild, the Angular CLI), so it's
 # isolated to a stage that never ships -- only dist/ is copied out of it below:
-# dist/server/server.js (the esbuild-bundled server, including shared/) and
+# dist/server/server.js (the esbuild-bundled server) and
 # dist/app/browser (the Angular build, which also carries app/public/
 # assets and pdf.js's worker, copied from node_modules/pdfjs-dist).
 FROM node:24-alpine AS build
@@ -13,7 +13,6 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY angular.json ./
-COPY shared ./shared
 COPY server ./server
 COPY app ./app
 RUN npm run build

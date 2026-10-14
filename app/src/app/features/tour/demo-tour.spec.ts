@@ -1,12 +1,10 @@
-import { describe, it, expect } from 'vitest';
 import {
   computePopoverPosition,
   spotlightRect,
   findStepIndex,
   chapterStartIndex,
-  mergeSettingsOverride,
   type Rect,
-} from '../DemoTour';
+} from './demo-tour';
 
 const viewport = { width: 1000, height: 800 };
 const popover = { width: 200, height: 100 };
@@ -128,18 +126,5 @@ describe('chapterStartIndex', () => {
 
   it('returns -1 for an unknown chapter', () => {
     expect(chapterStartIndex(steps, 'nope')).toBe(-1);
-  });
-});
-
-describe('mergeSettingsOverride', () => {
-  it('returns the stored settings unchanged when there is no override', () => {
-    const stored = { a: 1, b: 2 };
-    expect(mergeSettingsOverride(stored, null)).toBe(stored);
-    expect(mergeSettingsOverride(stored, undefined)).toBe(stored);
-  });
-
-  it('layers the override on top of stored settings', () => {
-    const stored = { a: 1, b: 2 };
-    expect(mergeSettingsOverride(stored, { b: 5 })).toEqual({ a: 1, b: 5 });
   });
 });

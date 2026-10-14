@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, inject, signal } from '@angular/core';
-import { chapterStartIndex, findStepIndex, spotlightRect, type Rect } from '@shared/DemoTour';
+import { chapterStartIndex, findStepIndex, spotlightRect, type Rect } from './demo-tour';
 import { DocumentService } from '../../core/document.service';
 import { DocumentStore } from '../../core/document.store';
 import { SettingsService, type AppSettings } from '../../core/settings.service';

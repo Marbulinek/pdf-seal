@@ -1,6 +1,5 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
-import { mergeSettingsOverride } from '@shared/DemoTour';
 
 export interface AppSettings {
   showRawPdfData: boolean;
@@ -36,6 +35,16 @@ export function parseStoredSettings(raw: string | null): AppSettings {
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
+}
+
+/**
+ * Layers a temporary, in-memory settings override on top of the persisted
+ * settings for the duration of the tour, without ever touching what's saved.
+ * A null/undefined override hands back `stored` unchanged.
+ */
+export function mergeSettingsOverride<T extends object>(stored: T, override: Partial<T> | null | undefined): T {
+  if (!override) return stored;
+  return { ...stored, ...override };
 }
 
 /**

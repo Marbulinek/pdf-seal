@@ -1,4 +1,3 @@
-import { describe, it, expect } from 'vitest';
 import {
   normalizeTemplateStore,
   templateItemFromField,
@@ -13,7 +12,7 @@ import {
   mergeTemplateStores,
   TemplateItem,
   TemplateStore,
-} from '../SignatureTemplates';
+} from './signature-templates';
 
 function item(overrides: Partial<TemplateItem> = {}): TemplateItem {
   return {
@@ -204,7 +203,7 @@ describe('planAutoPlacement', () => {
 
   it('returns an empty plan for an empty or missing item list', () => {
     expect(planAutoPlacement([], new Set(), 3)).toEqual({ placements: [], skipped: [] });
-    expect(planAutoPlacement(undefined as any, new Set(), 3)).toEqual({ placements: [], skipped: [] });
+    expect(planAutoPlacement(undefined as never, new Set(), 3)).toEqual({ placements: [], skipped: [] });
   });
 
   it('carries the item type and required flag through to the placement', () => {
@@ -345,7 +344,7 @@ describe('buildTemplateExport', () => {
   });
 
   it('normalizes on the way out, so a repaired store is what gets written', () => {
-    const exported = buildTemplateExport({ templates: [{ name: 'Kept' }, { name: '  ' }] } as any);
+    const exported = buildTemplateExport({ templates: [{ name: 'Kept' }, { name: '  ' }] } as never);
     expect(exported.templates.map((t) => t.name)).toEqual(['Kept']);
   });
 });
@@ -501,6 +500,6 @@ describe('upsertTemplateItem', () => {
   });
 
   it('tolerates a missing list', () => {
-    expect(upsertTemplateItem(undefined as any, item()).items).toHaveLength(1);
+    expect(upsertTemplateItem(undefined as never, item()).items).toHaveLength(1);
   });
 });

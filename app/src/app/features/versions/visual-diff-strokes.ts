@@ -9,10 +9,8 @@
 // runs of changed content inside it -- one stroke per changed phrase, the way
 // somebody would actually mark up a printout.
 //
-// app/public/vendor/diff-worker.js inlines a copy of groupStrokes() (the app has
-// no frontend build step to import from here, and this runs inside a Web
-// Worker); this module exists so the banding logic has unit coverage. Keep
-// the two in sync by hand if either changes.
+// Runs inside the pixel-diff Web Worker (diff.worker.ts), which imports it;
+// covered by visual-diff-strokes.spec.ts.
 
 export interface StrokeOptions {
   /** Page raster size, in diff pixels. */

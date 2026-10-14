@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { buildTemplateExport } from '@shared/SignatureTemplates';
+import { buildTemplateExport } from './signature-templates';
 import { DocumentStore } from '../../core/document.store';
 import { makeField } from '../../testing/fixtures';
 import { provideTestApp } from '../../testing/providers';

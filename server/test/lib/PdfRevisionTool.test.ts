@@ -13,7 +13,14 @@ describe('PdfRevisionTool.findRevisionBoundaries', () => {
     expect(boundaries).toHaveLength(2);
     expect(boundaries[0]).toMatchObject({ index: 1, xrefOffset: 123 });
     expect(boundaries[1]).toMatchObject({ index: 2, xrefOffset: 456 });
-    expect(boundaries[1].endOffset).toBeGreaterThan(boundaries[0].endOffset);
+    // The client's byte scanner (findRevisionEndOffsets in
+    // app/src/app/core/version-history.ts) pins the same offsets in its spec.
+    expect(boundaries.map((b) => b.endOffset)).toEqual([27, 60]);
+  });
+
+  it("treats a 0xA0 byte as whitespace (a latin1-decoded regex's \\s does)", () => {
+    const bytes = Buffer.concat([Buffer.from('startxref', 'latin1'), Buffer.from([0xa0]), Buffer.from('789', 'latin1'), Buffer.from([0xa0]), Buffer.from('%%EOF', 'latin1')]);
+    expect(PdfRevisionTool.findRevisionBoundaries(bytes).map((b) => b.endOffset)).toEqual([19]);
   });
 
   it('returns an empty array when there is no boundary at all', () => {

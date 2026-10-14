@@ -74,7 +74,7 @@ The image is a multi-stage Node 24 / Alpine build shipping only production depen
 
 ## Development
 
-The repository has four top-level code folders sharing one `package.json`: `app/` (the Angular app — `app/src`, `app/public`; the workspace's `angular.json` sits at the root), `server/` (the Express API, `server/lib`, its tests and build scripts), `shared/` (pure TypeScript logic imported by both the server and the app as `@shared/*`) and `extension/` (the browser extension).
+The repository has three top-level code folders sharing one `package.json`: `app/` (the Angular app — `app/src`, `app/public`; the workspace's `angular.json` sits at the root), `server/` (the Express API, `server/lib`, its tests and build scripts) and `extension/` (the browser extension).
 
 | Command | Purpose |
 | --- | --- |
@@ -84,8 +84,8 @@ The repository has four top-level code folders sharing one `package.json`: `app/
 | `npm start` | Run the built server on port 3000 (serves the built UI) |
 | `npm run dev` | Local development on port 3000: Angular dev server (live reload) proxying to the API under `tsx watch` on port 3001 |
 | `npm run dev:server` | Server only, under `tsx watch` (port 3000, serves the last `build:web` output) |
-| `npm test` | Both suites: `test:server` (Vitest projects `server/test`, `shared/test`, `extension/test`) and `test:web` (Angular, `app/src/**/*.spec.ts`) |
-| `npm run test:coverage` | Coverage with enforced thresholds on `server/lib/**` and `shared/*.ts`, plus Angular coverage |
+| `npm test` | Both suites: `test:server` (Vitest projects `server/test` and `extension/test`) and `test:web` (Angular, `app/src/**/*.spec.ts`) |
+| `npm run test:coverage` | Coverage with enforced thresholds on `server/lib/**`, plus Angular coverage |
 | `npm run build:demo-sample` | Regenerate the Help-tour sample PDF and demo root CA |
 | `npm run build:perf-fixtures` | Generate performance fixtures — see [`docs/performance.md`](docs/performance.md) |
 | `npm run build:extension` | Zip the browser extension for the Chrome Web Store |

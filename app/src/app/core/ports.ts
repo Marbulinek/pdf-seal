@@ -1,5 +1,5 @@
 import { InjectionToken, type Signal } from '@angular/core';
-import type { ElementVersionLike } from '@shared/VersionHistory';
+import type { ElementVersionLike } from './version-history';
 import type { DocumentSnapshot, ProcessFileOptions } from './document.service';
 import type { CertificateReport } from './models';
 import type { PdfDocument } from './pdfjs-types';

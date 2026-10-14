@@ -1,4 +1,4 @@
-import { curateRawEntries, type OverviewItem, type OverviewKind } from '@shared/DocumentOverview';
+import { curateRawEntries, type OverviewItem, type OverviewKind } from './document-overview';
 import type { CertificateReport, DocAnnotation, DocField, DocStamp } from '../../core/models';
 import { cssEscape } from '../../core/util/dom';
 import { ovInitials, ovShortDate } from '../../core/util/format';

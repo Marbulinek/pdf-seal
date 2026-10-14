@@ -13,7 +13,6 @@ npm-debug.log
 claude.json
 app/public/perf-fixtures
 server/test
-shared/test
 app/src/**/*.spec.ts
 app/src/app/testing
 app/src/test-setup.ts

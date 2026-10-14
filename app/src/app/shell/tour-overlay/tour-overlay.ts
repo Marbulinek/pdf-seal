@@ -10,7 +10,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { computePopoverPosition, spotlightRect, type Rect } from '@shared/DemoTour';
+import { computePopoverPosition, spotlightRect, type Rect } from '../../features/tour/demo-tour';
 import { UiService } from '../../core/ui.service';
 import { TourService } from '../../features/tour/tour.service';
 

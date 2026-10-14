@@ -1,7 +1,7 @@
 // Shapes of the data the server returns and the app keeps in memory. The
-// server-side source of truth is lib/PdfSignatureTool.ts, lib/PdfRevisionTool.ts
-// and lib/PdfCertificateReport.ts -- these interfaces describe exactly what the
-// UI reads (the lib modules can't be imported here: they depend on node:crypto).
+// server-side source of truth is server/lib/PdfSignatureTool.ts, server/lib/PdfRevisionTool.ts
+// and server/lib/PdfCertificateReport.ts -- these interfaces describe exactly what the
+// UI reads (the server modules can't be imported here: they depend on node:crypto).
 
 export interface PdfRect {
   x: number;

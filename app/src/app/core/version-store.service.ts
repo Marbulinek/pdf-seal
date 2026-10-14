@@ -6,7 +6,7 @@ import {
   versionReadPlan,
   type SaveKind,
   type VersionSource,
-} from '@shared/VersionHistory';
+} from './version-history';
 import { DocumentStore } from './document.store';
 import type { RevisionSummary } from './models';
 import { NotificationService } from './notification.service';

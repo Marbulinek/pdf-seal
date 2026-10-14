@@ -2,10 +2,9 @@
 // named, reusable lists of field definitions the user keeps in localStorage
 // and drops onto any document.
 //
-// The Angular app imports this module directly (TemplatesStore in
-// app/src/app/features/signatures/templates.store.ts), so there is one copy of
-// the logic, covered by shared/test/SignatureTemplates.test.ts. Everything here
-// is pure: no localStorage, no DOM.
+// TemplatesStore (templates.store.ts) drives the UI with it; the logic is
+// covered by signature-templates.spec.ts. Everything here is pure: no
+// localStorage, no DOM.
 //
 // Coordinates are PDF user space points with a bottom-left origin -- the same
 // space as a field's `rect` in the UI (see ViewerService.screenRectToPdf() in
@@ -109,6 +108,11 @@ function toFiniteNumber(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/** Narrows untrusted JSON (localStorage, an imported file) to an object, or null. */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
 function normalizeType(value: unknown): TemplateItemType {
   return value === 'text' ? 'text' : 'signature';
 }
@@ -120,8 +124,9 @@ function makeId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
 }
 
-function normalizeItem(raw: any, seenIds: Set<string>): TemplateItem | null {
-  if (!raw || typeof raw !== 'object') return null;
+function normalizeItem(input: unknown, seenIds: Set<string>): TemplateItem | null {
+  const raw = asRecord(input);
+  if (!raw) return null;
 
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
   if (!name) return null; // an unnamed field can't be added to a PDF at all
@@ -154,8 +159,9 @@ function normalizeItem(raw: any, seenIds: Set<string>): TemplateItem | null {
   };
 }
 
-function normalizeTemplate(raw: any, seenTemplateIds: Set<string>): SignatureTemplate | null {
-  if (!raw || typeof raw !== 'object') return null;
+function normalizeTemplate(input: unknown, seenTemplateIds: Set<string>): SignatureTemplate | null {
+  const raw = asRecord(input);
+  if (!raw) return null;
 
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
   if (!name) return null;
@@ -167,9 +173,9 @@ function normalizeTemplate(raw: any, seenTemplateIds: Set<string>): SignatureTem
   // Item ids only need to be unique within their own template -- that's the
   // scope every lookup in the UI runs in.
   const seenItemIds = new Set<string>();
-  const rawItems = Array.isArray(raw.items) ? raw.items : [];
+  const rawItems: unknown[] = Array.isArray(raw.items) ? raw.items : [];
   const items = rawItems
-    .map((item: any) => normalizeItem(item, seenItemIds))
+    .map((item) => normalizeItem(item, seenItemIds))
     .filter((item: TemplateItem | null): item is TemplateItem => item !== null);
 
   const createdAt = toFiniteNumber(raw.createdAt, 0);
@@ -187,12 +193,14 @@ function normalizeTemplate(raw: any, seenTemplateIds: Set<string>): SignatureTem
 // dropped rather than thrown: a corrupt store must never break the panel, let
 // alone the page. An empty template (no items) is kept -- that's a legitimate
 // state the user reaches by creating a template before filling it in.
-export function normalizeTemplateStore(raw: any): TemplateStore {
-  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.templates)) return emptyStore();
+export function normalizeTemplateStore(input: unknown): TemplateStore {
+  const raw = asRecord(input);
+  if (!raw || !Array.isArray(raw.templates)) return emptyStore();
 
   const seenTemplateIds = new Set<string>();
-  const templates = raw.templates
-    .map((template: any) => normalizeTemplate(template, seenTemplateIds))
+  const rawTemplates: unknown[] = raw.templates;
+  const templates = rawTemplates
+    .map((template) => normalizeTemplate(template, seenTemplateIds))
     .filter((template: SignatureTemplate | null): template is SignatureTemplate => template !== null);
 
   return { version: TEMPLATE_STORE_VERSION, templates };
@@ -363,14 +371,14 @@ export function buildTemplateExport(store: TemplateStore, now: Date = new Date()
 // the panel, this throws: an import the user explicitly asked for that turns
 // out to contain nothing needs to say so rather than appear to succeed.
 export function parseTemplateExport(text: string): TemplateStore {
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (_err) {
     throw new Error("That file isn't valid JSON.");
   }
 
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.templates)) {
+  if (!Array.isArray(asRecord(parsed)?.templates)) {
     throw new Error("That file doesn't look like a pdf-seal template export — it has no \"templates\" list.");
   }
 
@@ -483,19 +491,3 @@ export function upsertTemplateItem(items: TemplateItem[], item: TemplateItem): U
   next[index] = { ...item, id: list[index].id };
   return { items: next, replaced: true };
 }
-
-export default {
-  TEMPLATE_STORE_VERSION,
-  TEMPLATE_EXPORT_APP,
-  normalizeTemplateStore,
-  templateItemFromField,
-  upsertTemplateItem,
-  uniqueFieldName,
-  uniqueTemplateName,
-  planAutoPlacement,
-  moveTemplateItem,
-  copyTemplateItem,
-  buildTemplateExport,
-  parseTemplateExport,
-  mergeTemplateStores,
-};

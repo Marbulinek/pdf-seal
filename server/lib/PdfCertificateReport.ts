@@ -21,7 +21,7 @@
 // produces when it replaces a signer certificate.
 
 import { createHash } from 'node:crypto';
-import { findRevisionEndOffsets } from '../../shared/VersionHistory';
+import PdfRevisionTool from './PdfRevisionTool';
 import * as pkijs from 'pkijs';
 import {
   certificateDisplayName,
@@ -583,7 +583,7 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
       })),
   );
 
-  const revisionEnds = findRevisionEndOffsets(bytes);
+  const revisionEnds = PdfRevisionTool.findRevisionBoundaries(bytes).map((b) => b.endOffset);
   const signatures: ReportSignature[] = [];
   for (const signature of extraction.signatures) {
     const revisionCoverage = coverageFor(signature, revisionEnds, bytes);

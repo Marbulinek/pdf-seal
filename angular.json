@@ -26,6 +26,7 @@
             "index": "app/src/index.html",
             "browser": "app/src/main.ts",
             "tsConfig": "app/tsconfig.app.json",
+            "webWorkerTsConfig": "app/tsconfig.worker.json",
             "assets": [
               {
                 "glob": "**/*",

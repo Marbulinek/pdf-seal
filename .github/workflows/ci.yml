@@ -34,7 +34,7 @@ jobs:
       - name: Build web UI (Angular)
         run: npm run build:web
 
-      - name: Test with coverage (server, shared, extension + Angular)
+      - name: Test with coverage (server, extension + Angular)
         run: npm run test:coverage
 
   docker:

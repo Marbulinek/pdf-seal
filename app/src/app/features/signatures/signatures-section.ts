@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import type { SignatureTemplate, TemplateItem } from '@shared/SignatureTemplates';
+import type { SignatureTemplate, TemplateItem } from './signature-templates';
 import { DocumentStore } from '../../core/document.store';
 import { SettingsService } from '../../core/settings.service';
 import { UiService, type SignatureTab } from '../../core/ui.service';

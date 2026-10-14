@@ -2,9 +2,8 @@
 // navigation. Everything here is pure -- no DOM, no timers, no localStorage --
 // so it can run headless in tests.
 //
-// The Angular app imports this module directly (app/src/app/features/tour/ and
-// app/src/app/shell/tour-overlay/), so there is one copy of the logic, covered by
-// shared/test/DemoTour.test.ts.
+// Used by TourService and the tour overlay (shell/tour-overlay/); covered by
+// demo-tour.spec.ts.
 //
 // Rects use the same shape as DOMRect's writable fields (top/left/width/height),
 // in viewport pixels.
@@ -165,14 +164,4 @@ export function findStepIndex(steps: unknown[], from: number, direction: StepDir
 /** Index of the first step belonging to `chapterId`, or -1 if there is none. */
 export function chapterStartIndex<T extends { chapter: string }>(steps: T[], chapterId: string): number {
   return steps.findIndex((step) => step.chapter === chapterId);
-}
-
-/**
- * Layers a temporary, in-memory settings override on top of the persisted
- * settings for the duration of the tour, without ever touching what's saved.
- * A null/undefined override hands back `stored` unchanged.
- */
-export function mergeSettingsOverride<T extends object>(stored: T, override: Partial<T> | null | undefined): T {
-  if (!override) return stored;
-  return { ...stored, ...override };
 }

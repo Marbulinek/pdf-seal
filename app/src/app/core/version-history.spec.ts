@@ -1,6 +1,3 @@
-import { describe, it, expect } from 'vitest';
-import fs from 'fs';
-import path from 'path';
 import {
   bytesEqual,
   classifySave,
@@ -16,12 +13,15 @@ import {
   parseRevisionChain,
   VersionEntryLike,
   elementVersionHistory,
-} from '../VersionHistory';
-import PdfSignatureTool from '../../server/lib/PdfSignatureTool';
-import PdfRevisionTool from '../../server/lib/PdfRevisionTool';
+} from './version-history';
 
-function bytes(str: string): Uint8Array {
+function bytes(str: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(str);
+}
+
+/** One byte per character, like Node's Buffer.from(text, 'latin1'). */
+function latin1(str: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(str, (c) => c.charCodeAt(0));
 }
 
 describe('bytesEqual', () => {
@@ -232,25 +232,16 @@ describe('versionGroupDividers', () => {
 });
 
 describe('findRevisionEndOffsets', () => {
-  it('matches PdfRevisionTool.findRevisionBoundaries on the same bytes', () => {
-    const text = 'garbage\nstartxref\n123\n%%EOF\nmore garbage\nstartxref\n456\n%%EOF\ntrailing';
-    const raw = Buffer.from(text, 'latin1');
-    const expected = PdfRevisionTool.findRevisionBoundaries(raw).map((b: any) => b.endOffset);
-    expect(findRevisionEndOffsets(new Uint8Array(raw))).toEqual(expected);
-    expect(expected).toHaveLength(2);
+  // Expected offsets match the server's PdfRevisionTool.findRevisionBoundaries()
+  // (a latin1-decoded /startxref\s+(\d+)\s*%%EOF/g) on the same bytes.
+  it('returns the end offset of every startxref/%%EOF boundary', () => {
+    const raw = latin1('garbage\nstartxref\n123\n%%EOF\nmore garbage\nstartxref\n456\n%%EOF\ntrailing');
+    expect(findRevisionEndOffsets(raw)).toEqual([27, 60]);
   });
 
   it('treats a raw 0xA0 byte as whitespace, matching a latin1-decoded regex\'s \\s', () => {
-    const raw = Buffer.concat([
-      Buffer.from('startxref', 'latin1'),
-      Buffer.from([0xa0]),
-      Buffer.from('789', 'latin1'),
-      Buffer.from([0xa0]),
-      Buffer.from('%%EOF', 'latin1'),
-    ]);
-    const expected = PdfRevisionTool.findRevisionBoundaries(raw).map((b: any) => b.endOffset);
-    expect(findRevisionEndOffsets(new Uint8Array(raw))).toEqual(expected);
-    expect(expected).toHaveLength(1);
+    const raw = latin1('startxref\u00a0789\u00a0%%EOF');
+    expect(findRevisionEndOffsets(raw)).toEqual([19]);
   });
 
   it('returns an empty array when there is no boundary at all', () => {
@@ -263,11 +254,8 @@ describe('findRevisionEndOffsets', () => {
   });
 
   it('skips a linearization first-page trailer (startxref 0), keeping only real revisions', () => {
-    const text = '%PDF-1.7\nstartxref\n0\n%%EOF\nmore bytes\nstartxref\n123\n%%EOF\ntrailing';
-    const raw = Buffer.from(text, 'latin1');
-    const expected = PdfRevisionTool.findRevisionBoundaries(raw).map((b: any) => b.endOffset);
-    expect(findRevisionEndOffsets(new Uint8Array(raw))).toEqual(expected);
-    expect(expected).toHaveLength(1);
+    const raw = latin1('%PDF-1.7\nstartxref\n0\n%%EOF\nmore bytes\nstartxref\n123\n%%EOF\ntrailing');
+    expect(findRevisionEndOffsets(raw)).toEqual([57]);
   });
 });
 
@@ -305,7 +293,7 @@ describe('classifySaveAgainstBlob', () => {
 
   it('matches classifySave on the same bytes for every kind', async () => {
     const prev = bytes('hello world');
-    const cases: Array<[Uint8Array | null, Uint8Array]> = [
+    const cases: Array<[Uint8Array<ArrayBuffer> | null, Uint8Array<ArrayBuffer>]> = [
       [null, bytes('fresh')],
       [prev, bytes('hi')],
       [prev, bytes('hello world')],
@@ -338,7 +326,7 @@ describe('planVersionStorage', () => {
     const plan = planVersionStorage({ versionKey: 'v1', byteLength: full.length }, 'incremental', extended);
     expect(plan.storage).toBe('delta');
     expect(plan.baseKey).toBe('v1');
-    expect(Buffer.from(plan.data).toString()).toBe(' -- more');
+    expect(new TextDecoder().decode(plan.data)).toBe(' -- more');
   });
 
   it('falls back to full storage for an incremental save with no known prior', () => {
@@ -412,20 +400,11 @@ describe('batchBySize', () => {
 });
 
 describe('parseRevisionChain', () => {
-  it('parses and sorts the bundled demo sample\'s three-entry chain', async () => {
-    const samplePath = path.join(__dirname, '..', '..', 'app', 'public', 'assets', 'demo', 'pdf-seal-sample.pdf');
-    const sampleBytes = fs.readFileSync(samplePath);
-    const tool = await PdfSignatureTool.fromBytes(sampleBytes);
-    const rawInfo = tool.getRawInfoDict();
-    const raw = rawInfo['PdfSealRevisionChainV1'] || rawInfo['PdfSealRevisionChain'];
-
+  it('parses the chain PdfSignatureTool embeds (PdfSealRevisionChainV1: [{ index, bytes }])', () => {
+    const raw = JSON.stringify([{ index: 1, bytes: 'YQ==' }, { index: 2, bytes: 'Yg==' }, { index: 3, bytes: 'Yw==' }]);
     const entries = parseRevisionChain(raw);
-    expect(entries).toHaveLength(3);
     expect(entries.map((e) => e.index)).toEqual([1, 2, 3]);
     entries.forEach((e) => expect(typeof e.bytes).toBe('string'));
-
-    // Parity with the tool's own already-parsed accessor.
-    expect(entries).toEqual(tool.getRevisionSnapshotChain());
   });
 
   it('sorts out-of-order entries', () => {

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
-import type { VersionBadge } from '@shared/VersionHistory';
+import type { VersionBadge } from '../../core/version-history';
 import { OvFacts } from '../../shared/ov-facts';
 import { TAG_LABEL_CLASS, TAG_LABEL_DESCRIPTION, revisionLabel } from './versions-model';
 import { VersionsStore, type CardModel } from './versions.store';

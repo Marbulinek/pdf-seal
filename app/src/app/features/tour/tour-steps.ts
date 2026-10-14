@@ -1,4 +1,4 @@
-import type { Placement } from '@shared/DemoTour';
+import type { Placement } from './demo-tour';
 import type { AppSettings } from '../../core/settings.service';
 
 export type TourChapter = 'intro' | 'signatures' | 'templates' | 'metadata' | 'revisions' | 'certificates' | 'settings' | 'finish';

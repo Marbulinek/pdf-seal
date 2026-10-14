@@ -1,5 +1,4 @@
-import { describe, it, expect } from 'vitest';
-import { groupStrokes, type StrokeOptions } from '../VisualDiffStrokes';
+import { groupStrokes, type StrokeOptions } from './visual-diff-strokes';
 
 const WIDTH = 200;
 const HEIGHT = 100;

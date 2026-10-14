@@ -1,8 +1,7 @@
-/* Base config for the Angular app (app/src) and its specs:
-     - tsconfig.app.json  -> the application
-     - tsconfig.spec.json -> the unit tests
-   `@shared/*` maps to the isomorphic modules in ../shared, which the server
-   (../server) imports too. */
+/* Base config for the Angular app (app/src):
+     - tsconfig.app.json    -> the application
+     - tsconfig.worker.json -> its Web Workers (*.worker.ts)
+     - tsconfig.spec.json   -> the unit tests */
 {
   "compileOnSave": false,
   "compilerOptions": {
@@ -16,10 +15,7 @@
     "importHelpers": true,
     "target": "ES2022",
     "module": "preserve",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "paths": {
-      "@shared/*": ["../shared/*"]
-    }
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,
@@ -30,6 +26,7 @@
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.worker.json" },
     { "path": "./tsconfig.spec.json" }
   ]
 }

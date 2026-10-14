@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { curateRawEntries } from '@shared/DocumentOverview';
+import { curateRawEntries } from './document-overview';
 import { DocumentStore } from '../../core/document.store';
 import { UiService } from '../../core/ui.service';
 import { formatFileSize } from '../../core/util/format';

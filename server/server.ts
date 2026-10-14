@@ -372,7 +372,7 @@ app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), asyn
 // oldest first -- and summarizes each one. Stateless like every other route
 // here: nothing is persisted or correlated across requests.
 // Capped at 16 files -- the client sends sequential batches of at most 8
-// (see batchBySize in shared/VersionHistory.ts), so this is headroom, not the
+// (see batchBySize in app/src/app/core/version-history.ts), so this is headroom, not the
 // expected size; it exists so this route can't be made to accept an
 // unbounded multipart body just because the byte-size cap alone wouldn't
 // catch a huge number of tiny files.

@@ -2,9 +2,8 @@ import { build } from 'esbuild';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Bundles the Express server (server/server.ts plus server/lib and the
-// isomorphic shared/ modules it imports) into one file the runtime image
-// runs: dist/server/server.js. Paths are resolved from this file, so the
+// Bundles the Express server (server/server.ts plus server/lib) into one
+// file the runtime image runs: dist/server/server.js. Paths are resolved from this file, so the
 // script works from any working directory.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

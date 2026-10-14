@@ -2,10 +2,39 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { PDFArray, PDFHexString, PDFName, PDFString } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFHexString, PDFName, PDFString } from 'pdf-lib';
 import PdfSignatureTool, { truncateLongStrings } from '../../lib/PdfSignatureTool';
 import { buildSignedPdfFixture } from './helpers/pdfSigner';
 import { mintStandardChain } from './helpers/certificateFactory';
+
+/**
+ * A one-page PDF whose catalog can't be found -- like an early byte slice of
+ * an incremental-update chain. Renaming keys to same-length junk keeps every
+ * xref offset valid.
+ */
+async function pdfWithoutCatalog({ dropPageTree = false } = {}): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.addPage();
+  // Without object streams the catalog and page tree are plain text in the file.
+  let text = Buffer.from(await doc.save({ useObjectStreams: false })).toString('latin1');
+  text = text.replace(/\/Type \/Catalog/g, '/Type /Xatalog').replace(/\/Root /g, '/Xoot ');
+  if (dropPageTree) text = text.replace(/\/Type \/Pages/g, '/Type /Xages');
+  return Buffer.from(text, 'latin1');
+}
+
+describe('PdfSignatureTool catalog recovery', () => {
+  it('points a rebuilt catalog at the existing page tree', async () => {
+    const tool = await PdfSignatureTool.fromBytes(await pdfWithoutCatalog());
+    expect(tool.getMetadata().pageCount).toBe(1);
+    expect(tool.listFields()).toEqual([]);
+  });
+
+  it('synthesizes an empty page tree when there is none to reuse', async () => {
+    const tool = await PdfSignatureTool.fromBytes(await pdfWithoutCatalog({ dropPageTree: true }));
+    expect(tool.getMetadata().pageCount).toBe(0);
+    expect(tool.listFields()).toEqual([]);
+  });
+});
 
 describe('PdfSignatureTool', () => {
   it('creates a blank document with no fields', async () => {

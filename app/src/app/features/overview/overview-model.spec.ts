@@ -1,4 +1,4 @@
-import { overviewItems } from '@shared/DocumentOverview';
+import { overviewItems } from './document-overview';
 import type { DocAnnotation, DocStamp } from '../../core/models';
 import { makeField, makeReport, makeSignature } from '../../testing/fixtures';
 import { groupPages, overviewActionLabel, overviewSelector, overviewSheetModel, placementLines } from './overview-model';

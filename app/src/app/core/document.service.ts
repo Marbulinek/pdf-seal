@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, inject } from '@angular/core';
-import { classifySaveAgainstBlob, planVersionStorage } from '@shared/VersionHistory';
+import { classifySaveAgainstBlob, planVersionStorage } from './version-history';
 import { ApiService, type UploadRequest } from './api.service';
 import { DocumentStore, cloneFields, type StoreField } from './document.store';
 import type { DocField, InfoFieldsResponse } from './models';

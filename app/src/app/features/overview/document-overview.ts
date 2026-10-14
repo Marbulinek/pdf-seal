@@ -3,9 +3,16 @@
 // into the one list that drives both the panel and the PDF hotspots, and
 // picking the "at a glance" chips.
 //
-// The Angular app imports this module directly (app/src/app/features/overview/),
-// so there is one copy of the logic, covered by shared/test/DocumentOverview.test.ts.
-// Everything here is pure: no DOM, no fetch.
+// Everything here is pure: no DOM, no fetch (covered by document-overview.spec.ts).
+
+import type { DocAnnotation, DocField, DocStamp, OverviewFeatures } from '../../core/models';
+
+/** The parts of a form field the Overview reads. */
+export type OverviewField = Pick<DocField, 'name' | 'type'> & Partial<Pick<DocField, 'page' | 'rect' | 'raw' | 'readOnly'>>;
+/** The parts of a field `fieldStateLabel()` reads. */
+export type FieldStateInput = Pick<DocField, 'type'> & Partial<Pick<DocField, 'raw' | 'readOnly'>>;
+export type OverviewStamp = Partial<DocStamp>;
+export type OverviewAnnotation = Partial<DocAnnotation>;
 
 export type OverviewKind = 'signature' | 'stamp' | 'field' | 'link' | 'comment';
 
@@ -30,7 +37,7 @@ export interface OverviewItem {
   rect: RectLike | null;
   status: string;
   // The field/stamp/annotation this row was built from.
-  source: any;
+  source: OverviewField | OverviewStamp | OverviewAnnotation;
 }
 
 export interface GlanceChip {
@@ -156,7 +163,7 @@ export function curateRawEntries(raw: Record<string, string> | null | undefined,
 }
 
 // The Overview list's status badge for a form field (Signed / Filled / Checked / Empty).
-export function fieldStateLabel(field: any): string {
+export function fieldStateLabel(field: FieldStateInput): string {
   const raw = field.raw || {};
   if (field.type === 'Signature') return raw.V ? 'Signed' : 'Empty';
   if (field.type === 'CheckBox' || field.type === 'RadioGroup') {
@@ -166,19 +173,23 @@ export function fieldStateLabel(field: any): string {
   return raw.V ? 'Filled' : 'Empty';
 }
 
-function stampLabel(s: any): string {
+function stampLabel(s: OverviewStamp): string {
   return s.text || s.note || s.name || (s.kind === 'image' ? 'Image stamp' : 'Stamp');
 }
 
-function annotLabel(a: any, kind: OverviewKind): string {
-  if (kind === 'link') return a.uri || (Number.isInteger(a.destPage) ? `Go to page ${a.destPage + 1}` : 'Link');
+function annotLabel(a: OverviewAnnotation, kind: OverviewKind): string {
+  if (kind === 'link') return a.uri || (Number.isInteger(a.destPage) ? `Go to page ${(a.destPage as number) + 1}` : 'Link');
   const text = (a.contents || '').trim();
-  const name = a.subtype === 'Text' ? 'Note' : a.subtype === 'FreeText' ? 'Text box' : a.subtype;
+  const name = a.subtype === 'Text' ? 'Note' : a.subtype === 'FreeText' ? 'Text box' : a.subtype || 'Annotation';
   return text ? `${name}: ${text.length > 60 ? `${text.slice(0, 60)}…` : text}` : name;
 }
 
 /** Flatten fields, stamps and annotations into one list, in reading order (page, then top to bottom). */
-export function overviewItems(input: { fields?: any[]; stamps?: any[]; annotations?: any[] }): OverviewItem[] {
+export function overviewItems(input: {
+  fields?: readonly OverviewField[];
+  stamps?: readonly OverviewStamp[];
+  annotations?: readonly OverviewAnnotation[];
+}): OverviewItem[] {
   const items: OverviewItem[] = [];
   (input.fields || []).forEach((f) => {
     items.push({
@@ -210,7 +221,7 @@ export function overviewItems(input: { fields?: any[]; stamps?: any[]; annotatio
       label: annotLabel(a, kind),
       page: a.page ?? 0,
       rect: a.rect || null,
-      status: kind === 'link' ? (a.uri ? 'URL' : Number.isInteger(a.destPage) ? `Page ${a.destPage + 1}` : 'Link') : a.subtype,
+      status: kind === 'link' ? (a.uri ? 'URL' : Number.isInteger(a.destPage) ? `Page ${(a.destPage as number) + 1}` : 'Link') : a.subtype || '',
       source: a,
     });
   });
@@ -220,12 +231,15 @@ export function overviewItems(input: { fields?: any[]; stamps?: any[]; annotatio
 }
 
 /** Only the chips that are true or non-zero. `overview` is /api/info's `overview`. */
-export function atAGlanceChips(overview: any, fields?: any[]): GlanceChip[] {
+export function atAGlanceChips(
+  overview: { features?: Partial<OverviewFeatures> } | null | undefined,
+  fields?: readonly FieldStateInput[],
+): GlanceChip[] {
   const out: GlanceChip[] = [];
-  const features = (overview && overview.features) || {};
+  const features: Partial<OverviewFeatures> = overview?.features || {};
   const signed = features.signatureCount || 0;
   if (signed > 0) out.push({ id: 'signed', label: signed === 1 ? 'Signed' : `Signed ×${signed}`, tone: 'positive' });
-  const cert = CERTIFICATION_CHIPS[features.certification];
+  const cert = features.certification == null ? undefined : CERTIFICATION_CHIPS[features.certification];
   if (cert) out.push({ id: 'certified', ...cert });
   const toFill = (fields || []).filter((f) => {
     if (f.readOnly) return false;
@@ -235,11 +249,11 @@ export function atAGlanceChips(overview: any, fields?: any[]): GlanceChip[] {
   if (features.encrypted) out.push({ id: 'encrypted', label: 'Encrypted', tone: 'neutral' });
   if (features.pdfA === 'Yes') out.push({ id: 'pdfa', label: 'PDF/A', tone: 'neutral' });
   if (features.javascript) out.push({ id: 'js', label: 'Contains JavaScript', tone: 'warning' });
-  if (features.attachmentCount > 0) {
+  if (features.attachmentCount && features.attachmentCount > 0) {
     out.push({ id: 'attachments', label: `${features.attachmentCount} attachment${features.attachmentCount === 1 ? '' : 's'}`, tone: 'neutral' });
   }
   // One boundary is just a normal xref table, not an update (same threshold as the old Features card).
-  if (features.incrementalUpdates > 1) {
+  if (features.incrementalUpdates && features.incrementalUpdates > 1) {
     out.push({ id: 'updates', label: `${features.incrementalUpdates} updates`, tone: 'neutral', goto: 'revisions' });
   }
   return out;

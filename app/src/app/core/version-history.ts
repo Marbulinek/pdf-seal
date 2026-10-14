@@ -2,9 +2,8 @@
 // each locally-stored snapshot was produced (an appended incremental update
 // vs. a full rewrite) and turning that into the badges/filter the UI shows.
 //
-// The Angular app imports this module directly (VersionsStore and
-// VersionStoreService under app/src/app/), so there is one copy of the logic,
-// covered by shared/test/VersionHistory.test.ts. Everything here is pure: no
+// Used by VersionStoreService, DocumentService and the Versions/Overview
+// stores; covered by version-history.spec.ts. Everything here is pure: no
 // IndexedDB, no DOM.
 
 export type SaveKind = 'initial' | 'identical' | 'incremental' | 'rewrite';
@@ -248,7 +247,8 @@ const STARTXREF_BYTES = Array.from('startxref').map((c) => c.charCodeAt(0));
 const EOF_MARKER_BYTES = Array.from('%%EOF').map((c) => c.charCodeAt(0));
 
 // Byte-level equivalent of PdfRevisionTool's `/startxref\s+\d+\s*%%EOF/g`
-// (see its REVISION_BOUNDARY_PATTERN) -- scans raw bytes directly instead of
+// (see its REVISION_BOUNDARY_PATTERN, in server/lib/PdfRevisionTool.ts; the
+// server uses that one) -- scans raw bytes directly instead of
 // decoding to a string first, so it can run client-side against a Blob's
 // bytes without pulling in Buffer. Returns each match's end offset
 // (exclusive, i.e. one past "%%EOF") in the order found, oldest first --
@@ -424,7 +424,7 @@ export function parseRevisionChain(raw: string | null | undefined): RevisionChai
 
   const entries: RevisionChainEntry[] = parsed
     .filter((entry): entry is { index?: unknown; bytes: string } => (
-      !!entry && typeof entry === 'object' && typeof (entry as any).bytes === 'string'
+      !!entry && typeof entry === 'object' && typeof (entry as { bytes?: unknown }).bytes === 'string'
     ))
     .map((entry) => ({
       index: Number.isInteger(entry.index) ? (entry.index as number) : 1,
@@ -488,18 +488,3 @@ export function elementVersionHistory(
     previousIndex: pos > 0 ? versions[pos - 1].index : null,
   };
 }
-
-export default {
-  bytesEqual,
-  classifySave,
-  versionBadges,
-  filterVersions,
-  versionGroupDividers,
-  findRevisionEndOffsets,
-  classifySaveAgainstBlob,
-  planVersionStorage,
-  versionReadPlan,
-  batchBySize,
-  parseRevisionChain,
-  elementVersionHistory,
-};

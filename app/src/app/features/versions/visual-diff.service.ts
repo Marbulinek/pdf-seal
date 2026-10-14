@@ -5,6 +5,7 @@ import { destroyDocument, isRenderingCancelled, type PdfDocument, type PdfPage, 
 import { PdfJsService } from '../../core/pdfjs.service';
 import { VersionStoreService } from '../../core/version-store.service';
 import { ViewerService } from '../../core/viewer.service';
+import type { DiffRect, DiffWorkerReply, DiffWorkerRequest } from './diff-worker-protocol';
 
 /** Highlighter inks, laid down with a `multiply` composite like a real pen. */
 export const VISUAL_DIFF_PENS = {
@@ -36,15 +37,6 @@ const INK_ALPHA = 0.45;
 /** Rendered pages the worker keeps pixels for (two per page, one per side). */
 const PIXEL_CACHE_LIMIT = 4;
 
-interface DiffRect {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
-
-type WorkerReply = { id: number; ok: boolean; error?: string; rects?: DiffRect[]; strokes?: DiffRect[]; truncated?: boolean; coverage?: number };
-
 interface Prepared {
   pageA: PdfPage | null;
   pageB: PdfPage | null;
@@ -65,7 +57,7 @@ export interface VisualResult {
 /**
  * The imperative half of version comparison: the two pdf.js snapshot
  * documents being compared, the single-revision "View" document, the
- * off-main-thread pixel-diff worker (public/vendor/diff-worker.js, which also
+ * off-main-thread pixel-diff worker (diff.worker.ts, which also
  * owns the rendered-page pixel cache), and painting results onto the viewer's
  * shared canvas. The VersionsStore owns every piece of UI state; this owns
  * only resources.
@@ -94,7 +86,7 @@ export class VisualDiffService {
 
   private worker: Worker | null = null;
   private workerSeq = 0;
-  private readonly pending = new Map<number, { resolve: (r: WorkerReply) => void; reject: (e: Error) => void }>();
+  private readonly pending = new Map<number, { resolve: (r: DiffWorkerReply) => void; reject: (e: Error) => void }>();
   /** FIFO mirror of the keys the worker currently holds. */
   private pixelCacheKeys: string[] = [];
   /** The clean render the diff is shown against, so a pen change is a blit. */
@@ -227,8 +219,8 @@ export class VisualDiffService {
 
   private getWorker(): Worker {
     if (this.worker) return this.worker;
-    const worker = new Worker('/vendor/diff-worker.js');
-    worker.onmessage = (event: MessageEvent<WorkerReply>) => {
+    const worker = new Worker(new URL('./diff.worker', import.meta.url), { type: 'module' });
+    worker.onmessage = (event: MessageEvent<DiffWorkerReply>) => {
       const { id, ok, error } = event.data;
       const pending = this.pending.get(id);
       if (!pending) return;
@@ -248,7 +240,7 @@ export class VisualDiffService {
     return worker;
   }
 
-  private callWorker(message: Record<string, unknown>, transfer: Transferable[] = []): Promise<WorkerReply> {
+  private callWorker(message: DiffWorkerRequest, transfer: Transferable[] = []): Promise<DiffWorkerReply> {
     const id = ++this.workerSeq;
     const worker = this.getWorker();
     return new Promise((resolve, reject) => {
@@ -292,7 +284,7 @@ export class VisualDiffService {
     if (!this.pixelCacheKeys.includes(key)) this.pixelCacheKeys.push(key);
     while (this.pixelCacheKeys.length > PIXEL_CACHE_LIMIT) {
       const evicted = this.pixelCacheKeys.shift();
-      this.callWorker({ type: 'evict', key: evicted }).catch(() => {});
+      if (evicted !== undefined) this.callWorker({ type: 'evict', key: evicted }).catch(() => {});
     }
     return key;
   }
@@ -426,7 +418,7 @@ export class VisualDiffService {
 
   /**
    * "Highlighter" marks: changed passages swept over with a pen (grouping
-   * happens in the worker -- see shared/VisualDiffStrokes.ts).
+   * happens in the worker -- see visual-diff-strokes.ts).
    */
   async renderHighlights(pageNum: number, pen: PenColor, missingFromLabel: string): Promise<VisualResult> {
     const generation = this.generation;

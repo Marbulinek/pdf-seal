@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import type { VersionBadge } from '@shared/VersionHistory';
+import type { VersionBadge } from '../../core/version-history';
 import { DocumentStore } from '../../core/document.store';
 import { OvFacts } from '../../shared/ov-facts';
 import { OvHero, type HeroModel } from '../../shared/ov-hero';

@@ -1,4 +1,4 @@
-import type { SaveKind, VersionSource } from '@shared/VersionHistory';
+import type { SaveKind, VersionSource } from '../../core/version-history';
 import { isRectPracticallyInvisible } from '../../core/field-rules';
 import type { DiffStampEntry, PdfRect, RawObjectPreview, RevisionDiff, RevisionSummary } from '../../core/models';
 import { formatByteDelta } from '../../core/util/format';

@@ -10,7 +10,7 @@ import {
   type ElementVersionLike,
   type VersionBadge,
   type VersionGroupDivider,
-} from '@shared/VersionHistory';
+} from '../../core/version-history';
 import { ApiService } from '../../core/api.service';
 import { DocumentStore } from '../../core/document.store';
 import { errorMessage } from '../../core/document.service';

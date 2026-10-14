@@ -16,7 +16,7 @@ import {
   type SignatureTemplate,
   type TemplateItem,
   type TemplateStore,
-} from '@shared/SignatureTemplates';
+} from './signature-templates';
 import { errorMessage } from '../../core/document.service';
 import { DocumentStore, type StoreField } from '../../core/document.store';
 import { isEditableField } from '../../core/field-rules';

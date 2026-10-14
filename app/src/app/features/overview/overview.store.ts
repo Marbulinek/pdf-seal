@@ -1,8 +1,8 @@
 import { computed, effect, inject } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withProps, withState } from '@ngrx/signals';
-import { elementVersionHistory } from '@shared/VersionHistory';
-import { atAGlanceChips, overviewItems, type OverviewItem, type OverviewKind } from '@shared/DocumentOverview';
+import { elementVersionHistory } from '../../core/version-history';
+import { atAGlanceChips, overviewItems, type OverviewItem, type OverviewKind } from './document-overview';
 import { ApiService } from '../../core/api.service';
 import { DocumentStore } from '../../core/document.store';
 import { errorMessage } from '../../core/document.service';

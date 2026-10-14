@@ -1,5 +1,4 @@
-import { describe, it, expect } from 'vitest';
-import { curateRawEntries, overviewItems, atAGlanceChips } from '../DocumentOverview';
+import { curateRawEntries, overviewItems, atAGlanceChips } from './document-overview';
 
 describe('curateRawEntries', () => {
   it('relabels keys, decodes flags, formats rects and drops structural keys', () => {

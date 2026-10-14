@@ -3,9 +3,9 @@
 //
 // Runs two processes and stops both when either exits (or on Ctrl+C):
 //   - the Angular dev server (`ng serve`) on port 3000, with live reload and
-//     hot module replacement for everything in app/ and shared/;
+//     hot module replacement for everything in app/;
 //   - the Express API under `tsx watch` on port 3001 (DEV_API_PORT),
-//     restarting on every change to server/ or shared/.
+//     restarting on every change to server/.
 // The dev server proxies /api and the /signal WebSocket to the API
 // (app/proxy.conf.json), so the browser only ever talks to port 3000.
 //
