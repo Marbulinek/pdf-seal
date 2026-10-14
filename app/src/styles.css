@@ -5394,7 +5394,7 @@ button.overview-chip:hover { border-color: var(--ocean); color: var(--ocean-dark
 .overview-row-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .overview-row-page { flex: none; font-size: 0.72rem; color: var(--ocean-dark); font-family: 'SFMono-Regular', Consolas, monospace; }
 .overview-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--kind, var(--ocean)); }
-.overview-dot.is-signature { --kind: #10b981; }
+.overview-dot.is-signature { --kind: var(--ocean); }
 .overview-dot.is-stamp { --kind: #8b5cf6; }
 .overview-dot.is-field { --kind: #3b82f6; }
 .overview-dot.is-link { --kind: #0ea5e9; }
@@ -5421,7 +5421,10 @@ body[data-active-section="metadata"] .field-overlay[data-overview-kind="field"] 
 .overview-hotspot[data-kind="stamp"] { --kind: #8b5cf6; }
 .overview-hotspot[data-kind="link"] { --kind: #0ea5e9; }
 .overview-hotspot[data-kind="comment"] { --kind: #f59e0b; }
-body[data-active-section="metadata"] .field-overlay[data-overview-kind="signature"] { --kind: #10b981; }
+/* Signature boxes keep the Signatures section's colours: blue, or red when an
+   unsigned (editable) field is required -- locked boxes stay blue there too. */
+body[data-active-section="metadata"] .field-overlay[data-overview-kind="signature"] { --kind: var(--ocean); }
+body[data-active-section="metadata"] .field-overlay[data-overview-kind="signature"].required:not(.is-signed) { --kind: var(--coral); }
 
 /* Fields and signatures reuse .field-overlay; restyle them as outlines here. */
 body[data-active-section="metadata"] .field-overlay {
