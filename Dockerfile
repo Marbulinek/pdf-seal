@@ -1,21 +1,20 @@
 # syntax=docker/dockerfile:1
 
-# --- Stage 1: build the API bundle and the Angular UI ------------------------
+# --- Stage 1: build the server bundle and the Angular UI ---------------------
 # Needs devDependencies (typescript, esbuild, the Angular CLI), so it's
 # isolated to a stage that never ships -- only dist/ is copied out of it below:
-# dist/server.js (the esbuild-bundled API) and dist/web/browser (the Angular
-# build, which also carries everything from public/: assets, vendor, 404.html).
+# dist/server/server.js (the esbuild-bundled server, including shared/) and
+# dist/app/browser (the Angular build, which also carries app/public/:
+# assets and the self-hosted pdf.js vendor bundle).
 FROM node:24-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY tsconfig.json tsconfig.app.json tsconfig.server.json tsconfig.spec.json angular.json esbuild.config.mjs ./
-COPY server.ts ./
-COPY lib ./lib
-COPY src ./src
-COPY public ./public
+COPY shared ./shared
+COPY server ./server
+COPY app ./app
 RUN npm run build
 
 # --- Stage 2: production-only node_modules ----------------------------------
@@ -48,4 +47,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:'+(process.env.PORT||3000)+'/api/version').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/server/server.js"]

@@ -1,0 +1,11 @@
+{
+  "extends": "@tsconfig/node24/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["server.ts", "lib/**/*.ts", "../shared/*.ts"],
+  "exclude": ["**/*.test.ts"]
+}

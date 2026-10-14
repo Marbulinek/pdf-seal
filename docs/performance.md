@@ -6,9 +6,9 @@ and the before/after numbers for each stage of the work.
 
 ## Fixtures
 
-`npm run build:perf-fixtures` writes to `public/perf-fixtures/` (gitignored
+`npm run build:perf-fixtures` writes to `app/public/perf-fixtures/` (gitignored
 and dockerignored, so it's never shipped -- the dev server just serves it
-like any other file under `public/`):
+like any other file under `app/public/`):
 
 | File | Purpose |
 | --- | --- |
@@ -173,7 +173,7 @@ Chrome/the built-in browser pane.
 
 Drive these from the devtools console through `window.pdfSeal`, which a
 development build (`npm run dev`) exposes with the app's services and signal
-stores (see `src/app/core/debug-handle.ts`; production builds don't have it):
+stores (see `app/src/app/core/debug-handle.ts`; production builds don't have it):
 
 1. **Fresh upload, small file.** Upload `fields-60.pdf`. Snapshot after the
    document settles.

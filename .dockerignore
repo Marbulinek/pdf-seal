@@ -1,7 +1,7 @@
 node_modules
 dist
-.angular
-out-tsc
+app/.angular
+app/out-tsc
 coverage
 uploads
 .git
@@ -11,5 +11,10 @@ uploads
 npm-debug.log
 *.md
 claude.json
-public/perf-fixtures
+app/public/perf-fixtures
+server/test
+shared/test
+app/src/**/*.spec.ts
+app/src/app/testing
+app/src/test-setup.ts
 extension

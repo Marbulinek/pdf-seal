@@ -66,21 +66,23 @@ docker compose up --build
 docker build -t pdf-seal . && docker run -p 3000:3000 pdf-seal
 ```
 
-The image is a multi-stage Node 24 / Alpine build shipping only production dependencies and the compiled `dist/` (the bundled API in `dist/server.js` and the Angular build in `dist/web/browser`).
+The image is a multi-stage Node 24 / Alpine build shipping only production dependencies and the compiled `dist/` (the bundled API in `dist/server/server.js` and the Angular build in `dist/app/browser`).
 
 ## Development
+
+The repository has four top-level code folders sharing one `package.json`: `app/` (the Angular workspace — `app/src`, `app/public`, `angular.json`), `server/` (the Express API, `server/lib`, its tests and build scripts), `shared/` (pure TypeScript logic imported by both the server and the app as `@shared/*`) and `extension/` (the browser extension).
 
 | Command | Purpose |
 | --- | --- |
 | `npm run build` | Build the whole solution: `build:server` then `build:web` |
-| `npm run build:server` | Type-check the server (`tsc`) and bundle it to `dist/server.js` (esbuild) |
-| `npm run build:web` | Production build of the Angular UI to `dist/web/browser` |
+| `npm run build:server` | Type-check the server (`tsc`) and bundle it to `dist/server/server.js` (esbuild) |
+| `npm run build:web` | Production build of the Angular UI to `dist/app/browser` |
 | `npm start` | Run the built server on port 3000 (serves the built UI) |
 | `npm run dev` | Angular build in watch mode + server under `tsx watch`, on port 3000 |
 | `npm run dev:server` | Server only, under `tsx watch` (port 3000) |
 | `npm run dev:web` | Angular dev server with HMR (port 4200, proxies `/api` and `/signal` to port 3000) |
-| `npm test` | Both suites: `test:server` (Vitest, `test/` mirrors `lib/`) and `test:web` (Angular, `src/**/*.spec.ts`) |
-| `npm run test:coverage` | Coverage with enforced thresholds on `lib/**`, plus Angular coverage |
+| `npm test` | Both suites: `test:server` (Vitest projects `server/test`, `shared/test`, `extension/test`) and `test:web` (Angular, `app/src/**/*.spec.ts`) |
+| `npm run test:coverage` | Coverage with enforced thresholds on `server/lib/**` and `shared/*.ts`, plus Angular coverage |
 | `npm run build:demo-sample` | Regenerate the Help-tour sample PDF and demo root CA |
 | `npm run build:perf-fixtures` | Generate performance fixtures — see [`docs/performance.md`](docs/performance.md) |
 | `npm run build:extension` | Zip the browser extension for the Chrome Web Store |

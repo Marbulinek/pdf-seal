@@ -2,7 +2,7 @@ node_modules
 .DS_Store
 /dist
 /coverage
-/public/perf-fixtures
+/app/public/perf-fixtures
 /extension.pem
-/.angular
-/out-tsc
+/app/.angular
+/app/out-tsc
