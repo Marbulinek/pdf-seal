@@ -5457,6 +5457,10 @@ body[data-overview-hide~="comment"][data-active-section="metadata"] .overview-ho
 
 /* ---------- Overview: detail sheet ---------- */
 #overviewSheet .edit-sheet-header h3 { display: flex; align-items: center; gap: 6px; }
+/* Everything in the sheet wraps, so it only ever scrolls vertically. overflow-y:auto
+   alone makes x scrollable too, and collapsing "Technical details" could leave a
+   stray horizontal scrollbar behind. */
+#overviewSheetBody { overflow-x: hidden; }
 /* Same per-kind colours as .overview-dot / hotspots. */
 .ov-hero.is-signature, #overviewSheetBody:has(.ov-hero.is-signature) { --kind: #10b981; }
 .ov-hero.is-stamp, #overviewSheetBody:has(.ov-hero.is-stamp) { --kind: #8b5cf6; }
