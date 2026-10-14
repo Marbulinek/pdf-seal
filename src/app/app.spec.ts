@@ -7,8 +7,6 @@ import { UiService } from './core/ui.service';
 
 describe('App', () => {
   beforeEach(() => {
-    // jsdom has no canvas backend; the viewer never draws in these tests.
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
     localStorage.setItem('pdfseal-ext-modal-seen', '1');
     TestBed.configureTestingModule({ providers: [provideRouter(routes), ...PORT_PROVIDERS] });
   });

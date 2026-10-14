@@ -11,5 +11,5 @@
     "lib/SignatureTemplates.ts",
     "lib/VersionHistory.ts"
   ],
-  "exclude": ["src/**/*.spec.ts", "src/app/testing/**"]
+  "exclude": ["src/**/*.spec.ts", "src/app/testing/**", "src/test-setup.ts"]
 }

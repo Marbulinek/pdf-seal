@@ -30,10 +30,14 @@
               {
                 "glob": "**/*",
                 "input": "public",
-                "ignore": ["perf-fixtures/**"]
+                "ignore": [
+                  "perf-fixtures/**"
+                ]
               }
             ],
-            "styles": ["src/styles.css"]
+            "styles": [
+              "src/styles.css"
+            ]
           },
           "configurations": {
             "production": {
@@ -78,7 +82,12 @@
           "builder": "@angular/build:unit-test",
           "options": {
             "tsConfig": "tsconfig.spec.json",
-            "coverageInclude": ["src/app/**/*.ts"]
+            "coverageInclude": [
+              "src/app/**/*.ts"
+            ],
+            "setupFiles": [
+              "src/test-setup.ts"
+            ]
           }
         }
       }
