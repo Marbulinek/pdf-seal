@@ -11,12 +11,14 @@ Key features: upload/preview PDFs, place/move/resize/remove **unsigned signature
 ## Development commands
 
 ```bash
-npm install             # Install dependencies (Node ^22.22.3 / ^24.15.0 / 26+, the Angular CLI's minimum)
-npm run dev             # Angular build --watch + API under `tsx watch`, served together on http://localhost:3000
-npm run dev:api         # API only (tsx server.ts)
-npm run dev:web         # Angular dev server with HMR on http://localhost:4200 (proxies /api and /signal, see proxy.conf.json)
-npm run build           # Type-check the API (tsc), bundle it to dist/server.js (esbuild), build the UI to dist/web/browser (ng build)
+npm install             # Install dependencies (Node ^22.22.3 / ^24.15.0 / 26+, the Angular CLI's minimum; .nvmrc pins 24)
+npm run build           # Build the whole solution: build:server, then build:web
+npm run build:server    # Type-check the server (tsc) and bundle it to dist/server.js (esbuild)
+npm run build:web       # Build the Angular UI to dist/web/browser (ng build)
 npm start               # Run the compiled server (node dist/server.js, serving dist/web/browser)
+npm run dev             # Angular build --watch + server under `tsx watch`, served together on http://localhost:3000
+npm run dev:server      # Server only, under `tsx watch` (serves the last build of dist/web/browser)
+npm run dev:web         # Angular dev server with HMR on http://localhost:4200 (proxies /api and /signal, see proxy.conf.json)
 npm run build:demo-sample     # Regenerate the bundled Help-tour sample PDF + demo root CA
 npm run build:perf-fixtures   # Regenerate public/perf-fixtures/ (gitignored) -- see docs/performance.md
 npm run build:extension       # Zip extension/ into dist/pdf-seal-extension.zip (Chrome Web Store upload) -- see extension/AGENTS.md
@@ -24,7 +26,7 @@ npm run build:extension       # Zip extension/ into dist/pdf-seal-extension.zip 
 
 There is no linter configured. There are two unit-test suites, both on Vitest, and `npm test` runs both:
 
-- **Backend** (`npm run test:lib`): `test/`, mirroring the `lib/` layout (e.g. `test/lib/PdfSignatureTool.test.ts`). Run a single file with `npx vitest run test/lib/PdfSignatureTool.test.ts` or filter by name with `npx vitest run -t "some test name"`.
+- **Backend** (`npm run test:server`): `test/`, mirroring the `lib/` layout (e.g. `test/lib/PdfSignatureTool.test.ts`). Run a single file with `npx vitest run test/lib/PdfSignatureTool.test.ts` or filter by name with `npx vitest run -t "some test name"`.
 - **Angular** (`npm run test:web`, i.e. `ng test --no-watch`): `src/**/*.spec.ts` next to the code they cover, run by `@angular/build:unit-test` in jsdom. Shared typed fixtures and the TestBed provider helper live in `src/app/testing/`. Narrow a run with `npx ng test --no-watch --include app/features/signatures` (paths are relative to `src/`) or `--filter "SignaturesStore"`.
 
 Verify changes with `npm run build` (type checking + strict template checking), `npm test`, and manual testing against `http://localhost:3000`; add focused tests only for critical logic if needed.

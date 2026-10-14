@@ -47,7 +47,7 @@ Click **?** next to Settings for per-feature docs, each with a "Show me" button.
 
 ## Run it locally
 
-Requires Node.js ^22.22.3, ^24.15.0 or 26+ (the Angular CLI's minimum).
+Requires Node.js ^22.22.3, ^24.15.0 or 26+ (the Angular CLI's minimum; `ng build`/`ng test` refuse to start on anything older, so `npm test` fails at `test:web`). `.nvmrc` pins Node 24, so `nvm use` picks it up.
 
 ```bash
 npm install
@@ -56,7 +56,7 @@ npm run dev          # Angular build in watch mode + API under tsx watch
 npm run build && npm start
 ```
 
-Then open <http://localhost:3000>. For hot module replacement, run `npm run dev:api` and `npm run dev:web` in two terminals and open <http://localhost:4200> instead (the Angular dev server proxies `/api` and `/signal` to the API).
+Then open <http://localhost:3000>. For hot module replacement, run `npm run dev:server` and `npm run dev:web` in two terminals and open <http://localhost:4200> instead (the Angular dev server proxies `/api` and `/signal` to the API).
 
 ### Docker
 
@@ -72,10 +72,15 @@ The image is a multi-stage Node 24 / Alpine build shipping only production depen
 
 | Command | Purpose |
 | --- | --- |
-| `npm test` | Both suites: Vitest for the backend (`test/` mirrors `lib/`) and the Angular unit tests (`ng test`, `src/**/*.spec.ts`) |
+| `npm run build` | Build the whole solution: `build:server` then `build:web` |
+| `npm run build:server` | Type-check the server (`tsc`) and bundle it to `dist/server.js` (esbuild) |
+| `npm run build:web` | Production build of the Angular UI to `dist/web/browser` |
+| `npm start` | Run the built server on port 3000 (serves the built UI) |
+| `npm run dev` | Angular build in watch mode + server under `tsx watch`, on port 3000 |
+| `npm run dev:server` | Server only, under `tsx watch` (port 3000) |
+| `npm run dev:web` | Angular dev server with HMR (port 4200, proxies `/api` and `/signal` to port 3000) |
+| `npm test` | Both suites: `test:server` (Vitest, `test/` mirrors `lib/`) and `test:web` (Angular, `src/**/*.spec.ts`) |
 | `npm run test:coverage` | Coverage with enforced thresholds on `lib/**`, plus Angular coverage |
-| `npm run build` | Type-check and bundle the API, then build the Angular UI |
-| `npm run dev:web` / `npm run build:web` | Angular dev server (port 4200) / production build only |
 | `npm run build:demo-sample` | Regenerate the Help-tour sample PDF and demo root CA |
 | `npm run build:perf-fixtures` | Generate performance fixtures — see [`docs/performance.md`](docs/performance.md) |
 | `npm run build:extension` | Zip the browser extension for the Chrome Web Store |

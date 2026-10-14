@@ -13,23 +13,20 @@
     "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
-    "ng": "ng",
-    "build": "npm run build:types && npm run build:bundle && npm run build:web",
-    "build:types": "tsc -p tsconfig.server.json --noEmit",
-    "build:bundle": "node esbuild.config.mjs",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc -p tsconfig.server.json --noEmit && node esbuild.config.mjs",
     "build:web": "ng build",
     "start": "node dist/server.js",
     "dev": "node scripts/dev.mjs",
-    "dev:api": "tsx server.ts",
+    "dev:server": "tsx watch server.ts",
     "dev:web": "ng serve",
-    "watch:web": "ng build --watch --configuration development",
+    "test": "npm run test:server && npm run test:web",
+    "test:server": "vitest run",
+    "test:web": "ng test --no-watch",
+    "test:coverage": "vitest run --coverage && ng test --no-watch --coverage",
     "build:extension": "mkdir -p dist && rm -f dist/pdf-seal-extension.zip && cd extension && zip -r ../dist/pdf-seal-extension.zip manifest.json background.js popup.html popup.css popup.js shared.js icons page -x '*.DS_Store'",
     "build:demo-sample": "tsx scripts/build-demo-sample.ts",
-    "build:perf-fixtures": "tsx scripts/build-perf-fixtures.ts",
-    "test": "npm run test:lib && npm run test:web",
-    "test:lib": "vitest run",
-    "test:web": "ng test --no-watch",
-    "test:coverage": "vitest run --coverage && ng test --no-watch --coverage"
+    "build:perf-fixtures": "tsx scripts/build-perf-fixtures.ts"
   },
   "dependencies": {
     "express": "^5.2.1",

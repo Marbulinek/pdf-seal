@@ -5,8 +5,8 @@
 // change to src/ or public/) next to the Express server under `tsx watch`
 // (restarting on every change to server.ts or lib/). The server serves the
 // freshly built UI, exactly like production -- reload the page to pick up a
-// UI rebuild. For hot module replacement instead, run `npm run dev:api` and
-// `npm run dev:web` in two terminals and open http://localhost:4200 (the
+// UI rebuild. For hot module replacement instead, run `npm run dev:server`
+// and `npm run dev:web` in two terminals and open http://localhost:4200 (the
 // Angular dev server proxies /api and /signal to the API, see proxy.conf.json).
 import { spawn } from 'node:child_process';
 
