@@ -14,7 +14,7 @@ export const routes: Routes = [
   {
     path: '',
     pathMatch: 'full',
-    title: 'PDF Seal :: Workspace',
+    title: 'PDF Seal :: Overview',
     data: { section: 'metadata' satisfies SectionId },
     loadComponent: () => import('./features/overview/overview-section').then((m) => m.OverviewSection),
   },

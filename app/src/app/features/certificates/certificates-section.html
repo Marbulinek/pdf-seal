@@ -125,17 +125,6 @@
     <div class="panel-overlay-text">Upload a document first to inspect its certificates</div>
   </div>
   <h3><span class="panel-dot dot-ocean"></span>Certificates</h3>
-  <p class="cert-hint">
-    The certificates behind this document's digital signatures — who signed it, which authority issued that identity, and what can actually be
-    proven from the file itself.
-  </p>
-
-  <!-- Always visible, never dismissible: the whole point is not overstating what was checked. -->
-  <div class="cert-trust-banner" id="certTrustBanner" [hidden]="state() !== 'content'">
-    <span class="icon icon-alert-triangle" aria-hidden="true"></span>
-    <div class="cert-trust-banner-text" id="certTrustBannerText">{{ report()?.trust?.note }}</div>
-  </div>
-
   <div class="cert-empty" id="certificatesEmptyState" [hidden]="state() !== 'empty' && state() !== 'unsigned'">
     @if (state() === 'unsigned' && report(); as r) {
       <app-ov-hero [hero]="unsignedHero()" />
@@ -169,6 +158,11 @@
             { label: 'Signatures', value: '' + r.signatures.length },
           ]"
         />
+      </div>
+      <!-- Always visible, never dismissible: the whole point is not overstating what was checked. -->
+      <div class="cert-trust-banner" id="certTrustBanner">
+        <span class="icon icon-alert-triangle" aria-hidden="true"></span>
+        <div class="cert-trust-banner-text" id="certTrustBannerText">{{ report()?.trust?.note }}</div>
       </div>
       @if (statusRows().length) {
         <div class="cert-toolbar">

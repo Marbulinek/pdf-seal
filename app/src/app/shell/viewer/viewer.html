@@ -4,7 +4,7 @@
     <span>Drop to replace this document</span>
   </div>
 </div>
-<div class="viewer-controls">
+<div class="viewer-controls" [hidden]="!doc.hasDocument()">
   <div class="viewer-diff-banner" id="viewerDiffBanner" [hidden]="!viewer.diffActive()">
     <span id="viewerDiffBannerText">{{ viewer.diffBannerText() }}</span>
     <button type="button" class="btn btn-ghost" id="btnExitDiffView" (click)="viewer.exitDiffViewMode()">
@@ -140,7 +140,7 @@
     (drop)="onFileDrop($event, 'empty')"
   >
     <div class="empty-icon-wrap">
-      <span class="empty-icon icon-file-detailed"></span>
+      <img src="/assets/images/seal-loading.webp" alt="" aria-hidden="true" width="240" height="160" />
     </div>
     <h3>No Document Loaded</h3>
     <p>Drag &amp; drop a PDF into this area, use <strong>Upload</strong> in the header, or load one straight from Base64.</p>
@@ -291,7 +291,7 @@
       [style.transform]="'scale(' + (0.35 + (doc.loadingProgress() / 100) * 0.65) + ')'"
       [style.opacity]="0.4 + (doc.loadingProgress() / 100) * 0.6"
     >
-      <span class="icon icon-file-detailed" aria-hidden="true"></span>
+      <img src="/assets/images/seal-loading.webp" alt="" aria-hidden="true" width="240" height="160" />
     </div>
     <div class="document-loading-progress">
       <div class="document-loading-bar">

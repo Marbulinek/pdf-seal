@@ -73,7 +73,7 @@
       <app-evidence [rows]="m.evidence" [nativeChain]="overview.nativeChain()" (compare)="overview.openVersionsDiff($event.from, $event.to, 'overview', null)" />
     }
     @if (m.tech.length) {
-      <details class="overview-tech">
+      <details class="overview-tech" open>
         <summary><span class="icon icon-code" aria-hidden="true"></span> Technical details <span class="overview-count">{{ m.tech.length }}</span></summary>
         <dl class="ov-tech">
           @for (r of m.tech; track r.key) {

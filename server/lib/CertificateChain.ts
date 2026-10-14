@@ -61,9 +61,7 @@ const DOCUMENT_SIGNING_EKUS = new Set([
 const WEAK_SIGNATURE_HASHES = new Set(['MD5', 'SHA-1']);
 
 const NO_TRUST_STORE_NOTE =
-  'pdf-seal has no trust store. It ships no list of trusted root CAs and never contacts a CA, ' +
-  'CRL responder or OCSP responder. Everything here is checked against the certificates embedded ' +
-  'in this file only — a perfect result does not mean the signer is who they say they are.';
+  'pdf-seal has no trust store and makes no network requests. Checks use only the certificates embedded in this file, so a clean result does not prove who signed.';
 
 export const TRUST_NOTE = NO_TRUST_STORE_NOTE;
 
