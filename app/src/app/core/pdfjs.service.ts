@@ -17,6 +17,14 @@ declare global {
 const PDFJS_WORKER_PATH = '/vendor/pdfjs/pdf.worker.min.mjs';
 
 /**
+ * pdf.js's wasm decoders (JPEG 2000, JBIG2, ICC colour), copied from
+ * pdfjs-dist/wasm by angular.json. Without them those images silently don't
+ * render. Kept out of the immutable /vendor cache: `wasmUrl` is a bare
+ * directory prefix, so it can't carry a version query like the worker does.
+ */
+const PDFJS_WASM_URL = '/pdfjs-wasm/';
+
+/**
  * pdf.js comes from the `pdfjs-dist` npm package (no CDN): the library is a
  * lazy chunk of the Angular build, imported on first use (`preload()` warms
  * it up once the shell is idle), and its worker is self-hosted under /vendor.
@@ -93,14 +101,14 @@ export class PdfJsService {
   async openShared(data: ArrayBuffer | Uint8Array): Promise<PdfDocument> {
     const lib = await this.load();
     const worker = await this.sharedWorkerInstance();
-    return lib.getDocument({ data, worker }).promise;
+    return lib.getDocument({ data, worker, wasmUrl: PDFJS_WASM_URL }).promise;
   }
 
   /** Opens a revision snapshot on the disposable diff worker. */
   async openDiff(data: ArrayBuffer | Uint8Array): Promise<PdfDocument> {
     const lib = await this.load();
     const worker = await this.diffWorkerInstance();
-    return lib.getDocument({ data, worker }).promise;
+    return lib.getDocument({ data, worker, wasmUrl: PDFJS_WASM_URL }).promise;
   }
 
   /**
@@ -115,7 +123,7 @@ export class PdfJsService {
     let doc: PdfDocument | null = null;
     try {
       const arrayBuffer = await file.arrayBuffer();
-      doc = await lib.getDocument({ data: arrayBuffer, worker }).promise;
+      doc = await lib.getDocument({ data: arrayBuffer, worker, wasmUrl: PDFJS_WASM_URL }).promise;
       const meta = await doc.getMetadata().catch(() => null);
       // `Custom` holds the Info dictionary's non-standard keys (a Map since
       // pdf.js 5; typed as a bare `object`), which is where this app stores its chain.

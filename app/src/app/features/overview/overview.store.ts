@@ -118,7 +118,7 @@ export const OverviewStore = signalStore(
         const page = store._viewer.pageNum() - 1;
         return overviewItems({ stamps: store._doc.documentStamps(), annotations: store._doc.documentAnnotations() })
           .filter((i) => i.page === page && i.rect)
-          .map((item) => ({ item, invisible: isRectPracticallyInvisible(item.rect) }));
+          .map((item) => ({ item, invisible: isRectPracticallyInvisible(item.rect, item.kind) }));
       }),
     };
   }),
@@ -132,7 +132,11 @@ export const OverviewStore = signalStore(
 
     function closeSheet(): void {
       ui.closeSheet('overview');
-      patchState(store, { activeItem: null, history: null });
+      // Drop the snippet and the File it was drawn from -- otherwise a closed
+      // or replaced document stays pinned until the next item opens.
+      const snippet = store.visuals()?.snippet;
+      if (snippet) snippet.width = snippet.height = 0;
+      patchState(store, { activeItem: null, history: null, visuals: null, visualsPending: false });
     }
 
     function clearDiagnosticOrigin(): void {
@@ -264,7 +268,7 @@ export const OverviewStore = signalStore(
       let snippet: HTMLCanvasElement | null = null;
       let mark: OverviewVisuals['mark'] = null;
       let note: string | null = null;
-      if (isRectPracticallyInvisible(item.rect, (item.source as { type?: string })?.type)) {
+      if (isRectPracticallyInvisible(item.rect, (item.source as { type?: string })?.type ?? item.kind)) {
         note = 'Not visible on the page — this object has no visible area.';
       } else {
         const pad = 18;
@@ -293,6 +297,9 @@ export const OverviewStore = signalStore(
         } catch {
           patchState(store, { visualsPending: false });
           return;
+        } finally {
+          // Release the page's decoded images/fonts, as the viewer does.
+          page.cleanup();
         }
         snippet = canvasEl;
         mark = {

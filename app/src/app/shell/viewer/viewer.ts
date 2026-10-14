@@ -1,4 +1,4 @@
-import { NgTemplateOutlet } from '@angular/common';
+import { NgOptimizedImage, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -47,7 +47,7 @@ const INVISIBLE_PIN_LABEL_GAP = 8;
  */
 @Component({
   selector: 'section[appViewer]',
-  imports: [NgTemplateOutlet],
+  imports: [NgOptimizedImage, NgTemplateOutlet],
   templateUrl: './viewer.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
@@ -74,6 +74,8 @@ export class Viewer {
   private readonly fileNameTextRef = viewChild<ElementRef<HTMLElement>>('fileNameText');
 
   protected readonly toolsMenuOpen = signal(false);
+  /** Toolbar eye toggle (all sections): hides the whole overlay layer (boxes/hotspots) to show the bare PDF. */
+  protected readonly overlaysHidden = signal(false);
   protected readonly controlsCollapsed = signal(false);
   protected readonly inlineWidth = signal<string | null>(null);
   private collapseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -93,6 +95,23 @@ export class Viewer {
   protected readonly zoomLabel = computed(() => `${Math.round(this.viewer.scale() * 100)}%`);
   protected readonly roundedProgress = computed(() => Math.round(this.doc.loadingProgress()));
 
+  /**
+   * Fields whose icon sits on a dark part of the page (it turns light there).
+   * Re-sampled after each render only -- not on hover/drag.
+   */
+  private readonly darkBgUids = computed(() => {
+    const viewport = this.viewer.viewport();
+    this.viewer.overlayRenderTick();
+    if (!viewport) return new Set<string>();
+    const page = this.viewer.pageNum() - 1;
+    return new Set(
+      this.doc
+        .fields()
+        .filter((f) => f.page === page && f.rect && this.viewer.isDarkUnder(this.viewer.pdfRectToScreen(f.rect, viewport), viewport))
+        .map((f) => f.uid),
+    );
+  });
+
   /** Every field overlay on the shown page, with its screen box and flags. */
   protected readonly fieldOverlays = computed(() => {
     const viewport = this.viewer.viewport();
@@ -105,6 +124,7 @@ export class Viewer {
     const drag = this.drag();
     const activeItem = this.overview.activeItem();
     const hoverItem = this.overview.hoverItem();
+    const darkBg = this.darkBgUids();
     return this.doc
       .fields()
       .filter((f) => f.page === page && f.rect)
@@ -129,6 +149,7 @@ export class Viewer {
           locked,
           staged: isFieldStaged(field, baseline),
           active,
+          onDark: darkBg.has(field.uid),
           labelVisible: active || hovered === field.uid,
           selected: !!activeItem && activeItem.kind === kind && activeItem.key === field.name,
           hovered: !!hoverItem && hoverItem.kind === kind && hoverItem.key === field.name,

@@ -80,6 +80,20 @@
 
 <ng-template #controlGroups>
   <div class="viewer-controls-group">
+    <button
+      type="button"
+      id="btnToggleOverlays"
+      class="icon-btn viewer-tool-btn"
+      [class.is-active]="overlaysHidden()"
+      [attr.aria-pressed]="overlaysHidden()"
+      [attr.aria-label]="overlaysHidden() ? 'Show PDF Seal overlays' : 'Hide PDF Seal overlays'"
+      [title]="overlaysHidden() ? 'Show PDF Seal overlays' : 'Hide PDF Seal overlays'"
+      (click)="overlaysHidden.set(!overlaysHidden())"
+    >
+      <span class="icon" [class.icon-eye]="!overlaysHidden()" [class.icon-eye-off]="overlaysHidden()" aria-hidden="true"></span>
+    </button>
+  </div>
+  <div class="viewer-controls-group">
     <button id="btnPrev" class="icon-btn" [disabled]="viewer.prevDisabled()" aria-label="Previous page" (click)="viewer.prev()">
       <span class="icon icon-chevron-left" aria-hidden="true"></span>
     </button>
@@ -140,7 +154,7 @@
     (drop)="onFileDrop($event, 'empty')"
   >
     <div class="empty-icon-wrap">
-      <img src="/assets/images/seal-loading.webp" alt="" aria-hidden="true" width="240" height="160" />
+      <img ngSrc="/assets/images/seal-loading.webp" alt="" aria-hidden="true" width="240" height="160" priority />
     </div>
     <h3>No Document Loaded</h3>
     <p>Drag &amp; drop a PDF into this area, use <strong>Upload</strong> in the header, or load one straight from Base64.</p>
@@ -175,6 +189,7 @@
       #overlayLayer
       [style.pointer-events]="viewer.diffActive() ? 'none' : null"
       [class.has-many-diff-markers]="viewer.diffActive() && viewer.manyDiffMarkers()"
+      [class.is-overlays-hidden]="overlaysHidden()"
     >
       @if (!viewer.diffActive()) {
         @for (o of fieldOverlays(); track o.field.uid) {
@@ -188,6 +203,7 @@
             [class.active]="o.active"
             [class.is-selected]="o.selected"
             [class.is-hover]="o.hovered"
+            [class.on-dark]="o.onDark"
             [attr.data-field-name]="o.field.name || ''"
             [attr.data-overview-kind]="o.field.type === 'Signature' ? 'signature' : 'field'"
             [attr.title]="o.title"
@@ -291,7 +307,7 @@
       [style.transform]="'scale(' + (0.35 + (doc.loadingProgress() / 100) * 0.65) + ')'"
       [style.opacity]="0.4 + (doc.loadingProgress() / 100) * 0.6"
     >
-      <img src="/assets/images/seal-loading.webp" alt="" aria-hidden="true" width="240" height="160" />
+      <img ngSrc="/assets/images/seal-loading.webp" alt="" aria-hidden="true" width="240" height="160" priority />
     </div>
     <div class="document-loading-progress">
       <div class="document-loading-bar">

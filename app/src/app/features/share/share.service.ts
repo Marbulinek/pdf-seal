@@ -560,10 +560,14 @@ export class ShareService implements SharePort {
       return;
     }
     try {
-      const ciphertext = concatChunks(this.receiveChunks);
+      let ciphertext: ArrayBuffer | null = concatChunks(this.receiveChunks);
+      // The chunks and ciphertext are dead weight once decrypted -- don't keep
+      // them resident while the document opens.
+      this.receiveChunks = [];
       const iv = base64UrlToBytes(meta.iv);
       if (!this.receiveKey) throw new Error('Missing decryption key.');
       const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, this.receiveKey, ciphertext);
+      ciphertext = null;
       if ((await sha256Hex(plaintext)) !== meta.sha256) throw new Error('Integrity check failed. The PDF was not opened.');
       this.receiveCompleted = true;
       this.setProgress(meta.encryptedSize, meta.encryptedSize, 'Done');
@@ -574,8 +578,6 @@ export class ShareService implements SharePort {
         transferredFields: (meta.fields as DocField[] | undefined) ?? [],
       });
       history.replaceState({}, '', location.pathname);
-      // pdf.js has its own copy now; don't keep the ciphertext resident.
-      this.receiveChunks = [];
     } catch (error) {
       const message = errorMessage(error);
       this.setStatus(message ? `Could not open the received PDF: ${message}` : 'Could not open the received PDF. Ask for a new link.', 'error');

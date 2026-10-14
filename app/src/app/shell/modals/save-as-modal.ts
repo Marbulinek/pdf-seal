@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, untracked, viewChild } from '@angular/core';
 import { UiService } from '../../core/ui.service';
 import { ExportService } from '../../features/export/export.service';
-import { isBackdropClick } from './backdrop-click';
 
 /** Download under a chosen file name (applying staged edits / bundling history first). */
 @Component({
@@ -45,7 +44,6 @@ import { isBackdropClick } from './backdrop-click';
     id: 'saveAsModal',
     class: 'modal-backdrop',
     '[class.is-open]': 'ui.saveAsModalOpen()',
-    '(click)': 'onBackdrop($event)',
   },
 })
 export class SaveAsModal {
@@ -70,9 +68,5 @@ export class SaveAsModal {
   protected submit(event: Event): void {
     event.preventDefault();
     void this.exporter.doSaveAs();
-  }
-
-  protected onBackdrop(event: MouseEvent): void {
-    if (isBackdropClick(event)) this.exporter.closeSaveAs();
   }
 }

@@ -11,6 +11,16 @@ import {
   type ScaledViewport,
 } from './pdfjs-types';
 
+/** CSS px square sampled under a field overlay's centred icon. */
+const ICON_SAMPLE_SIZE = 24;
+
+/** Mean relative luminance of RGBA pixels below 50%. */
+export function isDarkPixels(rgba: Uint8ClampedArray): boolean {
+  let sum = 0;
+  for (let i = 0; i < rgba.length; i += 4) sum += 0.2126 * rgba[i] + 0.7152 * rgba[i + 1] + 0.0722 * rgba[i + 2];
+  return rgba.length > 0 && sum / (rgba.length / 4) < 127.5;
+}
+
 export interface ScreenRect {
   left: number;
   top: number;
@@ -134,6 +144,20 @@ export class ViewerService {
 
   canvasClientRect(): DOMRect | null {
     return this.canvas?.getBoundingClientRect() ?? null;
+  }
+
+  /** Whether the rendered page is dark where a box's centred icon sits. */
+  isDarkUnder(box: ScreenRect, viewport: ScaledViewport): boolean {
+    const canvas = this.canvas;
+    const ctx = this.ctx;
+    if (!canvas || !ctx || this.diffActive() || !viewport.width) return false;
+    const r = canvas.width / viewport.width; // != 1 when the render was overscaled down
+    const w = Math.min(box.width, ICON_SAMPLE_SIZE) * r;
+    const h = Math.min(box.height, ICON_SAMPLE_SIZE) * r;
+    const x = (box.left + box.width / 2) * r - w / 2;
+    const y = (box.top + box.height / 2) * r - h / 2;
+    if (w < 1 || h < 1) return false;
+    return isDarkPixels(ctx.getImageData(Math.round(x), Math.round(y), Math.round(w), Math.round(h)).data);
   }
 
   /**

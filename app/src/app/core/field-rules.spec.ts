@@ -24,6 +24,8 @@ describe('field rules', () => {
     expect(isRectPracticallyInvisible({ x: 0, y: 0, width: 0, height: 0 })).toBe(true);
     expect(isRectPracticallyInvisible({ x: 0, y: 0, width: 200, height: 60 })).toBe(false);
     expect(isRectPracticallyInvisible({ x: 0, y: 0, width: 8, height: 8 }, 'CheckBox')).toBe(false);
+    expect(isRectPracticallyInvisible({ x: 0, y: 0, width: 60, height: 8 }, 'link')).toBe(false);
+    expect(isRectPracticallyInvisible({ x: 0, y: 0, width: 0, height: 0 }, 'link')).toBe(true);
     expect(isRectPracticallyInvisible(null)).toBe(false);
   });
 

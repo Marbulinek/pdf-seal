@@ -1,8 +1,7 @@
 import { InjectionToken, type Signal } from '@angular/core';
 import type { ElementVersionLike } from './version-history';
-import type { DocumentSnapshot, ProcessFileOptions } from './document.service';
+import type { DocumentSnapshot, HistoryTarget, ProcessFileOptions } from './document.service';
 import type { CertificateReport } from './models';
-import type { PdfDocument } from './pdfjs-types';
 
 // The document life-cycle and the four feature stores call into each other:
 // loading a file resets every section, while a section's action (Apply,
@@ -23,8 +22,9 @@ export interface DocumentsPort {
   handleApiUpdate(endpoint: string, formData: FormData, successMessage?: string): Promise<boolean>;
   ensureRevisionHydration(): Promise<void>;
   captureSnapshot(): DocumentSnapshot;
-  openHistoryTargetDoc(file: File): Promise<PdfDocument | null>;
-  applySnapshot(snapshot: DocumentSnapshot, loadedDoc: PdfDocument | null): Promise<void>;
+  isCurrentSnapshot(snapshot: DocumentSnapshot): boolean;
+  openHistoryTarget(snapshot: DocumentSnapshot): Promise<HistoryTarget | null>;
+  applySnapshot(snapshot: DocumentSnapshot, target: HistoryTarget | null): Promise<void>;
 }
 
 export interface SignaturesPort {
@@ -35,6 +35,7 @@ export interface SignaturesPort {
   resetHistory(): void;
   resetForNewDocument(): void;
   dropStaleRedoEntries(fromIndex: number): void;
+  remapHistoryVersion(sessionId: string, fromKey: string | null, revisionCount: number, versionKey: string | null): void;
   cancelRectEdit(): void;
   commitSnapshot(snapshot: DocumentSnapshot): void;
   setStatus(message: string, type?: StatusTone): void;
