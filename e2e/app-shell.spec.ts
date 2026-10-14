@@ -6,7 +6,7 @@ const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { versio
 test.describe('app shell', () => {
   test('opens on an empty Overview with the four sections', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle('PDF Seal :: Workspace');
+    await expect(page).toHaveTitle('PDF Seal :: Overview');
     await expect(page.locator('.section-nav-btn')).toHaveText(['Overview', 'Signatures', 'Versions', 'Certificates']);
     await expect(page.locator('.section-nav-btn[data-section="metadata"]')).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('#emptyStateViewer')).toBeVisible();
