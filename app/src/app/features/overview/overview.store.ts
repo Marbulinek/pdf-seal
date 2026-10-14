@@ -118,7 +118,7 @@ export const OverviewStore = signalStore(
         const page = store._viewer.pageNum() - 1;
         return overviewItems({ stamps: store._doc.documentStamps(), annotations: store._doc.documentAnnotations() })
           .filter((i) => i.page === page && i.rect)
-          .map((item) => ({ item, invisible: isRectPracticallyInvisible(item.rect) }));
+          .map((item) => ({ item, invisible: isRectPracticallyInvisible(item.rect, item.kind) }));
       }),
     };
   }),
@@ -264,7 +264,7 @@ export const OverviewStore = signalStore(
       let snippet: HTMLCanvasElement | null = null;
       let mark: OverviewVisuals['mark'] = null;
       let note: string | null = null;
-      if (isRectPracticallyInvisible(item.rect, (item.source as { type?: string })?.type)) {
+      if (isRectPracticallyInvisible(item.rect, (item.source as { type?: string })?.type ?? item.kind)) {
         note = 'Not visible on the page — this object has no visible area.';
       } else {
         const pad = 18;

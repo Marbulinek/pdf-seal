@@ -83,6 +83,7 @@
 .icon-eye { -webkit-mask-image: url(/assets/images/icons/eye.svg); mask-image: url(/assets/images/icons/eye.svg); }
 .icon-eye-off { -webkit-mask-image: url(/assets/images/icons/eye-off.svg); mask-image: url(/assets/images/icons/eye-off.svg); }
 .icon-check-square { -webkit-mask-image: url(/assets/images/icons/check-square.svg); mask-image: url(/assets/images/icons/check-square.svg); }
+.icon-button { -webkit-mask-image: url(/assets/images/icons/button.svg); mask-image: url(/assets/images/icons/button.svg); }
 .icon-radio { -webkit-mask-image: url(/assets/images/icons/radio.svg); mask-image: url(/assets/images/icons/radio.svg); }
 .icon-stamp { -webkit-mask-image: url(/assets/images/icons/stamp.svg); mask-image: url(/assets/images/icons/stamp.svg); }
 .icon-repeat { -webkit-mask-image: url(/assets/images/icons/repeat.svg); mask-image: url(/assets/images/icons/repeat.svg); }
@@ -306,6 +307,38 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
 @media (max-width: 1180px) {
   .section-nav-label { display: none; }
   .section-nav-btn { padding: 9px 12px; }
+}
+
+@media (max-width: 640px), (min-width: 839px) {
+  .section-nav-toggle.topbar-menu-toggle { display: none; }
+}
+@media (min-width: 641px) and (max-width: 838px) {
+  .topbar-inner { position: relative; flex-wrap: nowrap; }
+  .section-nav-toggle.topbar-menu-toggle { display: inline-flex; flex: 0 0 auto; }
+  .section-nav-label { display: inline; }
+  .topbar-row-primary { display: flex; justify-content: space-between; gap: 12px; }
+  .section-nav-shell { margin-left: auto; min-width: 0; }
+  .section-nav { justify-content: flex-end; }
+  .section-nav-btn { padding: 5px 8px; }
+  .topbar-inner .topbar-actions {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 24px;
+    width: 280px;
+    padding: 10px;
+    margin: 0;
+    z-index: 60;
+    background: var(--surface);
+    border: 1px solid var(--ice);
+    border-radius: 8px;
+    box-shadow: 0 16px 40px rgba(29, 53, 87, 0.16);
+  }
+  .topbar-inner .topbar-actions.is-open { display: flex; }
+  .topbar-actions .topbar-settings-btn { margin-right: 0; }
+  .topbar-actions .upload-zone,
+  .topbar-actions .dropdown { width: 100%; }
+  .topbar-actions .btn { width: 100%; justify-content: center; }
 }
 
 @media (max-width: 640px) {
@@ -1693,6 +1726,8 @@ canvas { display: block; }
   box-shadow: none !important; transform: none !important;
 }
 .is-invisible-field > .field-overlay-icon { display: none; }
+/* The page under the icon is dark (sampled from the canvas, see Viewer.darkBgUids). */
+.field-overlay.on-dark > .field-overlay-icon { color: #fff; filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.6)); }
 .is-invisible-field.is-flashed .field-invisible-pin { animation: fieldOverlayFlash 1.4s ease-out; }
 .field-invisible-pin {
   position: absolute;
@@ -5388,6 +5423,8 @@ body[data-overview-hide~="link"][data-active-section="metadata"] .overview-hotsp
 body[data-overview-hide~="comment"][data-active-section="metadata"] .overview-hotspot[data-kind="comment"] {
   display: none;
 }
+/* Viewer toolbar eye: hide the whole overlay layer. */
+#overlay-layer.is-overlays-hidden { visibility: hidden; }
 
 /* ---------- Overview: detail sheet ---------- */
 #overviewSheet .edit-sheet-header h3 { display: flex; align-items: center; gap: 6px; }

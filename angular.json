@@ -39,6 +39,11 @@
                 "glob": "pdf.worker.min.mjs",
                 "input": "node_modules/pdfjs-dist/legacy/build",
                 "output": "vendor/pdfjs"
+              },
+              {
+                "glob": "{openjpeg,jbig2,qcms_bg}*",
+                "input": "node_modules/pdfjs-dist/wasm",
+                "output": "pdfjs-wasm"
               }
             ],
             "styles": [

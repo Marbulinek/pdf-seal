@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DocumentService } from '../../core/document.service';
 import { DocumentStore } from '../../core/document.store';
 import { SECTION_NAV, UiService } from '../../core/ui.service';
@@ -11,7 +11,7 @@ import { TourService } from '../../features/tour/tour.service';
   selector: 'header[appTopbar]',
   templateUrl: './topbar.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'topbar' },
+  host: { class: 'topbar', '(document:click)': 'actionsOpen.set(false)' },
 })
 export class Topbar {
   protected readonly ui = inject(UiService);
@@ -28,6 +28,14 @@ export class Topbar {
     event.stopPropagation();
     if (disabled) return;
     this.ui.openDropdown.set(this.ui.openDropdown() === which ? null : which);
+  }
+
+  /** Help/Settings/Upload/Share/Download collapse into this menu at 641-838px. */
+  protected readonly actionsOpen = signal(false);
+
+  protected toggleActions(event: Event): void {
+    event.stopPropagation();
+    this.actionsOpen.update((v) => !v);
   }
 
   protected toggleNav(event: Event): void {

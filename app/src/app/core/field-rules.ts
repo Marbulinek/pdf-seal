@@ -25,20 +25,31 @@ export function isRemovableField(f: DocField | null | undefined): boolean {
  * Some signature fields are authored with a near-zero /Rect (commonly 0x0,
  * tucked into a page corner) by tools that attach a signature without a
  * visible appearance. Callers give them a fixed-size marker instead of their
- * true (invisible) footprint. Checkboxes/radios are legitimately small, so for
- * them only a truly ~zero-size rect counts as invisible.
+ * true (invisible) footprint. Checkboxes/radios and the Overview's
+ * links/comments/stamps (a link around one line of small text is ~8pt tall)
+ * are legitimately small, so for them only a truly ~zero-size rect counts.
  */
 export const INVISIBLE_FIELD_MAX_DIMENSION = 10; // PDF points
 
+const SMALL_BY_DESIGN = new Set(['CheckBox', 'RadioGroup', 'link', 'comment', 'stamp']);
+
 export function isRectPracticallyInvisible(rect: PdfRect | null | undefined, type?: string): boolean {
   if (!rect) return false;
-  const max = type === 'CheckBox' || type === 'RadioGroup' ? 2 : INVISIBLE_FIELD_MAX_DIMENSION;
+  const max = type && SMALL_BY_DESIGN.has(type) ? 2 : INVISIBLE_FIELD_MAX_DIMENSION;
   return rect.width < max || rect.height < max;
 }
 
-/** Distinct icon class for checkbox/radio widgets (null for everything else). */
+const FIELD_TYPE_ICONS: Record<string, string> = {
+  CheckBox: 'icon-check-square',
+  RadioGroup: 'icon-radio',
+  Button: 'icon-button',
+  Dropdown: 'icon-chevron-down',
+  OptionList: 'icon-list',
+};
+
+/** Distinct icon class for non-text, non-signature widgets (null for everything else). */
 export function choiceFieldIconClass(type: string | undefined): string | null {
-  return type === 'CheckBox' ? 'icon-check-square' : type === 'RadioGroup' ? 'icon-radio' : null;
+  return (type && FIELD_TYPE_ICONS[type]) || null;
 }
 
 const EPS = 0.01;

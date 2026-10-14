@@ -36,7 +36,7 @@
     </div>
   </div>
 
-  <div class="topbar-actions">
+  <div class="topbar-actions" id="topbarActions" [class.is-open]="actionsOpen()" (click)="$event.stopPropagation()">
     <div class="topbar-row topbar-row-secondary">
       <button
         type="button"
@@ -109,5 +109,16 @@
       </div>
     </div>
   </div>
+  <button
+    type="button"
+    class="section-nav-toggle topbar-menu-toggle"
+    id="topbarMenuToggle"
+    aria-label="More actions"
+    [attr.aria-expanded]="actionsOpen()"
+    aria-controls="topbarActions"
+    (click)="toggleActions($event)"
+  >
+    <span class="icon icon-hamburger" aria-hidden="true"></span>
+  </button>
 </div>
 <div class="scan-divider" aria-hidden="true"><span class="scan-divider-glow"></span></div>
