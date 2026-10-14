@@ -16,7 +16,7 @@ One npm package (a single `package.json`/`node_modules` at the root) holding thr
 - **`server/`** — the Express server: `server/server.ts`, its modules in `server/lib`, tests in `server/test` (helpers in `server/test/lib/helpers`), the sample/fixture generators in `server/scripts`, `server/tsconfig.json` and `server/esbuild.config.mjs`. Builds to `dist/server/server.js`.
 - **`extension/`** — the Chromium extension (see `extension/AGENTS.md`), tests in `extension/test`.
 
-At the root: `package.json` (all scripts), `angular.json`, `vitest.config.mjs` (the Node-side test projects), `scripts/dev.mjs` (the `npm run dev` runner), `Dockerfile`, `railway.json` (Railway: build with the Dockerfile, health-check `/api/version`), `docs/`.
+At the root: `package.json` (all scripts), `angular.json`, `vitest.config.mjs` (the Node-side test projects), `playwright.config.ts` + `e2e/` (the end-to-end suite), `scripts/dev.mjs` (the `npm run dev` runner), `Dockerfile`, `railway.json` (Railway: build with the Dockerfile, health-check `/api/version`), `docs/`.
 
 ## Development commands
 
@@ -33,16 +33,20 @@ npm run build:perf-fixtures   # Regenerate app/public/perf-fixtures/ (gitignored
 npm run build:extension       # Zip extension/ into dist/pdf-seal-extension.zip (Chrome Web Store upload) -- see extension/AGENTS.md
 ```
 
-There is no linter configured. There are two unit-test suites, both on Vitest, and `npm test` runs both:
+There is no linter configured. There are two unit-test suites, both on Vitest, and `npm test` runs both (plus a Playwright e2e suite, below):
 
 - **Node side** (`npm run test:server`, i.e. `vitest run` with the root `vitest.config.mjs`): two Vitest projects — `server` (`server/test`, mirroring `server/lib`, e.g. `server/test/lib/PdfSignatureTool.test.ts`) and `extension` (`extension/test`). Run one project with `npx vitest run --project server`, a single file with `npx vitest run server/test/lib/PdfSignatureTool.test.ts`, or filter by name with `npx vitest run -t "some test name"`.
 - **Angular** (`npm run test:web`, i.e. `ng test --no-watch`): `app/src/**/*.spec.ts` next to the code they cover, run by `@angular/build:unit-test` in jsdom, with `app/src/test-setup.ts` stubbing the browser APIs jsdom lacks (`ResizeObserver`, canvas). Shared typed fixtures and the TestBed provider helper live in `app/src/app/testing/`. Narrow a run with `npx ng test --no-watch --include app/features/signatures` (paths are relative to `app/src/`) or `--filter "SignaturesStore"`.
+
+The Angular specs never reach a server: `app/src/test-setup.ts` calls `blockNetwork()` (`app/src/app/testing/network.ts`), so a real `fetch`/`XMLHttpRequest`/`WebSocket` fails fast with "Unit tests never reach a server". A spec that exercises a server call mocks it — `mockFetch(handler)` + `jsonResponse()` from the same file (global stubs are undone after each test), or an `ApiService` fake in the TestBed providers.
+
+**End-to-end** (`npm run test:e2e`, Playwright, `playwright.config.ts` at the root, specs in `e2e/`, type-checked by `e2e/tsconfig.json`): runs the built app in Chromium — run `npm run build` first; Playwright starts `dist/server/server.js` itself on port 3100 (`E2E_PORT`), always a fresh process so the upload rate limiter starts empty. The specs drive the real UI through its stable DOM ids against the bundled demo sample. First run: `npx playwright install chromium` (or point `PLAYWRIGHT_CHROMIUM_PATH` at an installed Chromium). Keep the suite small: every document load costs a few `/api` uploads against the 60-per-15-minutes `uploadLimiter`.
 
 Verify changes with `npm run build` (type checking + strict template checking), `npm test`, and manual testing against `http://localhost:3000`; add focused tests only for critical logic if needed.
 
 Coverage (`server/lib/**` — `server/server.ts` has no HTTP-level tests) is measured with `npm run test:coverage` (vitest + `@vitest/coverage-v8`). Thresholds are enforced in `vitest.config.mjs`: statements/lines/functions at 90%, branches at 75% (many remaining branches are `??`/ternary fallbacks in formatting helpers not worth chasing individually). When adding logic to `server/lib/`, add or extend tests in the matching `server/test/lib/*.test.ts` file to keep coverage from regressing. The same script then runs `ng test --coverage` for the Angular code (`app/src/app/**`, reported only, no thresholds).
 
-CI (`.github/workflows/ci.yml`) type-checks and bundles the server, builds the Angular UI, runs both test suites with coverage, and builds the Docker image (not pushed) on every PR into `main`. Releases (`.github/workflows/release.yml`) run semantic-release on pushes to `main`, deriving the version bump and CHANGELOG from Conventional Commits (`feat:`, `fix:`, etc.) — don't hand-edit `package.json`'s version or `CHANGELOG.md`.
+CI (`.github/workflows/ci.yml`) type-checks and bundles the server, builds the Angular UI, runs both test suites with coverage, runs the e2e suite (separate job, uploading the Playwright report on failure), and builds the Docker image (not pushed) on every PR into `main`. Releases (`.github/workflows/release.yml`) run semantic-release on pushes to `main`, deriving the version bump and CHANGELOG from Conventional Commits (`feat:`, `fix:`, etc.) — don't hand-edit `package.json`'s version or `CHANGELOG.md`.
 
 ## Architecture
 

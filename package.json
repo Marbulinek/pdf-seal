@@ -24,6 +24,7 @@
     "test:server": "vitest run",
     "test:web": "ng test --no-watch",
     "test:coverage": "vitest run --coverage && ng test --no-watch --coverage",
+    "test:e2e": "playwright test",
     "build:demo-sample": "tsx server/scripts/build-demo-sample.ts",
     "build:perf-fixtures": "tsx server/scripts/build-perf-fixtures.ts"
   },
@@ -46,6 +47,7 @@
     "@angular/platform-browser": "^22.2.0",
     "@angular/router": "^22.2.0",
     "@ngrx/signals": "^22.0.1",
+    "@playwright/test": "1.63.0",
     "@tsconfig/node24": "^24.0.5",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",

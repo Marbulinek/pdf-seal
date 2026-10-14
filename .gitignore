@@ -6,3 +6,5 @@ node_modules
 /extension.pem
 /.angular
 /app/out-tsc
+/test-results
+/playwright-report
