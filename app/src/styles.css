@@ -5467,6 +5467,10 @@ body[data-overview-hide~="comment"][data-active-section="metadata"] .overview-ho
 .ov-hero.is-field, #overviewSheetBody:has(.ov-hero.is-field) { --kind: #3b82f6; }
 .ov-hero.is-link, #overviewSheetBody:has(.ov-hero.is-link) { --kind: #0ea5e9; }
 .ov-hero.is-comment, #overviewSheetBody:has(.ov-hero.is-comment) { --kind: #f59e0b; }
+/* Signatures in the Overview sheet match their box on the page (and the
+   Signatures section): blue, or red for a required unsigned field. */
+#overviewSheetBody:has(.ov-hero.is-signature), #overviewSheetBody .ov-hero.is-signature { --kind: var(--ocean); }
+#overviewSheetBody:has(.ov-hero.is-signature.is-required), #overviewSheetBody .ov-hero.is-signature.is-required { --kind: var(--coral); }
 
 /* Hero: icon (or initials) tile, name, one-line summary, status pill. */
 .ov-hero {

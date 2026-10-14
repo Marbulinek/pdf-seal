@@ -30,6 +30,8 @@ describe('overview model', () => {
     const m = overviewSheetModel(item('signature'), null, false);
     expect(m.title).toBe('Signature');
     expect(m.hero.badge).toEqual({ type: 'pill', text: 'Unsigned', tone: 'pending' });
+    expect(m.hero.required).toBe(false);
+    expect(overviewSheetModel(item('signature', { required: true }), null, false).hero.required).toBe(true);
     expect(m.actions).toEqual([{ kind: 'edit-signature', field: 'Sig1' }]);
     expect(m.traceable).toBe(true);
     expect(overviewActionLabel(m.actions[0])).toEqual({ label: 'Edit in Signatures', icon: null, primary: true });

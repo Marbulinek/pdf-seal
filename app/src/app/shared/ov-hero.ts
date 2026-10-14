@@ -18,6 +18,8 @@ export interface HeroModel {
   avatar?: string | null;
   icon: string;
   badge?: HeroBadge;
+  /** A required field still to be filled -- adds `is-required` (red where the kind supports it). */
+  required?: boolean;
 }
 
 @Component({
@@ -25,7 +27,7 @@ export interface HeroModel {
   imports: [CertBadge],
   template: `
     @let h = hero();
-    <div class="ov-hero is-{{ h.kind }}">
+    <div class="ov-hero is-{{ h.kind }}" [class.is-required]="!!h.required">
       @if (h.avatar) {
         <span class="ov-hero-lead is-avatar" aria-hidden="true">{{ h.avatar }}</span>
       } @else {

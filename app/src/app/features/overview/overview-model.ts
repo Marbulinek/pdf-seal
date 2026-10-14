@@ -188,7 +188,7 @@ export function overviewSheetModel(item: OverviewItem, report: CertificateReport
         model.emptyNote = settled ? 'Signature details could not be read.' : 'Loading signature details…';
       }
     } else {
-      model.hero = { ...base, subtitle: 'Waiting to be signed', badge: pill('Unsigned', 'pending') };
+      model.hero = { ...base, subtitle: 'Waiting to be signed', badge: pill('Unsigned', 'pending'), required: !!s.required };
       model.facts = [{ label: 'Tooltip', value: s.tooltip, wide: true }];
       model.flags = [
         ['Required', !!s.required],
