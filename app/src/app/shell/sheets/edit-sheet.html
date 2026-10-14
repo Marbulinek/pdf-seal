@@ -1,0 +1,103 @@
+<div class="edit-sheet-header">
+  <span class="edit-sheet-grabber" aria-hidden="true"></span>
+  <span class="panel-dot dot-ocean"></span>
+  <h3 id="editSheetTitle">Edit field</h3>
+  <button type="button" class="modal-close" id="btnEditSheetClose" aria-label="Close editor" (click)="signatures.deselect()">
+    <span class="icon icon-close" aria-hidden="true"></span>
+  </button>
+</div>
+<div class="edit-sheet-body">
+  <div class="edit-signed-notice" id="editSignedNotice" [hidden]="!field() || editable()">
+    <span class="icon icon-lock" aria-hidden="true"></span>
+    <div id="editSignedNoticeText">
+      {{
+        field()?.signed === true
+          ? 'This field has been signed. Its name, position and size are covered by the signature, so they can\'t be edited here. You can still remove the field, which deletes the signature with it. The Certificates section shows what the signature contains.'
+          : 'PDF Seal edits signature fields only. This field is shown for inspection, but you can still remove it.'
+      }}
+    </div>
+  </div>
+  <form id="editFieldForm" (submit)="$event.preventDefault()">
+    <div class="form-group">
+      <label for="editName">Field Name</label>
+      <input #nameInput type="text" id="editName" required [disabled]="locked()" (blur)="commitName()" (keydown.enter)="onNameEnter($event)" />
+    </div>
+
+    <div class="field-geometry">
+      <label class="field-geometry-title">Position &amp; size</label>
+      <div class="form-row">
+        <div>
+          <label for="editX">X</label>
+          <input #xInput type="number" id="editX" step="0.1" required [disabled]="locked()" (focus)="signatures.beginRectEdit()" (blur)="onRectBlur($event)" (input)="onRectInput()" />
+        </div>
+        <div>
+          <label for="editY">Y</label>
+          <input #yInput type="number" id="editY" step="0.1" required [disabled]="locked()" (focus)="signatures.beginRectEdit()" (blur)="onRectBlur($event)" (input)="onRectInput()" />
+        </div>
+      </div>
+      <div class="form-row form-row-last">
+        <div>
+          <label for="editWidth">Width</label>
+          <input #wInput type="number" id="editWidth" step="0.1" required [disabled]="locked()" (focus)="signatures.beginRectEdit()" (blur)="onRectBlur($event)" (input)="onRectInput()" />
+        </div>
+        <div>
+          <label for="editHeight">Height</label>
+          <input #hInput type="number" id="editHeight" step="0.1" required [disabled]="locked()" (focus)="signatures.beginRectEdit()" (blur)="onRectBlur($event)" (input)="onRectInput()" />
+        </div>
+      </div>
+      <p class="field-geometry-note" id="fieldGeometryNote" [hidden]="!!field() && !editable()">Dragging the field on the document edits these too.</p>
+    </div>
+
+    <div class="checkbox-group-row">
+      <label class="checkbox-group checkbox-group-block" for="editRequired">
+        <div class="checkbox-group-main">
+          <input
+            type="checkbox"
+            id="editRequired"
+            [disabled]="locked()"
+            [checked]="!!field()?.required"
+            (change)="onRequiredChange($event)"
+          />
+          <span>Required Field</span>
+        </div>
+      </label>
+    </div>
+
+    <details class="field-details" id="fieldDetailsBlock" [open]="signatures.fieldDetailsOpen()" (toggle)="onDetailsToggle($event)">
+      <summary>Field Details (raw PDF properties) <span class="raw-panel-badge">Raw</span></summary>
+      <div class="field-details-body" id="fieldDetailsBody">
+        @if (detailRows().length) {
+          <table class="field-details-table">
+            @for (row of detailRows(); track row.key) {
+              <tr>
+                <th><span class="field-details-label">{{ row.label }}</span></th>
+                <td>
+                  {{ row.value }}
+                  @if (row.flags.length) {
+                    <span class="flag-tags">
+                      @for (flag of row.flags; track flag) {
+                        <span class="flag-tag">{{ flag }}</span>
+                      }
+                    </span>
+                  }
+                </td>
+                <td class="field-details-help-cell">
+                  <button type="button" class="field-details-help" [attr.data-key]="row.key" [attr.aria-label]="'Explain ' + row.label" (click)="ui.fieldInfoKey.set(row.key)">
+                    ?
+                  </button>
+                </td>
+              </tr>
+            }
+          </table>
+        } @else {
+          <p class="field-details-empty">No details available.</p>
+        }
+      </div>
+    </details>
+  </form>
+</div>
+<div class="edit-sheet-footer">
+  <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" [disabled]="!doc.pdfDoc() || !removable()" (click)="signatures.requestRemoveActive()">
+    <span class="icon icon-close" aria-hidden="true"></span> Remove field
+  </button>
+</div>

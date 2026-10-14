@@ -8,18 +8,25 @@
     "email": "lukas.caniga@gmail.com",
     "url": "https://github.com/Marbulinek/pdf-seal"
   },
-  "main": "dist/server.js",
+  "main": "dist/server/server.js",
+  "engines": {
+    "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+  },
   "scripts": {
-    "build": "npm run build:types && npm run build:bundle",
-    "build:types": "tsc --noEmit",
-    "build:bundle": "node esbuild.config.mjs",
-    "start": "node dist/server.js",
-    "dev": "tsx server.ts",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc -p server/tsconfig.json && node server/esbuild.config.mjs",
+    "build:web": "ng build",
     "build:extension": "mkdir -p dist && rm -f dist/pdf-seal-extension.zip && cd extension && zip -r ../dist/pdf-seal-extension.zip manifest.json background.js popup.html popup.css popup.js shared.js icons page -x '*.DS_Store'",
-    "build:demo-sample": "tsx scripts/build-demo-sample.ts",
-    "build:perf-fixtures": "tsx scripts/build-perf-fixtures.ts",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "start": "node dist/server/server.js",
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "tsx watch server/server.ts",
+    "test": "npm run test:server && npm run test:web",
+    "test:server": "vitest run",
+    "test:web": "ng test --no-watch",
+    "test:coverage": "vitest run --coverage && ng test --no-watch --coverage",
+    "test:e2e": "npm run build && playwright install chromium && playwright test",
+    "build:demo-sample": "tsx server/scripts/build-demo-sample.ts",
+    "build:perf-fixtures": "tsx server/scripts/build-perf-fixtures.ts"
   },
   "dependencies": {
     "express": "^5.2.1",
@@ -30,6 +37,17 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@angular/build": "^22.2.2",
+    "@angular/cli": "^22.2.2",
+    "@angular/common": "^22.2.0",
+    "@angular/compiler": "^22.2.0",
+    "@angular/compiler-cli": "^22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/forms": "^22.2.0",
+    "@angular/platform-browser": "^22.2.0",
+    "@angular/router": "^22.2.0",
+    "@ngrx/signals": "^22.0.1",
+    "@playwright/test": "1.63.0",
     "@tsconfig/node24": "^24.0.5",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
@@ -37,8 +55,12 @@
     "@types/ws": "^8.5.14",
     "@vitest/coverage-v8": "^5.0.1",
     "esbuild": "^0.28.2",
+    "jsdom": "^30.0.0",
+    "pdfjs-dist": "^6.4.299",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
     "tsx": "^4.23.12",
-    "typescript": "^7.0.2",
+    "typescript": "~6.0.2",
     "vitest": "^5.0.1"
   }
 }

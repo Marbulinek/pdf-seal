@@ -1,0 +1,304 @@
+<!-- Works with no document loaded: a general-purpose certificate inspector. -->
+<section class="panel certificates-scratchpad-panel" id="certificatesScratchpadPanel">
+  <h3><span class="panel-dot dot-ocean"></span>Certificate scratchpad</h3>
+  <p class="cert-hint">
+    Paste or drop a certificate (PEM, DER, or a .p7b bundle) to inspect it on its own — no document required. Paste two to also check whether one
+    issues the other.
+  </p>
+
+  <div
+    class="cert-scratchpad-dropzone"
+    id="certScratchpadDropzone"
+    [class.is-dragover]="scratchDragOver()"
+    (dragover)="onScratchDragOver($event)"
+    (dragleave)="scratchDragOver.set(false)"
+    (drop)="onScratchDrop($event)"
+  >
+    <textarea
+      #scratchText
+      id="certScratchpadInput"
+      class="cert-scratchpad-textarea"
+      placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
+      spellcheck="false"
+      [value]="certificates.scratchpadText()"
+      (input)="certificates.setScratchpadText(scratchText.value)"
+    ></textarea>
+    <div class="cert-scratchpad-actions">
+      <button type="button" class="btn btn-ghost btn-sm" id="btnCertScratchpadPick" (click)="scratchFile.click()">
+        <span class="icon icon-upload-device" aria-hidden="true"></span> Choose file…
+      </button>
+      <span class="cert-scratchpad-filename" id="certScratchpadFilename">{{ certificates.scratchpadFile()?.name ?? '' }}</span>
+      <button type="button" class="btn btn-primary btn-sm" id="btnCertScratchpadInspect" (click)="certificates.inspectScratchpad()">Inspect</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="btnCertScratchpadClear" [hidden]="!certificates.scratchpad()" (click)="certificates.clearScratchpad()">
+        Clear
+      </button>
+    </div>
+    <input
+      #scratchFile
+      type="file"
+      id="certScratchpadFileInput"
+      accept=".cer,.crt,.der,.pem,.p7b,application/x-x509-ca-cert,application/x-pem-file"
+      hidden
+      (change)="onScratchFile(scratchFile)"
+    />
+  </div>
+
+  <div class="panel-loading" id="certScratchpadLoading" [hidden]="!certificates.scratchpadLoading()">
+    <span class="spinner" aria-hidden="true"></span> Reading certificate…
+  </div>
+  <div class="cert-empty cert-empty-error" id="certScratchpadError" [hidden]="!certificates.scratchpadError()">
+    <p>{{ certificates.scratchpadError() }}</p>
+  </div>
+  <div id="certScratchpadResult">
+    @if (certificates.scratchpad(); as pad) {
+      <app-cert-chain [nodes]="scratchNodes()" [flat]="true" [selectedId]="certificates.activeCertId()" (openCert)="certificates.openCertificateSheet($event)" />
+      @if (pad.chain && pad.chain.certificateIds.length > 1) {
+        <p class="cert-section-title" style="margin-top: 12px">Chain checks</p>
+        <app-validation-list [checks]="pad.chain.checks" />
+      }
+      @if (pad.links && pad.links.length === 2 && pad.certificates.length === 2) {
+        <p class="cert-section-title" style="margin-top: 12px">Does one issue the other?</p>
+        @for (link of pad.links; track $index) {
+          <details class="cert-details-block">
+            <summary class="cert-details-summary">
+              <span class="cert-details-summary-main">
+                <span class="icon icon-chevron-right cert-details-caret" aria-hidden="true"></span>
+                <app-cert-dot [status]="worst(link.checks)" />
+                <span class="cert-status-label"
+                  >Does “{{ name(pad.certificates[link.subjectIndex]) }}” name “{{ name(pad.certificates[link.issuerIndex]) }}” as its issuer, and does
+                  that hold up?</span
+                >
+              </span>
+            </summary>
+            <div class="cert-details-body"><app-validation-list [checks]="link.checks" /></div>
+          </details>
+        }
+      }
+    }
+  </div>
+</section>
+
+<section class="panel certificates-trustsim-panel" id="certificatesTrustSimPanel" [hidden]="!signed()">
+  <h3><span class="panel-dot dot-coral"></span>Trust simulation <span class="cert-simulated-badge">Simulated</span></h3>
+  <p class="cert-hint">
+    <span id="certTrustSimNote"></span> This is opt-in and answers a different question:
+    <em>given a root bundle you supply, would this chain be trusted?</em> The result below is a simulation against your bundle only, kept separate
+    from the real report, and never changes it.
+  </p>
+  <div class="cert-scratchpad-actions">
+    <button type="button" class="btn btn-ghost btn-sm" id="btnTrustSimPick" (click)="trustFile.click()">
+      <span class="icon icon-upload-device" aria-hidden="true"></span> Upload root bundle (PEM)…
+    </button>
+    <span class="cert-scratchpad-filename" id="certTrustSimFilename">{{ certificates.trustFileName() }}</span>
+    <input
+      #trustFile
+      type="file"
+      id="certTrustSimFileInput"
+      accept=".pem,.cer,.crt,.der,application/x-pem-file,application/x-x509-ca-cert"
+      hidden
+      (change)="onTrustFile(trustFile)"
+    />
+  </div>
+  <div class="panel-loading" id="certTrustSimLoading" [hidden]="!certificates.trustLoading()">
+    <span class="spinner" aria-hidden="true"></span> Simulating…
+  </div>
+  <div class="cert-empty cert-empty-error" id="certTrustSimError" [hidden]="!certificates.trustError()">
+    <p>{{ certificates.trustError() }}</p>
+  </div>
+  <div id="certTrustSimResults">
+    @for (r of trustResults(); track r.chainId) {
+      <div class="cert-trustsim-card is-{{ r.sim.status }}">
+        <div class="cert-trustsim-head">
+          <span class="cert-simulated-badge">Simulated</span>
+          <span class="cert-badge is-{{ r.sim.status }}">{{ r.sim.status === 'pass' ? '✓' : '✕' }} {{ statusWord[r.sim.status] }}</span>
+          <strong>{{ r.label }}</strong>
+        </div>
+        <p class="cert-trustsim-detail">{{ r.sim.detail }}</p>
+        <p class="cert-check-why">Revocation: not checked — unaffected by this simulation. pdf-seal makes no network requests, with or without a bundle.</p>
+      </div>
+    }
+  </div>
+</section>
+
+<section class="panel certificates-summary-panel" id="certificatesSummaryPanel">
+  <div class="panel-overlay" id="certificatesPanelOverlay" [class.is-hidden]="!!doc.pdfDoc()">
+    <div class="panel-overlay-text">Upload a document first to inspect its certificates</div>
+  </div>
+  <h3><span class="panel-dot dot-ocean"></span>Certificates</h3>
+  <div class="cert-empty" id="certificatesEmptyState" [hidden]="state() !== 'empty' && state() !== 'unsigned'">
+    @if (state() === 'unsigned' && report(); as r) {
+      <app-ov-hero [hero]="unsignedHero()" />
+      <p>
+        pdf-seal prepares signature fields; it does not sign documents itself. Certificates appear here once the document has been signed somewhere
+        else and loaded back in.
+      </p>
+      @if (r.unsignedSignatureFieldNames.length) {
+        <p><strong>Waiting to be signed:</strong> {{ r.unsignedSignatureFieldNames.join(', ') }} — place and edit these in the Signatures section.</p>
+      }
+      @for (w of r.warnings; track $index) {
+        <p>{{ w }}</p>
+      }
+    } @else {
+      <p>Upload a document to see the certificates it carries.</p>
+    }
+  </div>
+  <div class="panel-loading" id="certificatesLoadingState" [hidden]="state() !== 'loading'">
+    <span class="spinner" aria-hidden="true"></span> Reading certificates…
+  </div>
+  <div class="cert-empty cert-empty-error" id="certificatesErrorState" [hidden]="state() !== 'error'">
+    <p>{{ certificates.error() }}</p>
+  </div>
+  <div class="cert-summary" id="certificatesSummary" [hidden]="state() !== 'content'">
+    @if (state() === 'content' && report(); as r) {
+      <div class="overview-header">
+        <app-ov-hero [hero]="summaryHero()" />
+        <app-ov-facts
+          [facts]="[
+            { label: 'Certificates', value: '' + r.certificates.length },
+            { label: 'Signatures', value: '' + r.signatures.length },
+          ]"
+        />
+      </div>
+      <!-- Always visible, never dismissible: the whole point is not overstating what was checked. -->
+      <div class="cert-trust-banner" id="certTrustBanner">
+        <span class="icon icon-alert-triangle" aria-hidden="true"></span>
+        <div class="cert-trust-banner-text" id="certTrustBannerText">{{ report()?.trust?.note }}</div>
+      </div>
+      @if (statusRows().length) {
+        <div class="cert-toolbar">
+          <div class="cert-filter-chips">
+            @for (row of statusRows(); track row.status) {
+              <button
+                type="button"
+                class="cert-filter-chip is-{{ row.status }}"
+                [class.is-active]="row.on"
+                data-cert-action="toggle-cert-filter-status"
+                [attr.data-status]="row.status"
+                [attr.aria-pressed]="row.on"
+                (click)="certificates.toggleFilterStatus(row.status)"
+              >
+                <app-cert-dot [status]="row.status" /> {{ statusWord[row.status] }} <span class="cert-filter-chip-count">{{ row.count }}</span>
+              </button>
+            }
+          </div>
+          <input
+            #filterSearch
+            type="search"
+            class="cert-filter-search"
+            id="certFilterSearchInput"
+            placeholder="Filter by check id or text…"
+            aria-label="Filter checks"
+            [value]="certificates.filterText()"
+            (input)="certificates.setFilterText(filterSearch.value)"
+          />
+          <div class="cert-toolbar-copy">
+            <button type="button" class="icon-btn" data-cert-action="copy-cert-summary" title="Copy summary" aria-label="Copy summary" (click)="certificates.copySummary()">
+              <span class="icon icon-copy" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="icon-btn" data-cert-action="copy-cert-json" title="Copy JSON" aria-label="Copy JSON" (click)="certificates.copyJson()">
+              <span class="icon icon-code" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+        @if (certificates.filterActive()) {
+          <p class="cert-toolbar-caption">
+            Showing {{ certificates.shownCheckCount() }} of {{ certificates.allChecks().length }} check{{ certificates.allChecks().length === 1 ? '' : 's' }}
+            <button type="button" class="cert-toolbar-caption-clear" data-cert-action="clear-cert-filter" (click)="certificates.clearFilter()">Clear filter</button>
+          </p>
+        }
+      }
+      <div class="cert-status-list">
+        @for (row of statusRows(); track row.status; let i = $index) {
+          @if (row.on && row.checks.length) {
+            <details class="cert-details-block cert-status-block is-{{ row.status }}" [style.--i]="i" [open]="certificates.filterActive()">
+              <summary class="cert-details-summary">
+                <span class="cert-details-summary-main">
+                  <span class="icon icon-chevron-right cert-details-caret" aria-hidden="true"></span>
+                  <app-cert-dot [status]="row.status" />
+                  <span class="cert-status-label">{{ row.label }}{{ certificates.filterActive() ? ' — ' + row.checks.length + ' shown' : '' }}</span>
+                </span>
+              </summary>
+              <div class="cert-details-body">
+                <p class="cert-status-caption">{{ row.detail }}</p>
+                <app-validation-list [checks]="row.checks" [showSource]="true" (openCert)="certificates.openCertificateSheet($event, 'validation')" />
+              </div>
+            </details>
+          }
+        }
+        @if (certificates.filterActive() && noFilterMatches()) {
+          <p class="cert-status-caption">No checks match this filter.</p>
+        }
+      </div>
+      @if (r.warnings.length) {
+        <p class="cert-section-title" style="margin-top: 14px">Reading this file</p>
+        <div class="cert-status-list">
+          @for (w of r.warnings; track $index; let i = $index) {
+            <div class="cert-status-row is-warn" [style.--i]="i">
+              <app-cert-dot status="warn" />
+              <div><span class="cert-status-detail">{{ w }}</span></div>
+            </div>
+          }
+        </div>
+      }
+    }
+  </div>
+</section>
+
+<section class="panel certificates-signatures-panel" id="certificatesSignaturesPanel" [hidden]="state() !== 'content' || !report()?.signatures?.length">
+  <h3><span class="panel-dot dot-coral"></span>Signatures</h3>
+  <p class="cert-hint">Each signature, the certificate that made it, and the chain behind that certificate.</p>
+  <div class="cert-signature-list" id="certSignatureList">
+    @if (state() === 'content' && report(); as r) {
+      @for (sig of r.signatures; track sig.fieldName; let i = $index) {
+        <details appCertSignatureCard [sig]="sig" [chain]="chainFor(sig)" [index]="i"></details>
+      }
+    }
+  </div>
+</section>
+
+<section class="panel certificates-other-panel" id="certificatesOtherPanel" [hidden]="state() !== 'content' || !otherNodes().length">
+  <h3><span class="panel-dot dot-ocean"></span>Other certificates</h3>
+  <p class="cert-hint">Present in the file but not reached by any signature — usually long-term validation material carried in the document security store.</p>
+  <div class="cert-card-list" id="certOtherList">
+    <app-cert-chain [nodes]="otherNodes()" [flat]="true" [selectedId]="certificates.activeCertId()" (openCert)="certificates.openCertificateSheet($event)" />
+  </div>
+</section>
+
+<!-- Set apart from the report above: this rewrites the document. -->
+<section class="panel certificates-modify-panel" id="certificatesModifyPanel" [hidden]="state() !== 'content' || !modifiable().length">
+  <h3><span class="panel-dot dot-coral"></span>Modify</h3>
+  <p class="cert-hint">
+    Tools for building test documents: change the certificates embedded in a signature to see how a verifier reacts. The file you downloaded is a
+    copy — the document loaded here is only replaced once you apply a change.
+  </p>
+  <div class="cert-modify-list" id="certModifyList">
+    @for (m of modifiable(); track m.sig.fieldName) {
+      <div class="cert-modify-group">
+        <div class="cert-modify-head">
+          <span class="icon icon-lock" aria-hidden="true"></span>
+          <span class="cert-modify-title">Field {{ m.sig.fieldName }}</span>
+        </div>
+        <p class="cert-modify-room">
+          Signature slot holds {{ m.slot.capacityBytes }} bytes; it currently uses {{ m.slot.derLength }} — <strong>{{ m.slot.headroomBytes }} spare</strong>. A
+          change that needs more than that cannot be applied to this document.
+        </p>
+        <div class="cert-modify-actions">
+          @for (o of m.ops; track o.op) {
+            <button
+              type="button"
+              class="btn btn-ghost cert-modify-btn"
+              data-cert-action="modify"
+              [attr.data-cert-op]="o.op"
+              [attr.data-cert-modify-field]="m.sig.fieldName"
+              [disabled]="!o.available"
+              [attr.title]="o.available ? null : o.reason"
+              (click)="openModify(o.op, m.sig.fieldName)"
+            >
+              {{ operations[o.op].label }}
+            </button>
+          }
+        </div>
+      </div>
+    }
+  </div>
+</section>

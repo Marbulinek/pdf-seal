@@ -1,0 +1,10 @@
+{
+  "extends": "@tsconfig/node24/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["server.ts", "lib/**/*.ts"],
+  "exclude": ["**/*.test.ts"]
+}

@@ -1,0 +1,1035 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { PDFArray, PDFDocument, PDFHexString, PDFName, PDFString } from 'pdf-lib';
+import PdfSignatureTool, { truncateLongStrings } from '../../lib/PdfSignatureTool';
+import { buildSignedPdfFixture } from './helpers/pdfSigner';
+import { mintStandardChain } from './helpers/certificateFactory';
+
+/**
+ * A one-page PDF whose catalog can't be found -- like an early byte slice of
+ * an incremental-update chain. Renaming keys to same-length junk keeps every
+ * xref offset valid.
+ */
+async function pdfWithoutCatalog({ dropPageTree = false } = {}): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.addPage();
+  // Without object streams the catalog and page tree are plain text in the file.
+  let text = Buffer.from(await doc.save({ useObjectStreams: false })).toString('latin1');
+  text = text.replace(/\/Type \/Catalog/g, '/Type /Xatalog').replace(/\/Root /g, '/Xoot ');
+  if (dropPageTree) text = text.replace(/\/Type \/Pages/g, '/Type /Xages');
+  return Buffer.from(text, 'latin1');
+}
+
+describe('PdfSignatureTool catalog recovery', () => {
+  it('points a rebuilt catalog at the existing page tree', async () => {
+    const tool = await PdfSignatureTool.fromBytes(await pdfWithoutCatalog());
+    expect(tool.getMetadata().pageCount).toBe(1);
+    expect(tool.listFields()).toEqual([]);
+  });
+
+  it('synthesizes an empty page tree when there is none to reuse', async () => {
+    const tool = await PdfSignatureTool.fromBytes(await pdfWithoutCatalog({ dropPageTree: true }));
+    expect(tool.getMetadata().pageCount).toBe(0);
+    expect(tool.listFields()).toEqual([]);
+  });
+});
+
+describe('PdfSignatureTool', () => {
+  it('creates a blank document with no fields', async () => {
+    const tool = await PdfSignatureTool.create();
+    expect(tool.listFields()).toEqual([]);
+  });
+
+  it('adds a signature field and lists it', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', { x: 50, y: 50, width: 200, height: 60 });
+
+    const fields = tool.listFields();
+    expect(fields).toHaveLength(1);
+    expect(fields[0].name).toBe('signature1');
+    expect(fields[0].type).toBe('Signature');
+    expect(fields[0].page).toBe(0);
+    expect(fields[0].rect).toMatchObject({ x: 50, y: 50, width: 200, height: 60 });
+  });
+
+  it('rejects adding a signature field on a page that does not exist', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(() => tool.addSignatureField(5, 'sig', {})).toThrow(/Page index 5 does not exist/);
+  });
+
+  it('rejects a duplicate signature field name', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    expect(() => tool.addSignatureField(0, 'signature1', {})).toThrow(/already exists/);
+  });
+
+  it('adds a signature field with a tooltip and default rect', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', { tooltip: 'Sign here' });
+    expect(tool.listFields()[0].tooltip).toBe('Sign here');
+  });
+
+  it('adds a required and read-only signature field', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', { required: true, readOnly: true });
+    const field = tool.listFields()[0];
+    expect(field.required).toBe(true);
+    expect(field.readOnly).toBe(true);
+  });
+
+  it('adds a text field and lists it', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'name1', { x: 10, y: 10, width: 150, height: 30, tooltip: 'Full name' });
+
+    const fields = tool.listFields();
+    expect(fields).toHaveLength(1);
+    expect(fields[0].type).toBe('TextField');
+    expect(fields[0].tooltip).toBe('Full name');
+  });
+
+  it('adds multiple text fields, reusing the shared default font resource', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'name1', {});
+    tool.addTextField(0, 'name2', { required: true, readOnly: true });
+
+    const fields = tool.listFields();
+    expect(fields).toHaveLength(2);
+    expect(fields.find((f) => f.name === 'name2')?.required).toBe(true);
+  });
+
+  it('rejects adding a text field on a page that does not exist', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(() => tool.addTextField(3, 'name1', {})).toThrow(/Page index 3 does not exist/);
+  });
+
+  it('rejects a duplicate text field name', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'name1', {});
+    expect(() => tool.addTextField(0, 'name1', {})).toThrow(/already exists/);
+  });
+
+  it('adds a multiline text field and lists it as such', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'notes', { multiline: true });
+
+    const field = tool.listFields()[0];
+    expect(field.type).toBe('TextField');
+    expect(field.multiline).toBe(true);
+  });
+
+  it('defaults a text field to single-line', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'name1', {});
+    expect(tool.listFields()[0].multiline).toBe(false);
+  });
+
+  it('toggles a text field between single-line and multiline', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'notes', {});
+
+    tool.setFieldMultiline('notes', true);
+    expect(tool.listFields()[0].multiline).toBe(true);
+
+    tool.setFieldMultiline('notes', false);
+    expect(tool.listFields()[0].multiline).toBe(false);
+  });
+
+  it('rejects setting the multiline flag on a signature field', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    expect(() => tool.setFieldMultiline('signature1', true)).toThrow(/not a text field/);
+  });
+
+  it('reports multiline: false for signature fields', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    expect(tool.listFields()[0].multiline).toBe(false);
+  });
+
+  it('renames, requires, and removes a field', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', { x: 0, y: 0, width: 100, height: 40 });
+
+    tool.renameField('signature1', 'signature2');
+    tool.setFieldRequired('signature2', true);
+    expect(tool.listFields()[0].name).toBe('signature2');
+    expect(tool.listFields()[0].required).toBe(true);
+
+    tool.removeField('signature2');
+    expect(tool.listFields()).toEqual([]);
+  });
+
+  it('rejects renaming to a name that already exists', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    tool.addSignatureField(0, 'signature2', {});
+    expect(() => tool.renameField('signature1', 'signature2')).toThrow(/already exists/);
+  });
+
+  it('throws when operating on an unknown field name', async () => {
+    const tool = await PdfSignatureTool.create();
+    expect(() => tool.setFieldRequired('nope', true)).toThrow(/No form field named "nope"/);
+    expect(() => tool.removeField('nope')).toThrow(/No form field named "nope"/);
+  });
+
+  it('toggles required and read-only flags off again', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', { required: true, readOnly: true });
+
+    tool.setFieldRequired('signature1', false);
+    tool.setFieldReadOnly('signature1', false);
+    const field = tool.listFields()[0];
+    expect(field.required).toBe(false);
+    expect(field.readOnly).toBe(false);
+
+    tool.setFieldReadOnly('signature1', true);
+    expect(tool.listFields()[0].readOnly).toBe(true);
+  });
+
+  it('sets a field tooltip', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    tool.setFieldTooltip('signature1', 'Please sign');
+    expect(tool.listFields()[0].tooltip).toBe('Please sign');
+  });
+
+  it('moves and resizes a field rect, partially or fully', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', { x: 10, y: 10, width: 100, height: 40 });
+
+    tool.setFieldRect('signature1', { x: 20 });
+    let rect = tool.listFields()[0].rect;
+    expect(rect).toMatchObject({ x: 20, y: 10, width: 100, height: 40 });
+
+    tool.setFieldRect('signature1', { x: 30, y: 40, width: 200, height: 80 });
+    rect = tool.listFields()[0].rect;
+    expect(rect).toMatchObject({ x: 30, y: 40, width: 200, height: 80 });
+  });
+
+  it('moves a field to a different page', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    expect(tool.listFields()[0].page).toBe(0);
+
+    tool.setFieldPage('signature1', 1);
+    expect(tool.listFields()[0].page).toBe(1);
+  });
+
+  it('rejects moving a field to a page that does not exist', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    expect(() => tool.setFieldPage('signature1', 9)).toThrow(/Page index 9 does not exist/);
+  });
+
+  it('reads a field\'s raw dictionary entries', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    const raw = tool.getFieldRaw('signature1');
+    expect(raw.FT).toBe('/Sig');
+    expect(raw.Subtype).toBe('/Widget');
+  });
+
+  it('returns an empty array from getSignatureInfo when no signature has been applied', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    expect(tool.getSignatureInfo()).toEqual([]);
+  });
+
+  it('round-trips metadata and PDF bytes', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.setMetadata({ title: 'Test Document', author: 'CI' });
+
+    const bytes = await tool.toBytes();
+    expect(bytes.length).toBeGreaterThan(0);
+
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    const meta = reloaded.getMetadata();
+    expect(meta.title).toBe('Test Document');
+    expect(meta.author).toBe('CI');
+  });
+
+  it('sets subject, keywords (array and single string), creator and producer', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.setMetadata({ subject: 'Subj', keywords: ['a', 'b'], creator: 'Creator', producer: 'Producer' });
+    let meta = tool.getMetadata();
+    expect(meta.subject).toBe('Subj');
+    expect(meta.keywords).toBe('a b');
+    expect(meta.creator).toBe('Creator');
+    expect(meta.producer).toBe('Producer');
+
+    tool.setMetadata({ keywords: 'single' });
+    meta = tool.getMetadata();
+    expect(meta.keywords).toBe('single');
+  });
+
+  it('round-trips an explicitly set modification date', async () => {
+    const tool = await PdfSignatureTool.create();
+    const modDate = new Date('2026-01-15T10:00:00.000Z');
+    tool.setMetadata({ modificationDate: modDate });
+
+    const bytes = await tool.toBytes();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    expect(reloaded.getMetadata().modificationDate?.getTime()).toBe(modDate.getTime());
+  });
+
+  it('reports page count as part of metadata', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addPage();
+    expect(tool.getMetadata().pageCount).toBe(2);
+  });
+
+  it('reads the raw Info dictionary, including custom entries', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.setMetadata({ title: 'Hello' });
+    tool.setCustomInfoEntry('CustomKey', 'CustomValue');
+    const raw = tool.getRawInfoDict();
+    expect(raw.Title).toBe('Hello');
+    expect(raw.CustomKey).toBe('CustomValue');
+  });
+
+  it('returns an empty object from getRawInfoDict when there is no Info dictionary', async () => {
+    const tool = await PdfSignatureTool.create();
+    (tool as any).pdfDoc.context.trailerInfo.Info = undefined;
+    expect(tool.getRawInfoDict()).toEqual({});
+  });
+
+  it('stores and reads back a revision snapshot chain', async () => {
+    const tool = await PdfSignatureTool.create();
+    expect(tool.getRevisionSnapshotChain()).toEqual([]);
+
+    tool.setRevisionSnapshotChain([{ index: 1, bytes: 'AAA' }, { index: 2, bytes: 'BBB' }]);
+    const chain = tool.getRevisionSnapshotChain();
+    expect(chain).toEqual([{ index: 1, bytes: 'AAA' }, { index: 2, bytes: 'BBB' }]);
+
+    tool.clearRevisionSnapshotChain();
+    expect(tool.getRevisionSnapshotChain()).toEqual([]);
+  });
+
+  it('clearRevisionSnapshotChain is a no-op when there is no Info dictionary', async () => {
+    const tool = await PdfSignatureTool.create();
+    expect(() => tool.clearRevisionSnapshotChain()).not.toThrow();
+  });
+
+  it('tolerates a malformed revision chain payload', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.setCustomInfoEntry('PdfSealRevisionChainV1', 'not json');
+    expect(tool.getRevisionSnapshotChain()).toEqual([]);
+
+    tool.setCustomInfoEntry('PdfSealRevisionChainV1', JSON.stringify({ not: 'an array' }));
+    expect(tool.getRevisionSnapshotChain()).toEqual([]);
+
+    tool.setCustomInfoEntry('PdfSealRevisionChainV1', JSON.stringify([{ bytes: 'ok' }, { no: 'bytes here' }]));
+    expect(tool.getRevisionSnapshotChain()).toEqual([{ index: 1, bytes: 'ok' }]);
+  });
+
+  it('falls back to the legacy chain key name', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.setCustomInfoEntry('PdfSealRevisionChain', JSON.stringify([{ index: 2, bytes: 'legacy' }]));
+    expect(tool.getRevisionSnapshotChain()).toEqual([{ index: 2, bytes: 'legacy' }]);
+  });
+
+  it('returns null XMP metadata when the document has none', async () => {
+    const tool = await PdfSignatureTool.create();
+    expect(tool.getXmpMetadata()).toBeNull();
+  });
+
+  it('reads an embedded XMP metadata packet off the catalog', async () => {
+    const tool = await PdfSignatureTool.create();
+    const pdfDoc = (tool as any).pdfDoc;
+    const context = pdfDoc.context;
+    const xml = `<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+          <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/">
+            <dc:title><rdf:Alt><rdf:li xml:lang="x-default">XMP Title</rdf:li></rdf:Alt></dc:title>
+            <xmp:CreatorTool>pdf-seal test</xmp:CreatorTool>
+            <xmpMM:DocumentID>doc-123</xmpMM:DocumentID>
+            <xmpMM:InstanceID>inst-456</xmpMM:InstanceID>
+          </rdf:Description>
+        </rdf:RDF>
+      </x:xmpmeta>
+    <?xpacket end="w"?>`;
+    const stream = context.stream(xml, { Type: 'Metadata', Subtype: 'XML' });
+    const streamRef = context.register(stream);
+    pdfDoc.catalog.set(PDFName.of('Metadata'), streamRef);
+
+    const xmp = tool.getXmpMetadata();
+    expect(xmp).not.toBeNull();
+    expect(xmp?.title).toBe('XMP Title');
+    expect(xmp?.creatorTool).toBe('pdf-seal test');
+    expect(xmp?.documentId).toBe('doc-123');
+    expect(xmp?.instanceId).toBe('inst-456');
+    expect(xmp?.raw).toContain('x:xmpmeta');
+  });
+
+  it('returns null from getXmpMetadata when there is no catalog', async () => {
+    const tool = await PdfSignatureTool.create();
+    (tool as any).pdfDoc.catalog = null;
+    expect(tool.getXmpMetadata()).toBeNull();
+  });
+
+  it('produces a full metadata overview with page sizes and feature flags', async () => {
+    const tool = await PdfSignatureTool.create();
+    (tool as any).pdfDoc.addPage([612, 792]); // US Letter
+    tool.addSignatureField(0, 'signature1', {});
+    tool.setMetadata({ title: 'Overview doc' });
+
+    const overview = tool.getMetadataOverview({ fileSize: 1234, incrementalUpdates: 2 });
+    expect(overview.documentInfo.title).toBe('Overview doc');
+    expect(overview.documentInfo.fileSize).toBe(1234);
+    expect(overview.documentInfo.pdfVersion).toMatch(/^\d\.\d$/);
+    expect(overview.features.signatureFieldCount).toBe(1);
+    expect(overview.features.incrementalUpdates).toBe(2);
+    expect(overview.features.encrypted).toBe(false);
+    expect(overview.pages).toHaveLength(1);
+    expect(overview.pages[0].sizeName).toBe('Letter');
+    expect(overview.pages[0].orientation).toBe('Portrait');
+    expect(overview.documentIds).toEqual({ permanent: null, changing: null, xmpDocumentId: null, xmpInstanceId: null });
+  });
+
+  it('recognizes a landscape A4 page and a rotated page\'s effective orientation', async () => {
+    const tool = await PdfSignatureTool.create();
+    const page = (tool as any).pdfDoc.addPage([841.89, 595.28]); // landscape A4
+    page.setRotation({ type: 'degrees', angle: 90 });
+
+    const overview = tool.getMetadataOverview({});
+    expect(overview.pages[0].sizeName).toBe('A4');
+    expect(overview.pages[0].rotation).toBe(90);
+    // Rotated 90 degrees, the landscape page reads as portrait on screen.
+    expect(overview.pages[0].orientation).toBe('Portrait');
+  });
+
+  it('labels an unrecognized page size by its dimensions', async () => {
+    const tool = await PdfSignatureTool.create();
+    (tool as any).pdfDoc.addPage([123, 456]);
+    const overview = tool.getMetadataOverview({});
+    expect(overview.pages[0].sizeName).toBe('123 × 456 pt');
+  });
+
+  it('lists attachments with filename, mime type and size', async () => {
+    const tool = await PdfSignatureTool.create();
+    const data = new Uint8Array([1, 2, 3, 4, 5]);
+    await (tool as any).pdfDoc.attach(data, 'notes.txt', { mimeType: 'text/plain' });
+    // Attachment /Filespec objects only appear in enumerateIndirectObjects()
+    // after a save/reload round-trip.
+    const reloaded = await PdfSignatureTool.fromBytes(await tool.toBytes());
+
+    const overview = reloaded.getMetadataOverview({});
+    expect(overview.attachments).toHaveLength(1);
+    expect(overview.attachments[0].filename).toBe('notes.txt');
+    expect(overview.attachments[0].mimeType).toBe('text/plain');
+    expect(overview.attachments[0].size).toBe(5);
+    expect(overview.features.attachmentCount).toBe(1);
+  });
+
+  it('detects document IDs from the trailer', async () => {
+    const tool = await PdfSignatureTool.create();
+    const context = (tool as any).pdfDoc.context;
+    context.trailerInfo.ID = PDFArray.withContext(context);
+    context.trailerInfo.ID.push(PDFHexString.of('ABCDEF01'));
+    context.trailerInfo.ID.push(PDFHexString.of('12345678'));
+
+    const overview = tool.getMetadataOverview({});
+    expect(overview.documentIds.permanent).toBe('abcdef01');
+    expect(overview.documentIds.changing).toBe('12345678');
+  });
+
+  it('falls back to the permanent id for changing when only one trailer id entry exists', async () => {
+    const tool = await PdfSignatureTool.create();
+    const context = (tool as any).pdfDoc.context;
+    context.trailerInfo.ID = PDFArray.withContext(context);
+    context.trailerInfo.ID.push(PDFHexString.of('ABCDEF01'));
+
+    const overview = tool.getMetadataOverview({});
+    expect(overview.documentIds.permanent).toBe('abcdef01');
+    expect(overview.documentIds.changing).toBe('abcdef01');
+  });
+
+  it('produces a fields-only document info summary', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    const summary = tool.getDocumentInfoSummary({ fieldsOnly: true });
+    expect(Object.keys(summary)).toEqual(['fields', 'stamps']);
+    expect(summary.fields).toHaveLength(1);
+    expect(summary.stamps).toEqual([]);
+  });
+
+  it('produces the full document info summary with metadata, raw info, fields, annotations and overview', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'signature1', {});
+    tool.setMetadata({ title: 'Full summary' });
+
+    const summary = tool.getDocumentInfoSummary({ fileSize: 42 });
+    expect(summary.metadata.title).toBe('Full summary');
+    expect(summary.rawInfo.Title).toBe('Full summary');
+    expect(summary.fields).toHaveLength(1);
+    expect(summary.annotations).toEqual([]);
+    expect((summary as any).rawObjects).toBeUndefined();
+    expect(summary.overview.documentInfo.fileSize).toBe(42);
+  });
+
+  it('walks the full raw object graph, keyed by object ref', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.setMetadata({ title: 'Raw dump' });
+    const dump = tool.getFullRawDump();
+    expect(Object.keys(dump.objects).length).toBeGreaterThan(0);
+    expect(dump.trailer).toBeTypeOf('object');
+    const catalogEntry = Object.values(dump.objects).find((o: any) => o && o.Type === 'Catalog');
+    expect(catalogEntry).toBeTruthy();
+  });
+
+  it('decodes a content stream\'s text via getStreamText', async () => {
+    const tool = await PdfSignatureTool.create();
+    const page = (tool as any).pdfDoc.addPage();
+    page.drawText('Hello world', { x: 50, y: 700, size: 12 });
+    // The content stream is only compressed (a decodable PDFRawStream) once
+    // the document has actually been serialized and reloaded.
+    const reloaded = await PdfSignatureTool.fromBytes(await tool.toBytes());
+
+    const dump = reloaded.getFullRawDump();
+    const streamKey = Object.keys(dump.objects).find((key) => (dump.objects[key] as any)['@type'] === 'Stream');
+    expect(streamKey).toBeTruthy();
+
+    const decoded = reloaded.getStreamText(streamKey as string);
+    expect(decoded).not.toBeNull();
+    expect(decoded?.text).toContain('Tj');
+    expect(decoded?.rawByteLength).toBeGreaterThan(0);
+  });
+
+  it('returns null from getStreamText for a malformed ref or a non-stream object', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(tool.getStreamText('not-a-ref')).toBeNull();
+    expect(tool.getStreamText('9999 0 R')).toBeNull();
+
+    const dump = tool.getFullRawDump();
+    const nonStreamKey = Object.keys(dump.objects).find((key) => (dump.objects[key] as any)?.Type === 'Catalog');
+    expect(tool.getStreamText(nonStreamKey as string)).toBeNull();
+  });
+
+  it('rejects opening a password-protected/encrypted PDF with a friendly message', async () => {
+    await expect(
+      PdfSignatureTool._load(new Uint8Array([1, 2, 3]), null).catch((e: any) => {
+        throw e;
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe('PdfSignatureTool file I/O (open/save)', () => {
+  let tmpDir: string;
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('saves to disk and re-opens the same document', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-seal-test-'));
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.setMetadata({ title: 'Saved doc' });
+
+    const savedPath = await tool.save('output.pdf', { baseDir: tmpDir });
+    expect(savedPath).toBe(path.join(path.resolve(tmpDir), 'output.pdf'));
+    expect(fs.existsSync(savedPath)).toBe(true);
+
+    const reopened = await PdfSignatureTool.open('output.pdf', { baseDir: tmpDir });
+    expect(reopened.getMetadata().title).toBe('Saved doc');
+  });
+
+  it('confines save() to baseDir regardless of path traversal attempts', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-seal-test-'));
+    const tool = await PdfSignatureTool.create();
+    const savedPath = await tool.save('../../etc/evil.pdf', { baseDir: tmpDir });
+    expect(savedPath).toBe(path.join(path.resolve(tmpDir), 'evil.pdf'));
+  });
+
+  it('rejects save() without a baseDir', async () => {
+    const tool = await PdfSignatureTool.create();
+    await expect(tool.save('x.pdf', undefined as any)).rejects.toThrow(/requires a baseDir/);
+  });
+
+  it('rejects save() with an invalid resulting filename', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-seal-test-'));
+    const tool = await PdfSignatureTool.create();
+    await expect(tool.save('.', { baseDir: tmpDir })).rejects.toThrow(/Invalid file name/);
+    await expect(tool.save('..', { baseDir: tmpDir })).rejects.toThrow(/Invalid file name/);
+  });
+
+  it('rejects open() without a baseDir', async () => {
+    await expect(PdfSignatureTool.open('x.pdf', undefined as any)).rejects.toThrow(/requires a baseDir/);
+  });
+
+  it('rejects open() with an invalid resulting filename', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-seal-test-'));
+    await expect(PdfSignatureTool.open('.', { baseDir: tmpDir })).rejects.toThrow(/Invalid file name/);
+  });
+
+  it('confines open() to baseDir regardless of path traversal attempts', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-seal-test-'));
+    const tool = await PdfSignatureTool.create();
+    await tool.save('doc.pdf', { baseDir: tmpDir });
+    const opened = await PdfSignatureTool.open('../../../doc.pdf', { baseDir: tmpDir });
+    expect(opened.listFields()).toEqual([]);
+  });
+});
+
+describe('PdfSignatureTool: signature dictionaries and certificates', () => {
+  it('marks an unsigned signature field as not signed', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'Signature1', {});
+
+    const [field] = tool.listFields();
+    expect(field.type).toBe('Signature');
+    expect(field.signed).toBe(false);
+    expect(tool.getSignatureDictionaries()).toEqual([]);
+  });
+
+  it('marks a text field as not signed', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'name1', {});
+    expect(tool.listFields()[0].signed).toBe(false);
+  });
+
+  it('marks a field carrying a populated /V as signed', async () => {
+    const fx = await buildSignedPdfFixture();
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+
+    const field = tool.listFields().find((f: any) => f.name === 'Signature1');
+    expect(field.signed).toBe(true);
+  }, 30000);
+
+  it('reads a signature dictionary without going through the lossy text conversion', async () => {
+    const fx = await buildSignedPdfFixture({
+      signerName: 'Jane Doe',
+      reason: 'Testing pdf-seal',
+      location: 'Prague',
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const [dict] = tool.getSignatureDictionaries();
+
+    expect(dict.fieldName).toBe('Signature1');
+    expect(dict.filter).toBe('Adobe.PPKLite');
+    expect(dict.subFilter).toBe('adbe.pkcs7.detached');
+    expect(dict.name).toBe('Jane Doe');
+    expect(dict.reason).toBe('Testing pdf-seal');
+    expect(dict.location).toBe('Prague');
+    expect(dict.contactInfo).toBeNull();
+    expect(dict.page).toBe(0);
+    expect(dict.byteRange).toEqual(fx.byteRange);
+    expect(dict.objectRef).toMatch(/^\d+ \d+ R$/);
+    expect(dict.docMdpLevel).toBeNull();
+    expect(dict.certDer).toEqual([]);
+  }, 30000);
+
+  it('parses /M into an ISO date', async () => {
+    const fx = await buildSignedPdfFixture();
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const [dict] = tool.getSignatureDictionaries();
+
+    expect(dict.signingTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(new Date(dict.signingTime).getTime()).not.toBeNaN();
+  }, 30000);
+
+  it('reads a single /Cert entry as raw bytes', async () => {
+    const chain = await mintStandardChain();
+    const fx = await buildSignedPdfFixture({
+      subFilter: 'adbe.x509.rsa_sha1',
+      legacyCertificates: [chain.leaf],
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const [dict] = tool.getSignatureDictionaries();
+
+    expect(dict.subFilter).toBe('adbe.x509.rsa_sha1');
+    expect(dict.certDer).toHaveLength(1);
+    // Byte-identical, which decodeText() would not have managed.
+    expect(Buffer.from(dict.certDer[0]).equals(Buffer.from(chain.leaf.der))).toBe(true);
+  }, 40000);
+
+  it('reads an array of /Cert entries', async () => {
+    const chain = await mintStandardChain();
+    const fx = await buildSignedPdfFixture({
+      legacyCertificates: [chain.leaf, chain.intermediate],
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+
+    expect(tool.getSignatureDictionaries()[0].certDer).toHaveLength(2);
+  }, 40000);
+
+  it('reads the DocMDP level from a certifying signature', async () => {
+    const fx = await buildSignedPdfFixture({ docMdpLevel: 2 });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    expect(tool.getSignatureDictionaries()[0].docMdpLevel).toBe(2);
+  }, 30000);
+
+  it('exposes the certification level in the overview', async () => {
+    const certified = await PdfSignatureTool.fromBytes((await buildSignedPdfFixture({ docMdpLevel: 1 })).bytes);
+    expect(certified.getMetadataOverview().features.certification).toBe(1);
+    const plain = await PdfSignatureTool.fromBytes((await buildSignedPdfFixture()).bytes);
+    expect(plain.getMetadataOverview().features.certification).toBeNull();
+  }, 30000);
+
+  it('returns empty structures when there is no document security store', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(tool.getDocumentSecurityStore()).toEqual({ certs: [], vri: [] });
+  });
+
+  it('reads certificates out of /DSS /Certs', async () => {
+    const chain = await mintStandardChain();
+    const fx = await buildSignedPdfFixture({
+      dssCertificates: [chain.intermediate, chain.root],
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const dss = tool.getDocumentSecurityStore();
+
+    expect(dss.certs).toHaveLength(2);
+    expect(dss.vri).toEqual([]);
+    expect(Buffer.from(dss.certs[0].bytes).equals(Buffer.from(chain.intermediate.der))).toBe(true);
+    expect(dss.certs[0].objectRef).toMatch(/^\d+ \d+ R$/);
+  }, 40000);
+
+  it('reads /VRI entries and their certificate references', async () => {
+    const chain = await mintStandardChain();
+    const fx = await buildSignedPdfFixture({
+      dssCertificates: [chain.intermediate],
+      dssVri: true,
+    });
+    const tool = await PdfSignatureTool.fromBytes(fx.bytes);
+    const dss = tool.getDocumentSecurityStore();
+
+    expect(dss.vri).toHaveLength(1);
+    expect(dss.vri[0].key).toMatch(/^[0-9A-F]{40}$/);
+    expect(dss.vri[0].certRefs).toEqual([dss.certs[0].objectRef]);
+  }, 40000);
+});
+
+// PdfSignatureTool only detects/describes stamp annotations already present
+// in a document -- it never creates, edits or removes one -- so these tests
+// build a raw /Annot /Subtype /Stamp dict directly via pdf-lib's context,
+// the way another tool's output would look, rather than through any
+// stamp-creating helper of this tool's own.
+function addRawStampAnnot(tool: any, pageIndex: number, entries: Record<string, any> = {}) {
+  const pdfDoc = tool.pdfDoc;
+  const page = pdfDoc.getPages()[pageIndex];
+  const context = pdfDoc.context;
+  const annotDict = context.obj({
+    Type: 'Annot',
+    Subtype: 'Stamp',
+    Rect: [10, 10, 110, 60],
+    P: page.ref,
+    F: 4,
+    ...entries,
+  });
+  const annotRef = context.register(annotDict);
+  page.node.addAnnot(annotRef);
+  return { dict: annotDict, ref: annotRef };
+}
+
+describe('PdfSignatureTool: stamp annotation detection', () => {
+  it('lists an existing stamp annotation with its rect and standard properties', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0, {
+      NM: PDFString.of('acrobat-stamp-1'),
+      Contents: PDFString.of('Reviewed by Acrobat'),
+      CA: 0.75,
+    });
+
+    const [stamp] = tool.listStamps();
+    expect(stamp.id).toBe('acrobat-stamp-1');
+    expect(stamp.page).toBe(0);
+    expect(stamp.rect).toEqual({ x: 10, y: 10, width: 100, height: 50 });
+    expect(stamp.kind).toBe('external');
+    expect(stamp.createdByPdfSeal).toBe(false);
+    expect(stamp.note).toBe('Reviewed by Acrobat');
+    expect(stamp.opacity).toBe(0.75);
+    expect(stamp.locked).toBe(false);
+  });
+
+  it('assigns a synthetic ref-based id to a stamp with no /NM', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0);
+
+    const [stamp] = tool.listStamps();
+    expect(stamp.id).toMatch(/^ref:\d+ \d+$/);
+  });
+
+  it('reports a locked stamp (F bit 128) as locked', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0, { F: 4 | 128 });
+
+    const [stamp] = tool.listStamps();
+    expect(stamp.locked).toBe(true);
+  });
+
+  it('lists stamps on the correct page across a multi-page document', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addPage();
+    addRawStampAnnot(tool, 1, { NM: PDFString.of('page2-stamp') });
+
+    const stamps = tool.listStamps();
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].page).toBe(1);
+  });
+
+  it('survives a toBytes/fromBytes round-trip', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('roundtrip-stamp') });
+
+    const bytes = await tool.toBytes();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    const stamps = reloaded.listStamps();
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].id).toBe('roundtrip-stamp');
+  });
+
+  it('reports stamp and annotation counts in the metadata overview', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'sig1', {});
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('stamp-a') });
+    addRawStampAnnot(tool, 0, { NM: PDFString.of('stamp-b'), Rect: [20, 20, 120, 70] });
+
+    const overview = tool.getMetadataOverview();
+    expect(overview.features.stampCount).toBe(2);
+    // 1 signature widget + 2 stamps live in the page's /Annots array.
+    expect(overview.features.annotationCount).toBe(3);
+  });
+
+  it('returns no stamps for a document that has none', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(tool.listStamps()).toEqual([]);
+    expect(tool.getMetadataOverview().features.stampCount).toBe(0);
+  });
+});
+
+describe('PdfSignatureTool: listAnnotations', () => {
+  it('lists links, notes and markup, resolving URI and GoTo targets, and skips stamps/popups', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addPage();
+    const pdfDoc = (tool as any).pdfDoc;
+    const context = pdfDoc.context;
+    const [p0, p1] = pdfDoc.getPages();
+    const add = (entries: Record<string, any>) => {
+      const ref = context.register(context.obj({ Type: 'Annot', Rect: [10, 10, 60, 30], P: p0.ref, ...entries }));
+      p0.node.addAnnot(ref);
+      return ref;
+    };
+    add({ Subtype: 'Link', A: { S: 'URI', URI: PDFString.of('https://example.com') } });
+    add({ Subtype: 'Link', A: { S: 'GoTo', D: [p1.ref, 'Fit'] } });
+    const note = add({ Subtype: 'Text', Contents: PDFString.of('Check this'), T: PDFString.of('Ann') });
+    add({ Subtype: 'Highlight', QuadPoints: [0, 0, 1, 0, 0, 1, 1, 1] });
+    add({ Subtype: 'Popup', Parent: note });
+    addRawStampAnnot(tool, 0);
+
+    const list = tool.listAnnotations();
+    expect(list.map((a: any) => a.kind)).toEqual(['link', 'link', 'comment', 'markup']);
+    expect(list[0].uri).toBe('https://example.com');
+    expect(list[1].destPage).toBe(1);
+    expect(list[2].contents).toBe('Check this');
+    expect(list[2].author).toBe('Ann');
+    expect(list[3].subtype).toBe('Highlight');
+    expect(list[0].rect).toEqual({ x: 10, y: 10, width: 50, height: 20 });
+    expect(tool.listStamps()[0].raw.Subtype).toBe('/Stamp');
+  });
+});
+
+describe('applyFieldOps', () => {
+  it('applies add/edit/remove in one pass -- matching a round-trip listFields()', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addSignatureField(0, 'ToRemove', { x: 10, y: 10, width: 50, height: 20 });
+    tool.addSignatureField(0, 'ToEdit', { x: 10, y: 40, width: 50, height: 20 });
+
+    tool.applyFieldOps([
+      { op: 'add', page: 0, name: 'NewSig', type: 'signature', x: 100, y: 100, width: 200, height: 60, required: true },
+      { op: 'edit', originalName: 'ToEdit', name: 'Edited', x: 20, y: 50, width: 60, height: 25, required: true },
+      { op: 'remove', name: 'ToRemove' },
+    ]);
+
+    // pdf-lib's save() adds appearance objects in memory, so listFields()
+    // is only guaranteed to match a freshly-loaded copy of the same bytes
+    // once it's called *after* the save -- here, toBytes() plus a reload.
+    const bytes = await tool.toBytes();
+    const afterSave = tool.listFields().map((f: any) => f.name).sort();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    const reloadedFields = reloaded.listFields();
+
+    expect(afterSave).toEqual(['Edited', 'NewSig']);
+    expect(reloadedFields.map((f: any) => f.name).sort()).toEqual(['Edited', 'NewSig']);
+
+    const edited = reloadedFields.find((f: any) => f.name === 'Edited');
+    expect(edited?.required).toBe(true);
+    expect(edited?.rect).toMatchObject({ x: 20, y: 50, width: 60, height: 25 });
+  });
+
+  it("refuses to create text fields and to edit non-signature or signed fields", async () => {
+    const fixture = await buildSignedPdfFixture({ fieldName: 'SignedField' });
+    const tool = await PdfSignatureTool.fromBytes(fixture.bytes);
+    tool.addTextField(0, 'Txt', { x: 10, y: 10, width: 80, height: 20 });
+
+    expect(() => tool.applyFieldOps([{ op: 'add', page: 0, name: 'T2', type: 'text' }])).toThrow(/can't be created/);
+    for (const name of ['Txt', 'SignedField']) {
+      expect(() => tool.applyFieldOps([{ op: 'edit', originalName: name, name: 'X' }])).toThrow(/unsigned signature/);
+    }
+    expect(() => tool.applyFieldOps([{ op: 'remove', name: '' }])).toThrow(/Field name is required/);
+  });
+
+  it('removes non-signature and signed fields, dropping the /Perms entry of a removed certification', async () => {
+    const fixture = await buildSignedPdfFixture({ fieldName: 'SignedField', docMdpLevel: 2 });
+    const tool = await PdfSignatureTool.fromBytes(fixture.bytes);
+    tool.addTextField(0, 'Txt', { x: 10, y: 10, width: 80, height: 20 });
+    const catalog = tool.pdfDoc.catalog;
+    const signatureRef = tool.pdfDoc.getForm().getField('SignedField').acroField.dict.get(PDFName.of('V'));
+    catalog.set(PDFName.of('Perms'), tool.pdfDoc.context.obj({ DocMDP: signatureRef }));
+
+    tool.applyFieldOps([{ op: 'remove', name: 'Txt' }, { op: 'remove', name: 'SignedField' }]);
+
+    const reloaded = await PdfSignatureTool.fromBytes(await tool.toBytes());
+    expect(reloaded.listFields()).toEqual([]);
+    expect(reloaded.pdfDoc.getPage(0).node.Annots()?.size() ?? 0).toBe(0);
+    expect(reloaded.pdfDoc.catalog.has(PDFName.of('Perms'))).toBe(false);
+  });
+
+  it('removes a field whose widget sits on no page', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'Orphan', { x: 10, y: 10, width: 80, height: 20 });
+    const widget = tool.pdfDoc.getForm().getField('Orphan').acroField.getWidgets()[0];
+    tool.pdfDoc.getPage(0).node.removeAnnot(tool.pdfDoc.context.getObjectRef(widget.dict)!);
+    widget.dict.delete(PDFName.of('P'));
+
+    tool.removeField('Orphan');
+    expect(tool.listFields()).toEqual([]);
+  });
+
+  it('leaves unrelated text fields untouched on save (no appearance regeneration)', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'Empty', { x: 10, y: 10, width: 80, height: 20 });
+    tool.addSignatureField(0, 'Sig', { x: 10, y: 50, width: 80, height: 20 });
+    const first = await PdfSignatureTool.fromBytes(await tool.toBytes());
+    const before = first.listFields().find((f: any) => f.name === 'Empty');
+
+    first.applyFieldOps([
+      { op: 'add', page: 0, name: 'Sig2', type: 'signature', x: 10, y: 90, width: 80, height: 20 },
+      { op: 'edit', originalName: 'Sig', name: 'Sig', x: 20, y: 50, width: 80, height: 20 },
+    ]);
+    const after = (await PdfSignatureTool.fromBytes(await first.toBytes())).listFields().find((f: any) => f.name === 'Empty');
+
+    expect(after?.raw).toEqual(before?.raw);
+    expect(after?.rect).toEqual(before?.rect);
+  });
+
+  it('bumps the modification date and clears any embedded revision chain', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.setRevisionSnapshotChain([{ index: 1, bytes: Buffer.from('x').toString('base64') }]);
+
+    tool.applyFieldOps([{ op: 'add', page: 0, name: 'Sig1', type: 'signature', x: 10, y: 10, width: 50, height: 20 }]);
+
+    expect(tool.getMetadata().modificationDate).toBeInstanceOf(Date);
+
+    const bytes = await tool.toBytes();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    expect(reloaded.getRevisionSnapshotChain()).toEqual([]);
+  });
+
+  it('throws on an unknown op', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    expect(() => tool.applyFieldOps([{ op: 'bogus' }])).toThrow(/Unknown operation/);
+  });
+
+  it('leaves a signed field untouched by ops applied to other fields (signed fixture)', async () => {
+    const fixture = await buildSignedPdfFixture({ fieldName: 'SignedField' });
+    const tool = await PdfSignatureTool.fromBytes(fixture.bytes);
+
+    tool.applyFieldOps([
+      { op: 'add', page: 0, name: 'ExtraField', type: 'signature', x: 300, y: 300, width: 100, height: 40 },
+    ]);
+
+    const bytes = await tool.toBytes();
+    const reloaded = await PdfSignatureTool.fromBytes(bytes);
+    const fields = reloaded.listFields();
+
+    expect(fields.map((f: any) => f.name).sort()).toEqual(['ExtraField', 'SignedField']);
+    expect(fields.find((f: any) => f.name === 'SignedField')?.signed).toBe(true);
+  });
+});
+
+describe('truncateLongStrings', () => {
+  it('leaves strings at or under the limit untouched', () => {
+    expect(truncateLongStrings('short', 10)).toBe('short');
+    expect(truncateLongStrings('exactlyten', 10)).toBe('exactlyten');
+  });
+
+  it('truncates a string over the limit and notes how much was cut', () => {
+    const result = truncateLongStrings('a'.repeat(20), 10);
+    expect(result).toBe(`${'a'.repeat(10)}… [truncated, 10 more chars]`);
+  });
+
+  it('recurses into nested objects and arrays, truncating only their string leaves', () => {
+    const input = {
+      short: 'ok',
+      long: 'b'.repeat(20),
+      nested: { deeper: ['c'.repeat(20), 'ok'] },
+      number: 42,
+      nil: null,
+    };
+    const result = truncateLongStrings(input, 10);
+    expect(result.short).toBe('ok');
+    expect(result.long).toBe(`${'b'.repeat(10)}… [truncated, 10 more chars]`);
+    expect(result.nested.deeper[0]).toBe(`${'c'.repeat(10)}… [truncated, 10 more chars]`);
+    expect(result.nested.deeper[1]).toBe('ok');
+    expect(result.number).toBe(42);
+    expect(result.nil).toBeNull();
+  });
+
+  it('does not mutate the input', () => {
+    const input = { long: 'd'.repeat(20) };
+    const result = truncateLongStrings(input, 10);
+    expect(result).not.toBe(input);
+    expect(input.long).toBe('d'.repeat(20));
+  });
+});
+

@@ -1,0 +1,1144 @@
+"use strict";
+
+import express, { type Request, type Response, type NextFunction } from "express";
+import http from "http";
+import { AsyncLocalStorage, AsyncResource } from "async_hooks";
+import multer, { MulterError } from "multer";
+import path from "path";
+import fs from "fs";
+import { rateLimit } from "express-rate-limit";
+import { WebSocket, WebSocketServer } from "ws";
+import PdfSignatureTool from "./lib/PdfSignatureTool";
+import PdfRevisionTool from "./lib/PdfRevisionTool";
+import { buildCertificateReport } from "./lib/PdfCertificateReport";
+import { parseCertificateFile, parseCertificate } from "./lib/CertificateModel";
+import { applyCertificateOperation, CertificateModificationError } from "./lib/PdfCertificateModifier";
+import { checkCertificate, checkLink, buildChain } from "./lib/CertificateChain";
+import { simulateTrust } from "./lib/TrustSimulation";
+import { encodeMultipart } from "./lib/MultipartResponse";
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const SHARE_SESSION_TTL_MS = 15 * 60 * 1000;
+const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{8,32}$/;
+
+// Railway (and most PaaS hosts) sit the app behind a single reverse proxy
+// that appends the real client IP to X-Forwarded-For. Express doesn't trust
+// that header by default, which is what express-rate-limit's default
+// IP-based key generator needs to identify clients -- hence the
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR warning without this.
+//
+// Deliberately set to `1` (one hop) rather than `true`: `true` trusts every
+// proxy in the chain, which lets a client forge its own X-Forwarded-For
+// value and be believed, letting them spoof a fresh IP on every request to
+// dodge rate limiting entirely. Trusting exactly the number of hops your
+// own infrastructure adds closes that off. If you move behind a different
+// number of proxies/CDNs, adjust this value to match.
+app.set("trust proxy", 1);
+
+// All uploaded/generated PDFs must live here -- every filesystem path we
+// touch is required to resolve inside this directory before we act on it,
+// which is what keeps `req.file.path`-derived values from being usable for
+// path traversal even though they technically originate from a request.
+const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
+
+/**
+ * Reduce `candidatePath` to a bare filename via path.basename() -- which by
+ * definition can never contain a `/`, `\`, or `..` traversal segment -- and
+ * rejoin it onto the fixed, trusted UPLOADS_DIR. This is what actually
+ * severs the taint from request data rather than just checking it: the
+ * returned path is *constructed* from a known-safe directory plus a value
+ * that structurally cannot escape it.
+ */
+function resolveUploadPath(candidatePath: string): string {
+  const safeName = path.basename(candidatePath);
+  if (!safeName || safeName === "." || safeName === "..") {
+    throw new Error("Refusing to operate on an invalid file path.");
+  }
+  return path.join(UPLOADS_DIR, safeName);
+}
+
+type ShareRole = "sender" | "receiver";
+
+// Set up Multer for handling file uploads (saves temporarily to an 'uploads' folder).
+// A file-size cap keeps a single (or a burst of concurrent) uploads from blowing up
+// process memory, since PdfSignatureTool.open() reads the whole file into a Buffer.
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
+const upload = multer({ dest: "uploads/", limits: { fileSize: MAX_UPLOAD_BYTES } });
+
+// The X-Document-Id of the request currently being handled -- set by the access-log middleware, read by log().
+const requestDocumentId = new AsyncLocalStorage<string | undefined>();
+
+// /api/revisions/bundle reads every prior revision fully into memory, base64-encodes
+// each one, and holds them all at once to embed as a single JSON string in the output
+// PDF (see PdfSignatureTool.setRevisionSnapshotChain) -- measured at ~6-7x the combined
+// raw input size in peak RSS. Capped well below that ratio's blast radius on a
+// memory-constrained host, rather than per-file, since it's the sum that drives the peak.
+const MAX_REVISION_BUNDLE_BYTES = 40 * 1024 * 1024; // 40MB combined (pdfDocument + all priorRevisions)
+
+// Certificate uploads are DER/PEM measured in kilobytes. They get their own,
+// much tighter multer instance: accepting 25MB of attacker-controlled bytes
+// into an ASN.1 parser is needless attack surface for a 2KB payload.
+const MAX_CERT_UPLOAD_BYTES = 64 * 1024; // 64KB
+const certUpload = multer({ dest: "uploads/", limits: { fileSize: MAX_CERT_UPLOAD_BYTES } });
+
+// The Angular UI (app/) is built (`npm run build:web`) into dist/app/browser
+// -- index.html, the hashed JS/CSS bundles, and everything copied verbatim
+// from app/public/ (assets, vendor). Resolved from the working directory like
+// UPLOADS_DIR: the server always runs from the repo (or image) root, both as
+// `tsx server/server.ts` and as the bundled dist/server/server.js.
+const WEB_ROOT = path.resolve(process.cwd(), "dist", "app", "browser");
+const INDEX_HTML = path.join(WEB_ROOT, "index.html");
+
+// Serve /vendor (pdf.js's ~1MB worker, copied from pdfjs-dist by the Angular
+// build, and the visual-diff worker) with a long, immutable cache: on a
+// slow/constrained host, letting every colleague's browser cache it across
+// visits instead of re-fetching it each time saves real bandwidth and avoids
+// one more big synchronous read+send per request. The client requests the
+// pdf.js worker with its version in the query string, so a pdf.js upgrade
+// never pairs with a stale cached copy.
+app.use("/vendor", express.static(path.join(WEB_ROOT, "vendor"), { maxAge: "30d", immutable: true }));
+
+// The Angular bundles carry a content hash in their file name
+// (main-XXXXXXXX.js, chunk-XXXXXXXX.js, styles-XXXXXXXX.css), so they can be
+// cached forever; a new deploy ships new names. index.html is never served
+// from here (`index: false`) -- the SPA routes below send it without caching,
+// so a new deploy is picked up immediately.
+const HASHED_BUNDLE = /-[A-Za-z0-9_-]{8}\.(?:js|css)$/;
+app.use(
+  express.static(WEB_ROOT, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (HASHED_BUNDLE.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    },
+  }),
+);
+app.use(express.json());
+
+// Baseline throttling for every HTTP route. Keeps a single client from
+// hammering the server (and, incidentally, from brute-forcing share-session
+// IDs against /share/:sessionId).
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please slow down and try again shortly." },
+});
+app.use(generalLimiter);
+
+// Access log for every request that reaches the routes (static files are served earlier and not logged). No client identifiers --
+// only the random per-document id the browser sends in X-Document-Id (shown in its footer's Diagnostics modal), which every log line
+// written while handling the request is tagged with (see log()).
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  const header = req.get("x-document-id");
+  const documentId = header && /^[A-Za-z0-9-]{1,64}$/.test(header) ? header : undefined;
+  requestDocumentId.run(documentId, () => {
+    res.on("finish", AsyncResource.bind(() => {
+      log(res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info", "http", `${req.method} ${req.path}`, {
+        status: res.statusCode,
+        ms: Date.now() - start,
+      });
+    }));
+    next();
+  });
+});
+
+// Tighter limit for the endpoints that parse/rewrite PDFs -- these are the
+// most expensive requests to serve (disk I/O + PDF parsing), so they get a
+// stricter cap than everything else.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many upload requests. Please slow down and try again shortly." },
+});
+
+// The single-page app: the shell plus one lazily-loaded route per section
+// (see app/src/app/app.routes.ts). Every client-side route answers with the
+// same index.html; so does the 404 handler at the end, with a 404 status --
+// the Angular router renders its "Page not found" page for any unknown URL.
+function sendApp(res: Response, status = 200) {
+  if (!fs.existsSync(INDEX_HTML)) {
+    return res.status(503).type("text/plain").send("The web UI has not been built yet -- run `npm run build:web` (or `npm run dev`).");
+  }
+  res.status(status).setHeader("Cache-Control", "no-cache");
+  res.sendFile(INDEX_HTML);
+}
+
+app.get(["/", "/signatures", "/versions", "/certificates"], (_req: Request, res: Response) => {
+  sendApp(res);
+});
+
+app.get("/share/:sessionId", (req: Request, res: Response) => {
+  const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
+  if (!SESSION_ID_PATTERN.test(sessionId)) return sendApp(res, 404);
+  log("info", "share", "page-opened", { sessionId });
+  sendApp(res);
+});
+
+// Ensure the uploads directory exists
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
+
+// Every route below cleans up its own temp files on completion (see
+// cleanupFiles()), but a hard crash mid-request -- a killed process, an
+// OOM abort -- skips that cleanup entirely, leaving the upload and/or
+// `modified_*.pdf` behind. On a host with a small, shared disk quota
+// those orphans just accumulate across restarts. Sweep anything stale on
+// boot rather than trying to guarantee cleanup runs on every exit path.
+const STALE_UPLOAD_AGE_MS = 60 * 60 * 1000; // 1 hour
+function sweepStaleUploads() {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(UPLOADS_DIR);
+  } catch (error) {
+    return logError("uploads-sweep", error);
+  }
+  const now = Date.now();
+  for (const entry of entries) {
+    try {
+      const fullPath = resolveUploadPath(entry);
+      const stats = fs.statSync(fullPath);
+      if (stats.isFile() && now - stats.mtimeMs >= STALE_UPLOAD_AGE_MS) {
+        fs.unlinkSync(fullPath);
+      }
+    } catch (error) {
+      logError("uploads-sweep", error, { entry });
+    }
+  }
+}
+sweepStaleUploads();
+
+app.get("/api/version", (req: Request, res: Response) => {
+  try {
+    const packageJsonPath = path.resolve(process.cwd(), "package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    const version = typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
+    res.json({ version, name: typeof packageJson.name === "string" ? packageJson.name : "pdf-seal" });
+  } catch (error) {
+    logError("api-version", error);
+    res.status(500).json({ error: "Unable to read app version" });
+  }
+});
+
+/**
+ * Best-effort delete of one or more temp files. Never throws -- cleanup must
+ * not be able to mask the real error (or, worse, crash an uncaught-exception
+ * path like the res.download() callback).
+ */
+function cleanupFiles(...paths: Array<string | null | undefined>) {
+  for (const p of paths) {
+    if (!p) continue;
+    try {
+      // Every path we ever pass in here is either multer's own upload path
+      // or a `modified_*.pdf` path we generated ourselves -- both should
+      // always live inside UPLOADS_DIR. Enforcing that before touching the
+      // filesystem means a malformed/unexpected value gets rejected instead
+      // of blindly handed to fs.unlinkSync.
+      const safePath = resolveUploadPath(p);
+      if (fs.existsSync(safePath)) fs.unlinkSync(safePath);
+    } catch (cleanupErr) {
+      logError("cleanup-files", cleanupErr, { path: p });
+    }
+  }
+}
+
+// One log format for the whole server: `<iso time> <level> [scope] [doc:<id>] event {details}` (doc part only inside a request carrying X-Document-Id).
+function log(level: "info" | "warn" | "error", scope: string, event: string, details?: Record<string, unknown>, error?: unknown) {
+  const documentId = requestDocumentId.getStore();
+  const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${scope}] ${documentId ? `[doc:${documentId}] ` : ""}${event}`;
+  const out = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+  out(line, ...(details ? [details] : []), ...(error === undefined ? [] : [error]));
+}
+
+function logShare(event: string, details?: Record<string, unknown>) {
+  log("info", "share", event, details);
+}
+
+function logError(context: string, error: unknown, details?: Record<string, unknown>) {
+  log("error", context, "failed", details, error);
+}
+
+// --- API Endpoint: Get PDF Info ---
+app.post("/api/info", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  try {
+    const safePath = resolveUploadPath(file.path);
+    const fieldsOnly = req.body.fieldsOnly === "true";
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+    if (fieldsOnly) {
+      res.json(tool.getDocumentInfoSummary({ fieldsOnly: true }));
+      return;
+    }
+    const fileBytes = fs.readFileSync(safePath);
+    const incrementalUpdates = PdfRevisionTool.findRevisionBoundaries(fileBytes).length;
+    const summary = tool.getDocumentInfoSummary({ fileSize: file.size, incrementalUpdates });
+    log("info", "document", "opened");
+    res.json(summary);
+  } catch (error: any) {
+    logError("api-info", error, { filePath: file.path });
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  } finally {
+    cleanupFiles(file.path);
+  }
+});
+
+// --- API Endpoint: Apply a Batch of Field Changes in One Round Trip ---
+// The client stages add/edit/remove field operations locally (no server
+// call per operation) and sends them all here at once when the user hits
+// "Apply changes" -- one upload, one PDF open/save, one download, instead
+// of one full round trip per field edit.
+app.post("/api/apply-changes", uploadLimiter, upload.single("pdfDocument"), async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+  let outputPath: string | null = null;
+  // Ask for the updated field list alongside the PDF, in one response, so
+  // the client doesn't have to re-upload the file to /api/info just to
+  // learn what it already just told the server to create. Best-effort: a
+  // client that doesn't ask for it, or a listFields() failure below, both
+  // fall back to the plain PDF download every caller already handles.
+  const withFields = req.query.withFields === "true";
+
+  try {
+    const safePath = resolveUploadPath(file.path);
+    const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+
+    let ops: any[];
+    try {
+      ops = JSON.parse(req.body.ops || "[]");
+    } catch (_e) {
+      throw new Error("Invalid changes payload.");
+    }
+    if (!Array.isArray(ops) || ops.length === 0) {
+      throw new Error("No changes to apply.");
+    }
+
+    tool.applyFieldOps(ops);
+
+    if (withFields) {
+      // pdf-lib's save() adds appearance objects in memory, so the field
+      // list has to be read back *after* toBytes(), not before it.
+      let bytes: Uint8Array | null = null;
+      let fields: any[] | null = null;
+      try {
+        bytes = await tool.toBytes();
+        fields = tool.listFields();
+      } catch (_e) {
+        bytes = null;
+        fields = null;
+      }
+      if (bytes && fields) {
+        const multipart = encodeMultipart([
+          { name: "pdfDocument", filename: "signed-document.pdf", contentType: "application/pdf", data: Buffer.from(bytes) },
+          { name: "fields", contentType: "application/json", data: Buffer.from(JSON.stringify(fields)) },
+        ]);
+        res.setHeader("Content-Type", `multipart/form-data; boundary=${multipart.boundary}`);
+        res.setHeader("Content-Length", String(multipart.body.length));
+        // This response is generated fresh from the just-applied edit, never
+        // a cached representation of anything -- res.send()'s automatic ETag
+        // would just spend time hashing a body nothing will ever revalidate.
+        res.setHeader("Cache-Control", "no-store");
+        res.end(multipart.body);
+        cleanupFiles(file.path, null);
+        return;
+      }
+      // listFields() (or toBytes()) failed -- fall through to the plain
+      // download below, the same response a client without the flag gets.
+    }
+
+    outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+    await tool.save(outputPath, { baseDir: UPLOADS_DIR });
+
+    res.download(outputPath, "signed-document.pdf", () => {
+      cleanupFiles(file.path, outputPath);
+    });
+  } catch (error: any) {
+    logError("api-apply-changes", error, { filePath: file.path });
+    cleanupFiles(file.path, outputPath);
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  }
+});
+
+// --- API Endpoint: Summarize PDF Revisions ---
+// The client now keeps each edit's snapshot locally (IndexedDB) rather than
+// embedding them in the PDF, so this takes N independent PDF buffers --
+// oldest first -- and summarizes each one. Stateless like every other route
+// here: nothing is persisted or correlated across requests.
+// Capped at 16 files -- the client sends sequential batches of at most 8
+// (see batchBySize in app/src/app/core/version-history.ts), so this is headroom, not the
+// expected size; it exists so this route can't be made to accept an
+// unbounded multipart body just because the byte-size cap alone wouldn't
+// catch a huge number of tiny files.
+app.post("/api/revisions", uploadLimiter, upload.array("pdfDocument", 16), async (req: Request, res: Response) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  if (!files.length) return res.status(400).json({ error: "No files uploaded" });
+
+  try {
+    const byteArrays = files.map((f) => fs.readFileSync(resolveUploadPath(f.path)));
+    const revisions = await PdfRevisionTool.summarizeIndependentSnapshots(byteArrays);
+    res.json({ revisions });
+  } catch (error: any) {
+    logError("api-revisions", error);
+    res.status(500).json({ error: error?.message ?? "Unexpected error" });
+  } finally {
+    cleanupFiles(...files.map((f) => f.path));
+  }
+});
+
+// --- API Endpoint: Diff Two PDF Revisions ---
+// Diffs two independently-supplied PDF buffers directly against each other.
+app.post(
+  "/api/revisions/diff",
+  uploadLimiter,
+  upload.fields([{ name: "from", maxCount: 1 }, { name: "to", maxCount: 1 }]),
+  async (req: Request, res: Response) => {
+    const filesByField = (req.files || {}) as Record<string, Express.Multer.File[]>;
+    const fromFile = filesByField.from?.[0];
+    const toFile = filesByField.to?.[0];
+    if (!fromFile || !toFile) return res.status(400).json({ error: "Both 'from' and 'to' files are required." });
+
+    try {
+      const fromBytes = fs.readFileSync(resolveUploadPath(fromFile.path));
+      const toBytes = fs.readFileSync(resolveUploadPath(toFile.path));
+      const diff = await PdfRevisionTool.diffSnapshotBytes(fromBytes, toBytes);
+      res.json({ diff });
+    } catch (error: any) {
+      logError("api-revisions-diff", error);
+      res.status(500).json({ error: error?.message ?? "Unexpected error" });
+    } finally {
+      cleanupFiles(fromFile.path, toFile.path);
+    }
+  },
+);
+
+// --- API Endpoint: Bundle Revision History Into a PDF ---
+// Export-time only: embeds the client's locally-stored revision snapshots
+// (oldest first) plus the current document into the PDF's revision-snapshot
+// chain, in one shot, and returns the resulting file. Everyday edits never
+// hit this route -- see the filesystem-safety and clearRevisionSnapshotChain
+// pattern shared with /api/add-signature etc.
+app.post(
+  "/api/revisions/bundle",
+  uploadLimiter,
+  upload.fields([{ name: "pdfDocument", maxCount: 1 }, { name: "priorRevisions", maxCount: 50 }]),
+  async (req: Request, res: Response) => {
+    const filesByField = (req.files || {}) as Record<string, Express.Multer.File[]>;
+    const file = filesByField.pdfDocument?.[0];
+    const priorFiles = filesByField.priorRevisions || [];
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    const totalBytes = file.size + priorFiles.reduce((sum, f) => sum + f.size, 0);
+    if (totalBytes > MAX_REVISION_BUNDLE_BYTES) {
+      cleanupFiles(file.path, ...priorFiles.map((f) => f.path));
+      return res.status(413).json({
+        error: `Combined size of the document and its revision history is too large to bundle (${Math.floor(
+          MAX_REVISION_BUNDLE_BYTES / (1024 * 1024),
+        )}MB max). Try exporting without revision history instead.`,
+      });
+    }
+
+    let outputPath: string | null = null;
+
+    try {
+      const safePath = resolveUploadPath(file.path);
+      const tool = await PdfSignatureTool.open(safePath, { baseDir: UPLOADS_DIR });
+      tool.clearRevisionSnapshotChain();
+
+      const entries = priorFiles.map((f, i) => ({
+        index: i + 1,
+        bytes: fs.readFileSync(resolveUploadPath(f.path)).toString("base64"),
+      }));
+      const leanBytes = await tool.toBytes();
+      entries.push({ index: entries.length + 1, bytes: Buffer.from(leanBytes).toString("base64") });
+      tool.setRevisionSnapshotChain(entries);
+
+      outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+      await tool.save(outputPath, { baseDir: UPLOADS_DIR });
+
+      res.download(outputPath, "signed-document.pdf", () => {
+        cleanupFiles(file.path, ...priorFiles.map((f) => f.path), outputPath);
+      });
+    } catch (error: any) {
+      logError("api-revisions-bundle", error, { filePath: file.path });
+      cleanupFiles(file.path, ...priorFiles.map((f) => f.path), outputPath);
+      res.status(500).json({ error: error?.message ?? "Unexpected error" });
+    }
+  },
+);
+
+// --- API Endpoint: Analyze the certificates in a PDF ---
+// Read-only. Reads the raw bytes rather than a pdf-lib round-trip, because the
+// signature content has to be sliced at the exact offsets /ByteRange gives.
+app.post(
+  "/api/certificates",
+  uploadLimiter,
+  upload.single("pdfDocument"),
+  async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    try {
+      const safePath = resolveUploadPath(file.path);
+      const fileBytes = fs.readFileSync(safePath);
+      res.json({ report: await buildCertificateReport(fileBytes) });
+    } catch (error: any) {
+      logError("api-certificates", error, { filePath: file.path });
+      res.status(500).json({ error: error?.message ?? "Unexpected error" });
+    } finally {
+      cleanupFiles(file.path);
+    }
+  },
+);
+
+// --- API Endpoint: Parse a certificate file the user picked ---
+// Used to preview a replacement before it is applied. Deliberately takes no
+// PDF: this is a couple of kilobytes of DER, not a document.
+app.post(
+  "/api/certificates/inspect",
+  uploadLimiter,
+  certUpload.single("certificateFile"),
+  async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No certificate file uploaded" });
+
+    try {
+      const safePath = resolveUploadPath(file.path);
+      const bytes = fs.readFileSync(safePath);
+      const certificates = parseCertificateFile(bytes);
+
+      // Standalone use (no PDF, no signature) has no chain context to lean
+      // on, so this is a best-effort reading: treat the first certificate as
+      // the leaf and everything else as candidate issuers, same as the
+      // leftover-handling in CertificateChain.buildChains for certs a real
+      // report can't reach from a signer.
+      let chain = null;
+      if (certificates.length === 1) {
+        certificates[0].checks = checkCertificate(certificates[0], {});
+      } else if (certificates.length > 1) {
+        chain = buildChain(certificates[0], certificates, {
+          id: "scratchpad",
+          signatureFieldName: null,
+          context: {},
+        });
+        const chained = new Set(chain.certificateIds);
+        for (const cert of certificates) {
+          if (!chained.has(cert.id)) cert.checks = checkCertificate(cert, {});
+        }
+      }
+
+      let links: Array<{ subjectIndex: number; issuerIndex: number; checks: ReturnType<typeof checkLink> }> | null =
+        null;
+      if (certificates.length === 2) {
+        links = [
+          { subjectIndex: 0, issuerIndex: 1, checks: checkLink(certificates[0], certificates[1], 0) },
+          { subjectIndex: 1, issuerIndex: 0, checks: checkLink(certificates[1], certificates[0], 0) },
+        ];
+      }
+
+      res.json({ certificates, chain, links });
+    } catch (error: any) {
+      // Every failure here is a problem with the file the user chose, so the
+      // message is written to be shown to them as-is.
+      logError("api-certificates-inspect", error, { filePath: file.path });
+      res.status(400).json({ error: error?.message ?? "That file could not be read as a certificate." });
+    } finally {
+      cleanupFiles(file.path);
+    }
+  },
+);
+
+// --- API Endpoint: Opt-in trust simulation ---
+// Answers "would this chain be trusted against a root bundle I supply", kept
+// entirely separate from the real report: it never touches chain.trust or
+// chain.revocation, never affects summary.status, and the bundle is used only
+// for this one request -- nothing is persisted or reused across requests.
+app.post(
+  "/api/certificates/simulate-trust",
+  uploadLimiter,
+  certUpload.single("rootBundle"),
+  async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No root bundle uploaded" });
+
+    try {
+      const safePath = resolveUploadPath(file.path);
+      const bundleBytes = fs.readFileSync(safePath);
+      const trustBundle = parseCertificateFile(bundleBytes);
+
+      let chainEntries: Array<{ derBase64: string }>;
+      try {
+        chainEntries = JSON.parse(String(req.body.chainCertificates ?? "[]"));
+      } catch {
+        throw new Error("The chain to simulate was not sent correctly.");
+      }
+      if (!Array.isArray(chainEntries) || chainEntries.length === 0) {
+        throw new Error("No chain certificates were provided to simulate against.");
+      }
+
+      const chainCertificates = chainEntries.map((entry) =>
+        parseCertificate(Buffer.from(String(entry.derBase64 ?? ""), "base64")),
+      );
+
+      const simulated = simulateTrust(chainCertificates, trustBundle);
+      res.json({ simulated, rootsParsed: trustBundle.length });
+    } catch (error: any) {
+      logError("api-certificates-simulate-trust", error, { filePath: file.path });
+      res.status(400).json({ error: error?.message ?? "That root bundle could not be read." });
+    } finally {
+      cleanupFiles(file.path);
+    }
+  },
+);
+
+// --- API Endpoint: Change the certificates inside a signature ---
+app.post(
+  "/api/certificates/modify",
+  uploadLimiter,
+  upload.fields([{ name: "pdfDocument", maxCount: 1 }, { name: "certificateFile", maxCount: 1 }]),
+  async (req: Request, res: Response) => {
+    const filesByField = (req.files || {}) as Record<string, Express.Multer.File[]>;
+    const file = filesByField.pdfDocument?.[0];
+    const certFiles = filesByField.certificateFile || [];
+    const cleanupPaths = [file?.path, ...certFiles.map((f) => f.path)];
+    if (!file) {
+      cleanupFiles(...cleanupPaths);
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    let outputPath: string | null = null;
+
+    try {
+      const operation = String(req.body.operation ?? "");
+      const signatureField = String(req.body.signatureField ?? "");
+      if (!signatureField) throw new CertificateModificationError("No signature was selected.");
+
+      let replacementDer: Uint8Array[] | undefined;
+      if (certFiles.length > 0) {
+        const certBytes = fs.readFileSync(resolveUploadPath(certFiles[0].path));
+        // Parse before applying: a bad file should be rejected as a bad file,
+        // not as a failure deep inside the rewrite.
+        replacementDer = parseCertificateFile(certBytes).map(
+          (c) => new Uint8Array(Buffer.from(c.derBase64, "base64")),
+        );
+      }
+
+      const fileBytes = fs.readFileSync(resolveUploadPath(file.path));
+      const result = await applyCertificateOperation(fileBytes, {
+        op: operation as any,
+        signatureField,
+        targetFingerprint: req.body.targetFingerprint ? String(req.body.targetFingerprint) : undefined,
+        replacementDer,
+      });
+
+      // Written straight out rather than through PdfSignatureTool.save(): the
+      // whole point of the in-place patch is that every other byte, and so
+      // every offset and every other signature's /ByteRange, is preserved. A
+      // pdf-lib re-save here -- including the setMetadata/clearRevisionSnapshotChain
+      // that every other mutating route does -- would undo exactly that.
+      outputPath = path.join(UPLOADS_DIR, `modified_${Date.now()}.pdf`);
+      fs.writeFileSync(outputPath, result.bytes);
+
+      res.setHeader("X-Certificate-Modification", encodeURIComponent(JSON.stringify({
+        signatureNowInvalid: result.signatureNowInvalid,
+        removedCertificates: result.removedCertificates,
+        addedCertificates: result.addedCertificates,
+        remainingCertificates: result.remainingCertificates,
+        headroomBytes: result.headroomBytes,
+        notes: result.notes,
+      })));
+
+      res.download(outputPath, "certificate-modified.pdf", () => {
+        cleanupFiles(...cleanupPaths, outputPath);
+      });
+    } catch (error: any) {
+      logError("api-certificates-modify", error, { filePath: file.path });
+      cleanupFiles(...cleanupPaths, outputPath);
+      // A refusal the user can act on ("the slot is too small") is a 422, not a
+      // server error -- nothing went wrong here, the change just cannot apply.
+      const status = error instanceof CertificateModificationError ? 422 : 500;
+      res.status(status).json({ error: error?.message ?? "Unexpected error" });
+    }
+  },
+);
+
+// Multer errors (e.g. file too large) land here instead of inside the route handlers.
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        error: `File too large. Maximum upload size is ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))}MB.`,
+      });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  // busboy throws this when the request body ends before the closing
+  // multipart boundary arrives -- i.e. the client's upload was interrupted
+  // (tab closed, connection dropped, browser cut the stream short), not a
+  // server-side fault. Surface it as a plain 400 instead of a 500 stack trace.
+  if (err instanceof Error && err.message === "Unexpected end of form") {
+    return res.status(400).json({ error: "Upload was interrupted before it finished. Please try again." });
+  }
+  if (err) {
+    logError("request-handler", err, { method: req.method, path: req.path });
+    return res.status(500).json({ error: "Unexpected error" });
+  }
+  next();
+});
+
+const server = http.createServer(app);
+
+const MAX_SHARE_BYTES = 25 * 1024 * 1024;
+const SHARE_CHUNK_BYTES = 64 * 1024;
+const WS_HIGH_WATER_MARK = 512 * 1024;
+// Total in-memory budget for ALL concurrently-buffered share files combined
+// (each is a raw Buffer held in RAM for up to SHARE_SESSION_TTL_MS -- see
+// ShareFile.data below). The old 200MB default assumed a host with several
+// GB of headroom; on a constrained box (e.g. a 512MB container) that alone
+// can account for the majority of available RAM before Node's own heap or
+// concurrent PDF processing get a look-in. Override via env if the host has
+// more room to spare.
+const SHARE_MAX_SESSIONS_MEMORY_BYTES =
+  Number.parseInt(process.env.SHARE_MAX_SESSIONS_MEMORY_BYTES || '', 10) || 64 * 1024 * 1024;
+let shareMemoryBytes = 0;
+
+function configuredStunUrls(): string[] {
+  const configured = process.env.WEBRTC_STUN_URLS
+    ?.split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+  return configured?.length ? configured : ['stun:stun.l.google.com:19302'];
+}
+
+interface IceServerConfig {
+  urls: string[];
+  username?: string;
+  credential?: string;
+}
+
+function configuredTurnServers(): IceServerConfig[] {
+  const urls = process.env.WEBRTC_TURN_URLS
+    ?.split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+  if (!urls?.length) return [];
+  const username = process.env.WEBRTC_TURN_USERNAME;
+  const credential = process.env.WEBRTC_TURN_CREDENTIAL;
+  if (!username || !credential) {
+    logError('turn-config', undefined, { reason: 'WEBRTC_TURN_URLS set without username/credential' });
+    return [];
+  }
+  return [{ urls, username, credential }];
+}
+
+app.get('/api/share-config', (_req: Request, res: Response) => {
+  const iceServers: IceServerConfig[] = [
+    { urls: configuredStunUrls() },
+    ...configuredTurnServers(),
+  ];
+  res.json({ iceServers, stunUrls: configuredStunUrls(), sessionTtlSeconds: SHARE_SESSION_TTL_MS / 1000 });
+});
+
+// Last route: anything unmatched is a 404 -- JSON for the API, the app's
+// "Page not found" page for browsers.
+app.use((req: Request, res: Response) => {
+  if (req.path.startsWith("/api/")) return res.status(404).json({ error: "Not found" });
+  sendApp(res, 404);
+});
+
+const shareWebSocketServer = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
+
+interface ShareMeta {
+  sessionId: string;
+  name: string;
+  size: number;
+  encryptedSize: number;
+  sha256: string;
+  iv: string;
+  fields: unknown[];
+  algorithm: 'AES-GCM';
+}
+
+interface ShareFile {
+  meta: ShareMeta;
+  data: Buffer;
+  receivedBytes: number;
+}
+
+interface ShareSession {
+  createdAt: number;
+  sender: WebSocket | null;
+  receivers: Map<string, WebSocket>;
+  file: ShareFile | null;
+  senderUploadComplete: boolean;
+}
+
+interface SocketMembership {
+  sessionId: string;
+  role: ShareRole;
+  receiverId?: string;
+}
+
+const shareSessions = new Map<string, ShareSession>();
+const socketSessions = new Map<WebSocket, SocketMembership>();
+const receiverIds = new WeakMap<WebSocket, string>();
+let nextReceiverId = 1;
+
+function sendJson(socket: WebSocket, message: Record<string, unknown>) {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+
+function nextReceiverIdFor(socket: WebSocket): string {
+  const existing = receiverIds.get(socket);
+  if (existing) return existing;
+  const id = `r${Date.now().toString(36)}-${(nextReceiverId++).toString(36)}`;
+  receiverIds.set(socket, id);
+  return id;
+}
+
+function addShareMemory(bytes: number): boolean {
+  if (shareMemoryBytes + bytes > SHARE_MAX_SESSIONS_MEMORY_BYTES) return false;
+  shareMemoryBytes += bytes;
+  return true;
+}
+
+function releaseShareFile(file: ShareFile | null) {
+  if (!file) return;
+  shareMemoryBytes = Math.max(0, shareMemoryBytes - file.data.length);
+}
+
+async function waitForSocketCapacity(socket: WebSocket) {
+  while (socket.readyState === WebSocket.OPEN && socket.bufferedAmount > WS_HIGH_WATER_MARK) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+// A receiver can end up requesting a relay download more than once in quick
+// succession (fallback timer, WebRTC failure handler, socket reconnect, etc.
+// all racing each other). If two sendRelayFile() calls for the SAME socket
+// ran concurrently, their chunks would interleave on the wire and the
+// earlier call's `relay-complete` could arrive before all bytes were sent --
+// which is exactly what produced the "ended before the whole PDF arrived"
+// false alarm, even though the rest of the data kept arriving right behind it.
+//
+// Each call gets a generation stamp; whenever a newer call starts for the
+// same socket, older in-flight calls notice the stamp changed and quietly
+// stop (no more chunks, no relay-complete), leaving only the latest request
+// to actually finish the stream.
+const relaySendGeneration = new WeakMap<WebSocket, number>();
+
+async function sendRelayFile(session: ShareSession, socket: WebSocket, offset = 0) {
+  const file = session.file;
+  if (!file || socket.readyState !== WebSocket.OPEN) return;
+
+  const generation = (relaySendGeneration.get(socket) ?? 0) + 1;
+  relaySendGeneration.set(socket, generation);
+  const isCurrent = () => relaySendGeneration.get(socket) === generation;
+
+  const start = Math.max(0, Math.min(offset, file.data.length));
+  sendJson(socket, { type: 'relay-meta', ...file.meta, offset: start });
+
+  for (let cursor = start; cursor < file.data.length; cursor += SHARE_CHUNK_BYTES) {
+    if (socket.readyState !== WebSocket.OPEN || !isCurrent()) return;
+    await waitForSocketCapacity(socket);
+    if (socket.readyState !== WebSocket.OPEN || !isCurrent()) return;
+    socket.send(file.data.subarray(cursor, Math.min(cursor + SHARE_CHUNK_BYTES, file.data.length)));
+  }
+  if (!isCurrent()) return;
+  sendJson(socket, { type: 'relay-complete' });
+  logShare('relay-delivered', { sessionId: file.meta.sessionId, receiverOffset: start, encryptedBytes: file.data.length });
+}
+
+function createShareSession(sessionId: string): ShareSession {
+  const session: ShareSession = {
+    createdAt: Date.now(),
+    sender: null,
+    receivers: new Map(),
+    file: null,
+    senderUploadComplete: false,
+  };
+  shareSessions.set(sessionId, session);
+  logShare('session-created', { sessionId });
+  return session;
+}
+
+function cleanupSocket(socket: WebSocket) {
+  const membership = socketSessions.get(socket);
+  if (!membership) return;
+  socketSessions.delete(socket);
+
+  const session = shareSessions.get(membership.sessionId);
+  if (!session) return;
+
+  if (membership.role === 'sender' && session.sender === socket) {
+    session.sender = null;
+    logShare('sender-left', { sessionId: membership.sessionId });
+    if (!session.file || !session.senderUploadComplete) {
+      for (const receiver of session.receivers.values()) {
+        sendJson(receiver, {
+          type: 'sender-left',
+          message: 'The sender disconnected before the encrypted PDF was fully uploaded.',
+        });
+      }
+    }
+  } else if (membership.receiverId) {
+    session.receivers.delete(membership.receiverId);
+    logShare('receiver-left', { sessionId: membership.sessionId, receiverId: membership.receiverId });
+    if (session.sender) {
+      sendJson(session.sender, {
+        type: 'receiver-left',
+        receiverId: membership.receiverId,
+        receiverCount: session.receivers.size,
+      });
+    }
+  }
+
+  if (!session.sender && session.receivers.size === 0 && !session.file) {
+    shareSessions.delete(membership.sessionId);
+    logShare('session-removed', { sessionId: membership.sessionId });
+  }
+}
+
+shareWebSocketServer.on('connection', (socket) => {
+  socket.on('message', async (raw, isBinary) => {
+    const membership = socketSessions.get(socket);
+
+    if (isBinary) {
+      if (!membership || membership.role !== 'sender') {
+        return sendJson(socket, { type: 'error', code: 'not-sender', message: 'Only the sender can upload encrypted PDF data.' });
+      }
+      const session = shareSessions.get(membership.sessionId);
+      if (!session?.file || session.sender !== socket || session.senderUploadComplete) {
+        return sendJson(socket, { type: 'error', code: 'file-not-expected', message: 'Send encrypted file metadata before sending data.' });
+      }
+      const chunk = Buffer.from(raw as Buffer);
+      const nextSize = session.file.receivedBytes + chunk.length;
+      if (nextSize > session.file.meta.encryptedSize) {
+        return sendJson(socket, { type: 'error', code: 'file-too-large', message: 'The encrypted PDF exceeds the allowed share size.' });
+      }
+      chunk.copy(session.file.data, session.file.receivedBytes);
+      session.file.receivedBytes = nextSize;
+      return;
+    }
+
+    let message: any;
+    try {
+      message = JSON.parse(raw.toString());
+    } catch (error) {
+      logError('share-parse', error);
+      return sendJson(socket, { type: 'error', code: 'invalid-message', message: 'Invalid share message.' });
+    }
+
+    if (!message || !SESSION_ID_PATTERN.test(message.sessionId)) {
+      return sendJson(socket, { type: 'error', code: 'invalid-session', message: 'Invalid share session.' });
+    }
+
+    if (message.type === 'join') {
+      if (message.role !== 'sender' && message.role !== 'receiver') {
+        return sendJson(socket, { type: 'error', code: 'invalid-role', message: 'Invalid share role.' });
+      }
+
+      let session = shareSessions.get(message.sessionId);
+      if (!session && message.role === 'sender') session = createShareSession(message.sessionId);
+      if (!session) {
+        return sendJson(socket, { type: 'error', code: 'not-found', message: 'This share link has expired or is unavailable.' });
+      }
+
+      if (message.role === 'sender') {
+        if (session.sender && session.sender !== socket) {
+          return sendJson(socket, { type: 'error', code: 'sender-taken', message: 'This share is already owned by another sender.' });
+        }
+        session.sender = socket;
+        socketSessions.set(socket, { sessionId: message.sessionId, role: 'sender' });
+      } else {
+        const receiverId = typeof message.receiverId === 'string' && message.receiverId.length <= 64
+          ? message.receiverId
+          : nextReceiverIdFor(socket);
+        const previousSocket = session.receivers.get(receiverId);
+        if (previousSocket && previousSocket !== socket) {
+          socketSessions.delete(previousSocket);
+          try { previousSocket.close(1000, 'Receiver reconnected'); } catch (_) {}
+        }
+        session.receivers.set(receiverId, socket);
+        socketSessions.set(socket, { sessionId: message.sessionId, role: 'receiver', receiverId });
+      }
+
+      const receiverId = socketSessions.get(socket)?.receiverId;
+      sendJson(socket, {
+        type: 'joined',
+        role: message.role,
+        receiverId,
+        fileReady: Boolean(session.file && session.senderUploadComplete),
+        relayReceivedBytes: message.role === 'sender' ? session.file?.receivedBytes ?? 0 : 0,
+        fileMeta: session.file?.meta ?? null,
+      });
+
+      if (message.role === 'receiver') {
+        if (session.sender) {
+          sendJson(session.sender, {
+            type: 'receiver-joined',
+            receiverId,
+            receiverCount: session.receivers.size,
+          });
+        } else if (session.file && session.senderUploadComplete) {
+          sendJson(socket, { type: 'relay-available' });
+        } else {
+          sendJson(socket, { type: 'waiting-for-sender' });
+        }
+      }
+      return;
+    }
+
+    if (!membership || membership.sessionId !== message.sessionId) {
+      return sendJson(socket, { type: 'error', code: 'not-joined', message: 'Join the share session first.' });
+    }
+
+    const session = shareSessions.get(message.sessionId);
+    if (!session) return sendJson(socket, { type: 'error', code: 'session-unavailable', message: 'Share session is unavailable.' });
+
+    if (message.type === 'file-meta' && membership.role === 'sender') {
+      if (typeof message.name !== 'string' || typeof message.sha256 !== 'string' || !Array.isArray(message.fields)) {
+        return sendJson(socket, { type: 'error', code: 'invalid-file-meta', message: 'Invalid encrypted PDF metadata.' });
+      }
+      if (message.algorithm !== 'AES-GCM' || typeof message.iv !== 'string') {
+        return sendJson(socket, { type: 'error', code: 'invalid-file-meta', message: 'Unsupported encryption metadata.' });
+      }
+      if (!Number.isInteger(message.encryptedSize) || message.encryptedSize <= 0 || message.encryptedSize > MAX_SHARE_BYTES + 32) {
+        return sendJson(socket, { type: 'error', code: 'invalid-file-meta', message: 'Invalid encrypted PDF size.' });
+      }
+
+      if (session.file) {
+        const sameFile = session.file.meta.encryptedSize === message.encryptedSize
+          && session.file.meta.sha256 === message.sha256
+          && session.file.meta.iv === message.iv;
+        if (!sameFile) return sendJson(socket, { type: 'error', code: 'file-already-exists', message: 'A different PDF is already stored for this share link.' });
+        session.senderUploadComplete = session.file.receivedBytes === session.file.meta.encryptedSize;
+        return sendJson(socket, { type: 'file-upload-started', size: session.file.meta.encryptedSize, receivedBytes: session.file.receivedBytes });
+      }
+
+      if (!addShareMemory(message.encryptedSize)) {
+        return sendJson(socket, { type: 'server-busy', message: 'Temporary sharing storage is currently full. Please try again later.' });
+      }
+
+      session.file = {
+        meta: {
+          sessionId: message.sessionId,
+          name: message.name.slice(0, 255),
+          size: message.size,
+          encryptedSize: message.encryptedSize,
+          sha256: message.sha256,
+          iv: message.iv,
+          fields: message.fields,
+          algorithm: 'AES-GCM',
+        },
+        data: Buffer.alloc(message.encryptedSize),
+        receivedBytes: 0,
+      };
+      session.senderUploadComplete = false;
+      sendJson(socket, { type: 'file-upload-started', size: message.encryptedSize, receivedBytes: 0 });
+      return;
+    }
+
+    if (message.type === 'file-complete' && membership.role === 'sender') {
+      if (!session.file || session.file.receivedBytes !== session.file.meta.encryptedSize) {
+        return sendJson(socket, { type: 'error', code: 'incomplete-file', message: 'The encrypted PDF upload is incomplete.' });
+      }
+      session.senderUploadComplete = true;
+      sendJson(socket, { type: 'file-stored', size: session.file.meta.encryptedSize, receiverCount: session.receivers.size });
+      logShare('encrypted-file-stored', { sessionId: message.sessionId, encryptedBytes: session.file.meta.encryptedSize });
+      return;
+    }
+
+    if (message.type === 'download' && membership.role === 'receiver') {
+      if (!session.file || !session.senderUploadComplete) {
+        return sendJson(socket, { type: 'waiting-for-file', message: 'The encrypted PDF is not ready yet.' });
+      }
+      const offset = Number.isInteger(message.offset) ? message.offset : 0;
+      if (offset < 0 || offset > session.file.meta.encryptedSize) {
+        return sendJson(socket, { type: 'error', code: 'invalid-offset', message: 'Invalid resume offset.' });
+      }
+      void sendRelayFile(session, socket, offset).catch((error) => {
+        logError('share-delivery', error, { sessionId: message.sessionId });
+        sendJson(socket, { type: 'error', code: 'delivery-failed', message: 'Could not deliver the encrypted PDF.' });
+      });
+      return;
+    }
+
+    if (message.type === 'signal' && membership.role === 'receiver') {
+      if (!membership.receiverId || !session.sender) return sendJson(socket, { type: 'error', code: 'peer-unavailable', message: 'The sender is not connected.' });
+      sendJson(session.sender, { type: 'signal', receiverId: membership.receiverId, payload: message.payload });
+      return;
+    }
+
+    if (message.type === 'signal' && membership.role === 'sender') {
+      if (typeof message.receiverId !== 'string') return sendJson(socket, { type: 'error', code: 'invalid-receiver', message: 'Receiver id is required.' });
+      const receiver = session.receivers.get(message.receiverId);
+      if (!receiver) return sendJson(socket, { type: 'error', code: 'peer-unavailable', message: 'Receiver is no longer connected.' });
+      sendJson(receiver, { type: 'signal', payload: message.payload });
+      return;
+    }
+
+    sendJson(socket, { type: 'error', code: 'unsupported-message', message: 'Unsupported share message.' });
+  });
+
+  socket.on('close', () => cleanupSocket(socket));
+  socket.on('error', (error) => {
+    logError('share-socket-error', error);
+    cleanupSocket(socket);
+  });
+});
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  if (url.pathname !== '/signal') return socket.destroy();
+  shareWebSocketServer.handleUpgrade(request, socket, head, (webSocket) =>
+    shareWebSocketServer.emit('connection', webSocket, request),
+  );
+});
+
+const sessionCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, session] of shareSessions) {
+    if (now - session.createdAt >= SHARE_SESSION_TTL_MS) {
+      logShare('session-expired', { sessionId });
+      for (const peer of [session.sender, ...session.receivers.values()]) {
+        if (peer) sendJson(peer, { type: 'expired', message: 'This 15-minute share session has expired.' });
+        peer?.close(1000, 'Share session expired');
+        if (peer) socketSessions.delete(peer);
+      }
+      releaseShareFile(session.file);
+      session.receivers.clear();
+      session.sender = null;
+      shareSessions.delete(sessionId);
+    }
+  }
+}, 60_000);
+sessionCleanup.unref();
+
+function startServer(port: number, attempt = 1) {
+  const onError = (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE' && attempt < 6) {
+      const nextPort = port + 1;
+      log("warn", "server", "port-in-use", { port, retry: nextPort });
+      server.off('error', onError);
+      startServer(nextPort, attempt + 1);
+      return;
+    }
+    throw error;
+  };
+
+  server.once('error', onError);
+  server.listen(port, () => {
+    server.off('error', onError);
+    log("info", "server", `listening at http://localhost:${port}`, { maxShareBytes: MAX_SHARE_BYTES, maxShareSessionsMemoryBytes: SHARE_MAX_SESSIONS_MEMORY_BYTES });
+  });
+}
+
+const requestedPort = Number.parseInt(process.env.PORT || '3000', 10);
+startServer(Number.isFinite(requestedPort) ? requestedPort : 3000);

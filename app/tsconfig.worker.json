@@ -1,0 +1,11 @@
+/* The app's Web Workers (*.worker.ts), type-checked against the worker
+   globals instead of the DOM. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/worker",
+    "lib": ["ES2023", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/**/*.worker.ts"]
+}

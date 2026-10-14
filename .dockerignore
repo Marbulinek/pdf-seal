@@ -1,5 +1,8 @@
 node_modules
 dist
+.angular
+app/out-tsc
+coverage
 uploads
 .git
 .github
@@ -8,5 +11,13 @@ uploads
 npm-debug.log
 *.md
 claude.json
-public/perf-fixtures
+app/public/perf-fixtures
+server/test
+app/src/**/*.spec.ts
+app/src/app/testing
+app/src/test-setup.ts
 extension
+e2e
+playwright.config.ts
+test-results
+playwright-report

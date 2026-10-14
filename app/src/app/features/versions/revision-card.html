@@ -1,0 +1,88 @@
+@let c = card();
+<button
+  type="button"
+  class="revision-card-head"
+  [attr.data-rev-toggle]="c.rev.index"
+  aria-label="Toggle revision details"
+  [attr.aria-expanded]="c.expanded"
+  (click)="toggleCard($event, c.rev.index)"
+>
+  <div class="revision-card-head-top">
+    <div class="revision-card-title">
+      <span class="revision-index-badge" [title]="'Version ' + c.rev.index">{{ c.rev.index }}</span>
+      <span>{{ label(c.rev) }}</span>
+    </div>
+    <span class="revision-expand-btn" aria-hidden="true"><span class="icon {{ c.expanded ? 'icon-chevron-down' : 'icon-chevron-right' }}" aria-hidden="true"></span></span>
+  </div>
+  @if (c.badges.length) {
+    <div class="revision-row-tags">
+      @for (badge of c.badges; track badge.label) {
+        <span class="revision-tag {{ tagClass(badge) }}" [title]="tagTitle(badge)">{{ badge.label }}</span>
+      }
+    </div>
+  }
+</button>
+<div class="revision-card-body">
+  @if (!c.rev.loaded) {
+    <p class="field-details-empty revision-details-placeholder">
+      {{
+        c.rev.detailState === 'loading'
+          ? 'Loading revision details…'
+          : c.rev.detailState
+            ? c.rev.detailState
+            : "Expand to load this revision's details."
+      }}
+    </p>
+  } @else {
+    <app-ov-facts [facts]="c.facts" />
+    @if (c.signed) {
+      <div class="revision-card-signatures">
+        <span class="icon icon-lock" aria-hidden="true"></span>
+        {{ signatureNames(c) }}
+      </div>
+    }
+    @if (c.modified) {
+      <div class="revision-row-sub">modified {{ c.modified }}</div>
+    }
+    @if (c.rev.parseError) {
+      <div class="revision-card-error">Could not be parsed standalone: {{ c.rev.parseError }}</div>
+    }
+  }
+  <div class="revision-card-actions">
+    <button
+      type="button"
+      class="btn revision-action-btn"
+      title="View this revision in the document viewer"
+      data-rev-action="view"
+      [attr.data-rev-index]="c.rev.index"
+      [class.is-active]="versions.selectedView() === c.rev.index"
+      (click)="versions.viewRevision(c.rev.index)"
+    >
+      View
+    </button>
+    @if (c.prevDisplayedIndex !== null) {
+      <button
+        type="button"
+        class="btn revision-action-btn"
+        title="Visually compare this revision against the one right before it"
+        data-rev-action="diff-prev"
+        [attr.data-rev-index]="c.rev.index"
+        [attr.data-rev-prev-index]="c.prevDisplayedIndex"
+        (click)="versions.runQuickDiff(c.prevDisplayedIndex, c.rev.index, 'visual')"
+      >
+        <span class="icon icon-repeat" aria-hidden="true"></span> vs previous
+      </button>
+    }
+    <span class="revision-action-divider" aria-hidden="true"></span>
+    <button
+      type="button"
+      class="icon-btn revision-action-btn"
+      title="Download this revision as a standalone PDF"
+      data-rev-action="download"
+      [attr.data-rev-index]="c.rev.index"
+      (click)="versions.downloadRevision(c.rev.index)"
+    >
+      <span class="icon icon-download" aria-hidden="true"></span>
+    </button>
+  </div>
+</div>
