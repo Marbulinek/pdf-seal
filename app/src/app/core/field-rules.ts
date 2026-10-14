@@ -29,7 +29,6 @@ export function isRemovableField(f: DocField | null | undefined): boolean {
  * them only a truly ~zero-size rect counts as invisible.
  */
 export const INVISIBLE_FIELD_MAX_DIMENSION = 10; // PDF points
-export const SMALL_FIELD_NO_DELETE_HANDLE = 20; // PDF points
 
 export function isRectPracticallyInvisible(rect: PdfRect | null | undefined, type?: string): boolean {
   if (!rect) return false;

@@ -1685,7 +1685,7 @@ canvas { display: block; }
 }
 .field-overlay.active {
   border-color: var(--ice); background: rgba(16, 185, 129, 0.32); z-index: 10;
-  box-shadow: 0 0 0 4px rgba(30, 33, 51, 0.18); cursor: move;
+  box-shadow: 0 0 0 4px rgba(30, 33, 51, 0.18); cursor: pointer;
 }
 .field-overlay.required.active {
   border-color: var(--coral); background: rgba(249, 115, 22, 0.28); box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.18);
@@ -1796,9 +1796,6 @@ body:not([data-active-section="signatures"]) .field-overlay .resize-handle {
 body:not([data-active-section="signatures"]) .field-overlay .template-save-handle {
   display: none;
 }
-body:not([data-active-section="signatures"]) .field-overlay .field-delete-handle {
-  display: none;
-}
 
 /* Placement mode: user is about to click on the PDF to drop a new field */
 .pdf-container.placing-mode canvas { cursor: crosshair; }
@@ -1887,27 +1884,6 @@ body.hide-signature-templates-panel .field-overlay .template-save-handle { displ
    that attribute alone loses to the two-class hover/active selectors above.
    Signed fields need the override to actually win. */
 .field-overlay.is-signed .template-save-handle { display: none !important; }
-
-/* Delete handle -- top-left corner, opposite the save-to-template grip.
-   A plain button (not a drag source) that opens the same confirmation
-   modal as the "Remove field" button in the Edit panel. */
-.field-delete-handle {
-  position: absolute; top: -9px; left: -9px;
-  width: 19px; height: 19px;
-  display: none; align-items: center; justify-content: center;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  background: var(--coral);
-  color: #fff;
-  font-size: 0.66rem; line-height: 1;
-  padding: 0;
-  cursor: pointer; pointer-events: auto;
-  box-shadow: 0 1px 4px rgba(30, 33, 51, 0.35);
-}
-.field-delete-handle:hover { background: var(--coral-dark); }
-.field-overlay:hover .field-delete-handle,
-.field-overlay.active .field-delete-handle { display: flex; }
-.field-overlay .field-delete-handle[hidden] { display: none !important; }
 
 @media (max-width: 960px) {
   .tools-panel { width: 100%; }
@@ -5017,7 +4993,6 @@ body.hide-certificate-scratchpad-panel #certificatesScratchpadPanel { display: n
   border-style: solid;
   border-color: var(--ocean);
   background: rgba(69, 123, 157, 0.1);
-  cursor: default;
 }
 .field-overlay.is-signed:hover { border-color: var(--ocean-dark); }
 /* Locked (signed / read-only) boxes stay blue even when also "required", and

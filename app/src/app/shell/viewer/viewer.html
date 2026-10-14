@@ -221,17 +221,6 @@
             >
               <span class="icon icon-layers" aria-hidden="true"></span>
             </div>
-            <button
-              type="button"
-              class="field-delete-handle"
-              aria-label="Remove field"
-              [hidden]="o.locked || o.smallField"
-              [title]="'Remove &quot;' + (o.field.name || 'this field') + '&quot;'"
-              (mousedown)="$event.stopPropagation()"
-              (click)="onDeleteHandle($event, o.field)"
-            >
-              <span class="icon icon-close" aria-hidden="true"></span>
-            </button>
           </div>
         }
         <!-- Checkbox/radio options beyond the first widget: view-only markers. -->

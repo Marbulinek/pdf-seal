@@ -14,7 +14,6 @@ import {
 import { DocumentService } from '../../core/document.service';
 import { DocumentStore, type StoreField } from '../../core/document.store';
 import {
-  SMALL_FIELD_NO_DELETE_HANDLE,
   choiceFieldIconClass,
   isEditableField,
   isRectPracticallyInvisible,
@@ -133,7 +132,6 @@ export class Viewer {
           labelVisible: active || hovered === field.uid,
           selected: !!activeItem && activeItem.kind === kind && activeItem.key === field.name,
           hovered: !!hoverItem && hoverItem.kind === kind && hoverItem.key === field.name,
-          smallField: Math.min(rect.width, rect.height) < SMALL_FIELD_NO_DELETE_HANDLE,
           icon: field.signed === true ? 'icon-lock' : choice || (field.type === 'Signature' ? 'icon-pen' : 'icon-file-text'),
           pinIcon: field.signed === true ? 'icon-lock' : choice || 'icon-eye-off',
           title,
@@ -485,13 +483,6 @@ export class Viewer {
     if (this.ui.activeSection() !== 'metadata') return;
     this.overview.openSheet(field.type === 'Signature' ? 'signature' : 'field', field.name);
     e.stopPropagation();
-  }
-
-  protected onDeleteHandle(e: MouseEvent, field: StoreField): void {
-    e.stopPropagation();
-    if (!this.doc.activeFile()) return;
-    this.signatures.select(field.uid);
-    this.signatures.openRemoveFieldModal(field.name);
   }
 
   protected onTemplateGripDragStart(e: DragEvent, field: StoreField): void {
