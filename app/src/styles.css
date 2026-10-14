@@ -2689,7 +2689,6 @@ body.hide-signature-templates-panel #sigTabAdd:hover { color: var(--navy); }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
   overflow-y: auto;
   padding: 2px 6px 2px 2px;
 }
