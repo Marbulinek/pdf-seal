@@ -37,7 +37,7 @@ interface SignaturesState {
   activeFieldUid: string | null;
   /** Waiting for the user's next click on the PDF to drop a new field. */
   isPlacing: boolean;
-  // The "Add field" form.
+  // The "Add signature" form.
   addName: string;
   addWidth: number;
   addHeight: number;

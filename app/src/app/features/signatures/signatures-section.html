@@ -11,13 +11,17 @@
 </div>
 
 <div class="panel signature-panel">
+  <!-- Covers the whole card on the Add tab (like the other sections); the Templates tab stays editable with no document open. -->
+  <div class="panel-overlay" id="addSigPanelOverlay" [class.is-hidden]="hasDoc() || tab() !== 'add'">
+    <div class="panel-overlay-text">Upload a document first to add a signature</div>
+  </div>
   <h3><span class="panel-dot dot-ocean"></span>Signatures</h3>
   <div id="sigSectionHero">
     @if (hero(); as h) {
       <app-ov-hero [hero]="h" />
     }
   </div>
-  <!-- With templates off, "Add field" stays as the panel's heading; a tablist of one would be a lie to a screen reader. -->
+  <!-- With templates off, "Add signature" stays as the panel's heading; a tablist of one would be a lie to a screen reader. -->
   <div class="sig-tabs" id="sigTabs" [attr.role]="templatesEnabled() ? 'tablist' : null" aria-label="Signature tools">
     <button
       type="button"
@@ -31,7 +35,7 @@
       [class.is-active]="tab() === 'add'"
       (click)="setTab('add')"
     >
-      <span class="icon icon-plus-bold" aria-hidden="true"></span> Add field
+      <span class="icon icon-plus-bold" aria-hidden="true"></span> Add signature
     </button>
     <button
       type="button"
@@ -64,10 +68,6 @@
   </div>
 
   <div class="sig-tab-panel" id="sigTabPanelAdd" data-sig-tab-panel="add" role="tabpanel" aria-labelledby="sigTabAdd" [hidden]="tab() !== 'add'">
-    <!-- The overlay lives on this tab panel, not the whole card: templates stay editable with no document open. -->
-    <div class="panel-overlay" id="addSigPanelOverlay" [class.is-hidden]="hasDoc()">
-      <div class="panel-overlay-text">Upload a document first to add a field</div>
-    </div>
     <form id="addSigForm" (submit)="$event.preventDefault()">
       <div class="form-group">
         <label for="sigName">Field Name</label>
