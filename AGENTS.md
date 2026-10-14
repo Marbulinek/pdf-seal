@@ -78,7 +78,10 @@ CI (`.github/workflows/ci.yml`) type-checks and bundles the server, builds the A
 - **Filesystem safety**: any request-derived path must be reduced to a bare filename with `path.basename()` and rejoined onto the fixed, trusted `UPLOADS_DIR` (`server/server.ts`) before touching `fs.*`. Inline this check next to the fs call itself — see the pattern around line 39 of `server/server.ts`.
 - **Rate limiting**: every new HTTP route needs `generalLimiter`, plus `uploadLimiter` if it handles file uploads.
 - **No CDN scripts**: install third-party libraries from npm and bundle them through the Angular build (or, for files that must stay separate like workers, copy them to `/vendor` via `angular.json` assets) instead of loading from external CDNs.
-- **Angular conventions**: standalone components, signals (`signal`/`computed`/`effect`/`input`/`output`/`viewChild`) rather than RxJS for state, NgRx SignalStore for feature state, `ChangeDetectionStrategy.OnPush`, no `any` (narrow `unknown` instead), and keep the existing DOM ids/classes stable.
+- **Angular conventions**: follow the Angular agent skill in `.claude/skills/angular-developer` (installed from `angular/skills`). In this codebase that means: standalone components, signals (`signal`/`computed`/`linkedSignal`/`resource`/`input`/`output`/`viewChild`) rather than RxJS for state, NgRx SignalStore for feature state, `ChangeDetectionStrategy.OnPush`, no `any` (narrow `unknown` instead), and keep the existing DOM ids/classes stable.
+  - Derive state with `computed`/`linkedSignal` (`withLinkedState` in a store) — never by `.set()`/`patchState` inside an `effect`. Effects only sync signals to the DOM or other imperative APIs (`untracked` around the imperative part).
+  - Query your own template with `viewChild`/`viewChildren`, not `document.querySelector`/`getElementById`.
+  - One component per file, named after its class in kebab-case (`TemplateNameModal` → `template-name-modal.ts`); a template over ~60 lines lives in a sibling `.html` (`templateUrl`).
 - **Proxy trust**: `app.set("trust proxy", 1)` is intentional for Railway's single proxy hop — don't change it without understanding the tradeoff.
 
 ## Working guidelines

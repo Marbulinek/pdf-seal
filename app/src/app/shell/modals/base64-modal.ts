@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, linkedSignal, untracked, viewChild } from '@angular/core';
 import { DocumentService } from '../../core/document.service';
 import { UiService } from '../../core/ui.service';
 import { analyzeBase64Pdf, formatBase64Text, quickCheckBase64Header } from '../../core/util/base64';
@@ -64,22 +64,27 @@ export class Base64Modal {
   private readonly input = viewChild.required<ElementRef<HTMLTextAreaElement>>('input');
 
   protected readonly copy = VALIDITY_COPY;
-  protected readonly text = signal('');
-  protected readonly validity = signal<Base64Validity>('idle');
-  protected readonly status = signal<{ message: string; type: 'error' | 'success' } | null>(null);
+  // Every open starts from a blank form (closing keeps the last state for the fade-out).
+  protected readonly text = this.resetOnOpen('');
+  protected readonly validity = this.resetOnOpen<Base64Validity>('idle');
+  protected readonly status = this.resetOnOpen<{ message: string; type: 'error' | 'success' } | null>(null);
   private validityTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    // Every open starts from a blank form.
     effect(() => {
       if (!this.ui.base64ModalOpen()) return;
       untracked(() => {
-        this.text.set('');
         this.input().nativeElement.value = '';
-        this.status.set(null);
-        this.validity.set('idle');
+        // After the backdrop starts fading in: a `visibility: hidden` element can't take focus.
         setTimeout(() => this.input().nativeElement.focus(), 50);
       });
+    });
+  }
+
+  private resetOnOpen<T>(initial: T) {
+    return linkedSignal<boolean, T>({
+      source: this.ui.base64ModalOpen,
+      computation: (open, previous) => (open || !previous ? initial : previous.value),
     });
   }
 

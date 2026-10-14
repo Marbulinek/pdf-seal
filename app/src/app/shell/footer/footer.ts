@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, resource } from '@angular/core';
 import { UiService } from '../../core/ui.service';
 
 export const EXTENSION_STORE_URL = 'https://chromewebstore.google.com/detail/pdf-seal-portal/aamkakilmifjonocbbfchhcbnbgajceh';
@@ -19,20 +19,23 @@ export function isGoogleChrome(): boolean {
 })
 export class Footer {
   protected readonly ui = inject(UiService);
-  protected readonly version = signal('Version …');
   protected readonly chrome = isGoogleChrome();
   protected readonly extensionUrl = EXTENSION_STORE_URL;
 
-  constructor() {
-    fetch('/api/version')
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Unable to read version');
-        const data = (await response.json()) as { version?: unknown };
-        const version = typeof data.version === 'string' && data.version.trim() ? data.version : null;
-        this.version.set(version ? `v.${version}` : 'Version unavailable');
-      })
-      .catch(() => this.version.set('Version unavailable'));
-  }
+  private readonly appVersion = resource({
+    loader: async ({ abortSignal }) => {
+      const response = await fetch('/api/version', { signal: abortSignal });
+      if (!response.ok) throw new Error('Unable to read version');
+      const data = (await response.json()) as { version?: unknown };
+      return typeof data.version === 'string' && data.version.trim() ? data.version : null;
+    },
+  });
+
+  protected readonly version = computed(() => {
+    if (this.appVersion.isLoading()) return 'Version …';
+    const version = this.appVersion.hasValue() ? this.appVersion.value() : null;
+    return version ? `v.${version}` : 'Version unavailable';
+  });
 
   protected openDiagnostics(event: Event): void {
     event.preventDefault();

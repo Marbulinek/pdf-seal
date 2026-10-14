@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { DocumentStore } from '../../core/document.store';
 import { NotificationService } from '../../core/notification.service';
+import { DEFAULT_SETTINGS, SettingsService } from '../../core/settings.service';
 import { UiService } from '../../core/ui.service';
 import { makeField } from '../../testing/fixtures';
 import { provideTestApp } from '../../testing/providers';
@@ -11,6 +12,7 @@ describe('SignaturesStore', () => {
   let doc: DocumentStore;
 
   beforeEach(() => {
+    localStorage.clear();
     TestBed.configureTestingModule({ providers: provideTestApp() });
     store = TestBed.inject(SignaturesStore);
     doc = TestBed.inject(DocumentStore);
@@ -64,5 +66,29 @@ describe('SignaturesStore', () => {
     expect(store.canPlace()).toBe(false);
     store.setAddForm({ addName: 'Sig' });
     expect(store.canPlace()).toBe(false); // still no pdf.js document open
+  });
+
+  it('closes the pending-changes popover with the bar, and keeps it closed', () => {
+    store.stageNewField({ name: 'New', page: 0, rect: { x: 1, y: 2, width: 100, height: 40 } });
+    store.togglePendingDetails();
+    expect(store.pendingDetailsOpen()).toBe(true);
+
+    store.discardPending();
+    expect(store.pendingCount()).toBe(0);
+    expect(store.pendingDetailsOpen()).toBe(false);
+
+    store.stageNewField({ name: 'Again', page: 0, rect: { x: 1, y: 2, width: 100, height: 40 } });
+    expect(store.pendingDetailsOpen()).toBe(false);
+  });
+
+  it('opens Field Details when raw PDF data is turned on, and lets the user close it again', () => {
+    const settings = TestBed.inject(SettingsService);
+    expect(store.fieldDetailsOpen()).toBe(false);
+
+    settings.save({ ...DEFAULT_SETTINGS, showRawPdfData: true });
+    expect(store.fieldDetailsOpen()).toBe(true);
+
+    store.setFieldDetailsOpen(false);
+    expect(store.fieldDetailsOpen()).toBe(false);
   });
 });

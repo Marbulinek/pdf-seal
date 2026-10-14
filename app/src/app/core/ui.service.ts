@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, linkedSignal, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SettingsService } from './settings.service';
 
@@ -38,7 +38,11 @@ export class UiService {
   readonly sectionNavOpen = signal(false);
   readonly openDropdown = signal<'upload' | 'download' | null>(null);
 
-  readonly signatureTab = signal<SignatureTab>('add');
+  /** The Signatures panel's tab; the Templates tab disappears with its setting, so that snaps back to Add. */
+  readonly signatureTab = linkedSignal<boolean, SignatureTab>({
+    source: () => this.settings.effective().templatesEnabled,
+    computation: (templatesEnabled, previous) => (templatesEnabled ? (previous?.value ?? 'add') : 'add'),
+  });
 
   // ---- Modals (content lives in the owning feature service) ----
   readonly extensionModalOpen = signal(false);
@@ -77,10 +81,6 @@ export class UiService {
     });
     effect(() => {
       this.document.body.classList.toggle('edit-sheet-open', this.anySheetOpen());
-    });
-    // The Templates tab disappears with the setting -- don't strand the panel on it.
-    effect(() => {
-      if (!this.settings.effective().templatesEnabled && this.signatureTab() !== 'add') this.signatureTab.set('add');
     });
   }
 

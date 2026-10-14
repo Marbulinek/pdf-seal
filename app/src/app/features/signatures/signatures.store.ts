@@ -1,9 +1,10 @@
-import { computed, effect, inject } from '@angular/core';
+import { computed, effect, inject, linkedSignal } from '@angular/core';
 import {
   patchState,
   signalStore,
   withComputed,
   withHooks,
+  withLinkedState,
   withMethods,
   withProps,
   withState,
@@ -47,10 +48,6 @@ interface SignaturesState {
   redoStack: DocumentSnapshot[];
   /** An async undo/redo is running -- guards against overlapping clicks. */
   historyBusy: boolean;
-  /** The "Field Details (raw PDF properties)" <details> in the Edit sheet. */
-  fieldDetailsOpen: boolean;
-  /** The pending-changes bar's "View changes" popover. */
-  pendingDetailsOpen: boolean;
   /** Which exit animation the bar plays on its next hide. */
   pendingHideReason: 'apply' | 'discard' | null;
   /** The Edit sheet slides away (keeping the selection) during a template capture drag. */
@@ -68,8 +65,6 @@ const initialState: SignaturesState = {
   undoStack: [],
   redoStack: [],
   historyBusy: false,
-  fieldDetailsOpen: false,
-  pendingDetailsOpen: false,
   pendingHideReason: null,
   editSheetSuppressed: false,
 };
@@ -119,6 +114,18 @@ export const SignaturesStore = signalStore(
       }),
     };
   }),
+  withLinkedState((store) => ({
+    /** The "Field Details (raw PDF properties)" <details> in the Edit sheet; turning raw data on opens it. */
+    fieldDetailsOpen: linkedSignal({
+      source: () => store._settings.effective().showRawPdfData,
+      computation: (showRaw: boolean, previous?: { value: boolean }) => showRaw || (previous?.value ?? false),
+    }),
+    /** The pending-changes bar's "View changes" popover; it closes with the bar. */
+    pendingDetailsOpen: linkedSignal({
+      source: () => store.pendingCount() > 0,
+      computation: (hasPending: boolean, previous?: { value: boolean }) => hasPending && (previous?.value ?? false),
+    }),
+  })),
   withMethods((store) => {
     const doc = store._doc;
     const viewer = store._viewer;
@@ -474,14 +481,6 @@ export const SignaturesStore = signalStore(
       effect(() => {
         if (!store.activeField() && store.activeFieldUid()) store.deselect();
         if (!store._doc.hasDocument() && store._ui.sheets.edit()) store._ui.closeSheet('edit');
-      });
-      // The pending-changes popover closes with the bar.
-      effect(() => {
-        if (store.pendingCount() === 0 && store.pendingDetailsOpen()) patchState(store, { pendingDetailsOpen: false });
-      });
-      // Turning raw data on opens Field Details right away.
-      effect(() => {
-        if (store._settings.effective().showRawPdfData) patchState(store, { fieldDetailsOpen: true });
       });
     },
   }),
