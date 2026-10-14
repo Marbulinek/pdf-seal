@@ -4,8 +4,9 @@ import { CertificatesStore } from '../../features/certificates/certificates.stor
 import { OverviewStore } from '../../features/overview/overview.store';
 import { SignaturesStore } from '../../features/signatures/signatures.store';
 import { VersionsStore } from '../../features/versions/versions.store';
-import { CertificateModifySheet, CertificateTimelineSheet } from './certificate-modify-sheets';
+import { CertificateModifySheet } from './certificate-modify-sheet';
 import { CertificateSheet } from './certificate-sheet';
+import { CertificateTimelineSheet } from './certificate-timeline-sheet';
 import { CompareSheet } from './compare-sheet';
 import { EditSheet } from './edit-sheet';
 import { OverviewSheet } from './overview-sheet';

@@ -2,7 +2,8 @@ import { curateRawEntries, type OverviewItem, type OverviewKind } from '@shared/
 import type { CertificateReport, DocAnnotation, DocField, DocStamp } from '../../core/models';
 import { cssEscape } from '../../core/util/dom';
 import { ovInitials, ovShortDate } from '../../core/util/format';
-import { dateFact, type FactModel, type HeroBadge, type HeroModel, type PillTone } from '../../shared/ov-ui';
+import { dateFact, type FactModel } from '../../shared/ov-facts';
+import type { HeroBadge, HeroModel, PillTone } from '../../shared/ov-hero';
 import { signatureEvidenceRows, type EvidenceRow } from '../certificates/certificates-model';
 
 export const OVERVIEW_KINDS: Record<OverviewKind, { single: string; icon: string }> = {

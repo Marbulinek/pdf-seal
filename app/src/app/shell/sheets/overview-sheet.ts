@@ -5,7 +5,11 @@ import { CertificatesStore } from '../../features/certificates/certificates.stor
 import { overviewActionLabel, overviewSheetModel, type OverviewAction } from '../../features/overview/overview-model';
 import { OverviewStore } from '../../features/overview/overview.store';
 import { AppendNode } from '../../shared/append-node';
-import { Evidence, OvFacts, OvFlags, OvHero, OvSectionTitle } from '../../shared/ov-ui';
+import { Evidence } from '../../shared/evidence';
+import { OvFacts } from '../../shared/ov-facts';
+import { OvFlags } from '../../shared/ov-flags';
+import { OvHero } from '../../shared/ov-hero';
+import { OvSectionTitle } from '../../shared/ov-section-title';
 
 /** One object from the Overview list (signature, stamp, field, link, comment). */
 @Component({

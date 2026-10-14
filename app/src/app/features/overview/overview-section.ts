@@ -3,7 +3,7 @@ import { curateRawEntries } from '@shared/DocumentOverview';
 import { DocumentStore } from '../../core/document.store';
 import { UiService } from '../../core/ui.service';
 import { formatFileSize } from '../../core/util/format';
-import { dateFact, OvFacts, type FactModel } from '../../shared/ov-ui';
+import { dateFact, OvFacts, type FactModel } from '../../shared/ov-facts';
 import { CertificatesStore } from '../certificates/certificates.store';
 import { FIELD_STATE_FILLED, OVERVIEW_KINDS, OVERVIEW_STANDARD_INFO_KEYS, groupPages, type OverviewItem } from './overview-model';
 import { OverviewStore } from './overview.store';

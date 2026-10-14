@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { filterMetaTree, highlightParts, MetaTree, metaEntriesOf } from './meta-tree';
+import { highlightParts } from './meta-highlight';
+import { MetaTree } from './meta-tree';
+import { filterMetaTree, metaEntriesOf } from './meta-value';
 
 describe('meta tree', () => {
   it('lists object and array entries', () => {

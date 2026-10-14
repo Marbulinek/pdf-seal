@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, linkedS
 import { DocumentService } from '../../core/document.service';
 import { UiService } from '../../core/ui.service';
 import { analyzeBase64Pdf, formatBase64Text, quickCheckBase64Header } from '../../core/util/base64';
-import { isBackdropClick } from './simple-modals';
+import { isBackdropClick } from './backdrop-click';
 
 type Base64Validity = 'idle' | 'valid' | 'invalid';
 

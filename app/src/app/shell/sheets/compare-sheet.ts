@@ -16,7 +16,8 @@ import {
   type ObjectChip,
 } from '../../features/versions/versions-model';
 import { VersionsStore } from '../../features/versions/versions.store';
-import { DictionaryChanges, INVISIBLE_FIELD_TITLE, ObjectBadges } from '../../shared/diff-bits';
+import { DictionaryChanges } from '../../shared/dictionary-changes';
+import { INVISIBLE_FIELD_TITLE, ObjectBadges } from '../../shared/object-badges';
 
 const TABS: { id: DiffTab; elementId: string; panel: string; icon: string; label: string }[] = [
   { id: 'overview', elementId: 'tabRevOverview', panel: 'revisionsDiffOverview', icon: 'icon-list', label: 'Overview' },

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import type { ByteMap, ChainNode } from '../features/certificates/certificates-model';
-import { CertDot } from './ov-ui';
+import type { ChainNode } from '../features/certificates/certificates-model';
+import { CertDot } from './cert-dot';
 
 /**
  * A certificate chain drawn top-down (root first), or a flat list. Clicking a
@@ -67,37 +67,4 @@ export class CertChain {
     if (node.signatureField) this.showField.emit(node.signatureField);
     else if (node.certId) this.openCert.emit(node.certId);
   }
-}
-
-/** Two thin bars: what the signature covers, and how full its /Contents slot is. */
-@Component({
-  selector: 'app-cert-bytemap',
-  template: `
-    @let m = map();
-    <div class="cert-bytemap">
-      <div class="cert-bytemap-row">
-        <span class="cert-bytemap-label">File coverage</span>
-        <div class="cert-bytemap-bar">
-          @for (s of m.segments; track $index) {
-            <span class="cert-bytemap-seg {{ s.cls }}" [style.width.%]="s.width" [title]="s.label"></span>
-          }
-        </div>
-      </div>
-      @if (m.trailingNote) {
-        <p class="cert-bytemap-note">{{ m.trailingNote }}</p>
-      }
-      <div class="cert-bytemap-row">
-        <span class="cert-bytemap-label">Slot occupancy</span>
-        <div class="cert-bytemap-bar">
-          <span class="cert-bytemap-seg is-occupied" [style.width.%]="m.occupiedPct" [title]="m.occupiedLabel"></span>
-          <span class="cert-bytemap-seg is-headroom" [style.width.%]="m.headroomPct" [title]="m.headroomLabel"></span>
-        </div>
-      </div>
-    </div>
-  `,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { style: 'display: contents' },
-})
-export class CertByteMap {
-  readonly map = input.required<ByteMap>();
 }

@@ -1,0 +1,95 @@
+<section class="panel revisions-list-panel" id="revisionsListPanel">
+  <div class="panel-overlay" id="revisionsListPanelOverlay" [class.is-hidden]="!!doc.pdfDoc()">
+    <div class="panel-overlay-text">Upload a document first to see version history</div>
+  </div>
+  <h3><span class="panel-dot dot-ocean"></span>Version History</h3>
+  <div id="revisionsHero">
+    @if (hero(); as h) {
+      <div class="overview-header">
+        <app-ov-hero [hero]="h" />
+        <app-ov-facts [facts]="versions.hero().facts" />
+      </div>
+    }
+  </div>
+  <p class="revisions-hint">
+    Every saved version of this document in this browser, oldest first. <em>Incremental update</em> means the save was appended to the file
+    (earlier signatures stay intact); <em>Full rewrite</em> means the file was regenerated.
+  </p>
+
+  <label class="revisions-filter-toggle" id="revisionsFilterToggleLabel" [hidden]="!showList() || !versions.filterIsMeaningful()">
+    <input #onlyIncremental type="checkbox" id="chkOnlyIncrementalVersions" [checked]="versions.onlyIncremental()" (change)="versions.setOnlyIncremental(onlyIncremental.checked)" />
+    Show only incremental updates
+  </label>
+
+  <div class="revisions-empty" id="revisionsEmptyState" [hidden]="!!doc.activeFile()">
+    <p>Upload a PDF using the <strong>Upload</strong> button above to see its version history.</p>
+  </div>
+  <div class="revisions-loading" id="revisionsLoadingState" [hidden]="!versions.loading()">
+    <span class="spinner" aria-hidden="true"></span> Reading version history…
+  </div>
+  <div class="revisions-empty" id="revisionsErrorState" [hidden]="!versions.error()">{{ versions.error() }}</div>
+  <p class="revisions-hint revisions-filter-note" id="revisionsFilterNote" [hidden]="!showList() || !versions.filterNoteVisible()">
+    No incremental updates — every save rewrote the file.
+  </p>
+
+  <ul class="revisions-timeline" id="revisionsTimeline" [hidden]="!showList()">
+    @for (node of versions.timeline(); track $index) {
+      @switch (node.kind) {
+        @case ('divider') {
+          <li class="revision-group-divider is-{{ node.divider.kind }}"><span class="revision-group-divider-label">{{ node.divider.label }}</span></li>
+        }
+        @case ('stack') {
+          <li class="revision-stack" [class.is-open]="node.open" [class.is-signed]="node.signed" [class.is-current]="node.current" [class.is-group-end]="node.groupEnd">
+            <button
+              type="button"
+              class="revision-stack-head"
+              [attr.data-stack-toggle]="node.firstIndex"
+              [attr.aria-label]="'Toggle versions ' + node.range"
+              [attr.aria-expanded]="node.open"
+              (click)="toggleStack(node.firstIndex, node.members, node.open)"
+            >
+              <div class="revision-card-head-top">
+                <div class="revision-card-title">
+                  <span class="revision-index-badge is-range" [title]="'Versions ' + node.range">{{ node.range }}</span>
+                  <span>Versions {{ node.range }}</span>
+                  <span class="revision-stack-count">{{ node.members.length }} saves</span>
+                </div>
+                <span class="revision-expand-btn" aria-hidden="true"><span class="icon {{ node.open ? 'icon-chevron-down' : 'icon-chevron-right' }}" aria-hidden="true"></span></span>
+              </div>
+              <div class="revision-row-sub">modified {{ node.modified }}</div>
+              @if (node.badges.length) {
+                <div class="revision-row-tags">
+                  @for (badge of node.badges; track badge.label) {
+                    <span class="revision-tag {{ tagClass(badge) }}" [title]="tagTitle(badge)">{{ badge.label }}</span>
+                  }
+                </div>
+              }
+            </button>
+            <ul class="revision-stack-items">
+              @for (card of node.members; track card.rev.index) {
+                <li appRevisionCard [card]="card"></li>
+              }
+            </ul>
+          </li>
+        }
+        @case ('card') {
+          <li appRevisionCard [card]="node.card"></li>
+        }
+      }
+    }
+  </ul>
+</section>
+
+<section class="panel revisions-diff-panel" id="revisionsDiffPanel" [hidden]="!compareAvailable()">
+  <div class="panel-overlay" id="revisionsDiffPanelOverlay" [class.is-hidden]="!!doc.pdfDoc()">
+    <div class="panel-overlay-text">Upload a document first to compare versions</div>
+  </div>
+  <h3><span class="panel-dot dot-coral"></span>Compare Versions</h3>
+  <p class="revisions-hint">
+    Pick any two versions and see exactly what changed between them — an overview of what moved, the details behind it, and the changed passages
+    marked on the page itself.
+  </p>
+  <button type="button" class="btn btn-primary btn-block" id="btnOpenCompare" [hidden]="!compareAvailable()" (click)="openCompare()">
+    <span class="icon icon-layers" aria-hidden="true"></span> Compare versions…
+  </button>
+</section>

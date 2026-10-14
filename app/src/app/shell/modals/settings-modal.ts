@@ -4,7 +4,7 @@ import { SettingsService, type AppSettings } from '../../core/settings.service';
 import { UiService, type SettingsTab } from '../../core/ui.service';
 import { plural } from '../../core/util/format';
 import { TemplatesStore } from '../../features/signatures/templates.store';
-import { isBackdropClick } from './simple-modals';
+import { isBackdropClick } from './backdrop-click';
 
 interface SettingsToggle {
   key: keyof AppSettings;

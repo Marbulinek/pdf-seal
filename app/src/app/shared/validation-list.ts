@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import type { ValidationResult, ValidationStatus } from '../core/models';
-import { CERT_STATUS_GLYPH, type CheckSource } from '../features/certificates/certificates-model';
-import { CertDot } from './ov-ui';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import type { ValidationResult } from '../core/models';
+import type { CheckSource } from '../features/certificates/certificates-model';
+import { CertDot } from './cert-dot';
 
 export type ListedCheck = ValidationResult & { source?: CheckSource };
 
@@ -57,26 +57,4 @@ export class ValidationList {
     event.preventDefault();
     this.open(source);
   }
-}
-
-/** "✕ 2  ! 1  ✓ 9" -- counts per status, worst first. */
-@Component({
-  selector: 'app-check-counts',
-  template: `
-    @for (c of counts(); track c.status) {
-      <span class="cert-check-count is-{{ c.status }}">{{ c.glyph }} {{ c.count }}</span>
-    }
-  `,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { style: 'display: contents' },
-})
-export class CheckCounts {
-  readonly checks = input.required<{ status: ValidationStatus }[]>();
-  protected readonly counts = computed(() => {
-    const counts: Record<ValidationStatus, number> = { fail: 0, warn: 0, unknown: 0, pass: 0 };
-    for (const check of this.checks()) counts[check.status] += 1;
-    return (['fail', 'warn', 'unknown', 'pass'] as const)
-      .filter((status) => counts[status])
-      .map((status) => ({ status, count: counts[status], glyph: CERT_STATUS_GLYPH[status] }));
-  });
 }

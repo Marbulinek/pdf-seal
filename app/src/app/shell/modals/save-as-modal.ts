@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, untracked, viewChild } from '@angular/core';
 import { UiService } from '../../core/ui.service';
 import { ExportService } from '../../features/export/export.service';
-import { isBackdropClick } from './simple-modals';
+import { isBackdropClick } from './backdrop-click';
 
 /** Download under a chosen file name (applying staged edits / bundling history first). */
 @Component({

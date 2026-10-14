@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { noPreviewReasonText } from '../../features/versions/versions-model';
 import { VersionsStore } from '../../features/versions/versions.store';
-import { DictionaryChanges, ObjectBadges, StreamDiff } from '../../shared/diff-bits';
+import { DictionaryChanges } from '../../shared/dictionary-changes';
 import { MetaTree } from '../../shared/meta-tree';
-import { isBackdropClick } from './simple-modals';
+import { ObjectBadges } from '../../shared/object-badges';
+import { StreamDiff } from '../../shared/stream-diff';
+import { isBackdropClick } from './backdrop-click';
 
 /**
  * Raw PDF object inspector -- the destination of every Details-tab chip's

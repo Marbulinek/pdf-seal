@@ -5,7 +5,7 @@ import { DocumentStore } from '../../core/document.store';
 import { SettingsService } from '../../core/settings.service';
 import { UiService, type SignatureTab } from '../../core/ui.service';
 import { ViewerService } from '../../core/viewer.service';
-import { OvHero, type HeroModel } from '../../shared/ov-ui';
+import { OvHero, type HeroModel } from '../../shared/ov-hero';
 import { SignaturesStore } from './signatures.store';
 import { TEMPLATE_DRAG_MIME, TemplatesStore, templateItemSummary } from './templates.store';
 

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RECEIVER_STEPS, SENDER_STEPS, ShareService } from '../../features/share/share.service';
-import { isBackdropClick } from './simple-modals';
+import { isBackdropClick } from './backdrop-click';
 
 /**
  * Hybrid share modal. The PDF is always encrypted in the browser; WebRTC is

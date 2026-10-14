@@ -12,7 +12,7 @@ import {
 } from '../../features/certificates/certificates-model';
 import { CertificatesStore, type CertificateTab } from '../../features/certificates/certificates.store';
 import { SignaturesStore } from '../../features/signatures/signatures.store';
-import { CertBadge } from '../../shared/ov-ui';
+import { CertBadge } from '../../shared/cert-badge';
 import { ValidationList } from '../../shared/validation-list';
 
 const TABS: { id: CertificateTab; icon: string; label: string; panel: string }[] = [

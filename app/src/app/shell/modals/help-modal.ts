@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { UiService } from '../../core/ui.service';
 import { TourService } from '../../features/tour/tour.service';
-import { isBackdropClick } from './simple-modals';
+import { isBackdropClick } from './backdrop-click';
 
 interface HelpTopic {
   title: string;

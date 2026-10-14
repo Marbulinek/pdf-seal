@@ -1,27 +1,23 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { Base64Modal } from './base64-modal';
+import { CloseDocumentModal } from './close-document-modal';
+import { DeleteTemplateModal } from './delete-template-modal';
+import { DemoReplaceModal } from './demo-replace-modal';
+import { DiagnosticsModal } from './diagnostics-modal';
+import { ExtensionModal } from './extension-modal';
+import { FieldInfoModal } from './field-info-modal';
 import { HelpModal } from './help-modal';
+import { PlaceTemplateCleanupModal } from './place-template-cleanup-modal';
 import { RawObjectModal } from './raw-object-modal';
+import { RemoveFieldModal } from './remove-field-modal';
+import { RemoveTemplateItemModal } from './remove-template-item-modal';
 import { SaveAsModal } from './save-as-modal';
 import { SettingsModal } from './settings-modal';
 import { ShareModal } from './share-modal';
-import {
-  CloseDocumentModal,
-  DemoReplaceModal,
-  DiagnosticsModal,
-  ExtensionModal,
-  FieldInfoModal,
-  RemoveFieldModal,
-  XmpRawModal,
-} from './simple-modals';
-import {
-  DeleteTemplateModal,
-  PlaceTemplateCleanupModal,
-  RemoveTemplateItemModal,
-  TemplateImportModal,
-  TemplateMoveItemModal,
-  TemplateNameModal,
-} from './template-modals';
+import { TemplateImportModal } from './template-import-modal';
+import { TemplateMoveItemModal } from './template-move-item-modal';
+import { TemplateNameModal } from './template-name-modal';
+import { XmpRawModal } from './xmp-raw-modal';
 
 /**
  * Every modal backdrop, in the original DOM order (a later backdrop stacks
