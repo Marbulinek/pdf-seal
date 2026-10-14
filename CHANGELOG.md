@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/Marbulinek/pdf-seal/compare/v1.10.0...v1.10.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* application improvements ([#79](https://github.com/Marbulinek/pdf-seal/issues/79)) ([c93b17e](https://github.com/Marbulinek/pdf-seal/commit/c93b17ecb4b0d82d8d6efce539e8d3614eb45497))
+
 # [1.10.0](https://github.com/Marbulinek/pdf-seal/compare/v1.9.2...v1.10.0) (2026-10-14)
 
 
