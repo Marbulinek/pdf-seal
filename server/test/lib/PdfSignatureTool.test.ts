@@ -902,7 +902,7 @@ describe('applyFieldOps', () => {
     expect(edited?.rect).toMatchObject({ x: 20, y: 50, width: 60, height: 25 });
   });
 
-  it("refuses to create text fields and to edit/remove non-signature or signed fields", async () => {
+  it("refuses to create text fields and to edit non-signature or signed fields", async () => {
     const fixture = await buildSignedPdfFixture({ fieldName: 'SignedField' });
     const tool = await PdfSignatureTool.fromBytes(fixture.bytes);
     tool.addTextField(0, 'Txt', { x: 10, y: 10, width: 80, height: 20 });
@@ -910,8 +910,36 @@ describe('applyFieldOps', () => {
     expect(() => tool.applyFieldOps([{ op: 'add', page: 0, name: 'T2', type: 'text' }])).toThrow(/can't be created/);
     for (const name of ['Txt', 'SignedField']) {
       expect(() => tool.applyFieldOps([{ op: 'edit', originalName: name, name: 'X' }])).toThrow(/unsigned signature/);
-      expect(() => tool.applyFieldOps([{ op: 'remove', name }])).toThrow(/unsigned signature/);
     }
+    expect(() => tool.applyFieldOps([{ op: 'remove', name: '' }])).toThrow(/Field name is required/);
+  });
+
+  it('removes non-signature and signed fields, dropping the /Perms entry of a removed certification', async () => {
+    const fixture = await buildSignedPdfFixture({ fieldName: 'SignedField', docMdpLevel: 2 });
+    const tool = await PdfSignatureTool.fromBytes(fixture.bytes);
+    tool.addTextField(0, 'Txt', { x: 10, y: 10, width: 80, height: 20 });
+    const catalog = tool.pdfDoc.catalog;
+    const signatureRef = tool.pdfDoc.getForm().getField('SignedField').acroField.dict.get(PDFName.of('V'));
+    catalog.set(PDFName.of('Perms'), tool.pdfDoc.context.obj({ DocMDP: signatureRef }));
+
+    tool.applyFieldOps([{ op: 'remove', name: 'Txt' }, { op: 'remove', name: 'SignedField' }]);
+
+    const reloaded = await PdfSignatureTool.fromBytes(await tool.toBytes());
+    expect(reloaded.listFields()).toEqual([]);
+    expect(reloaded.pdfDoc.getPage(0).node.Annots()?.size() ?? 0).toBe(0);
+    expect(reloaded.pdfDoc.catalog.has(PDFName.of('Perms'))).toBe(false);
+  });
+
+  it('removes a field whose widget sits on no page', async () => {
+    const tool = await PdfSignatureTool.create();
+    tool.addPage();
+    tool.addTextField(0, 'Orphan', { x: 10, y: 10, width: 80, height: 20 });
+    const widget = tool.pdfDoc.getForm().getField('Orphan').acroField.getWidgets()[0];
+    tool.pdfDoc.getPage(0).node.removeAnnot(tool.pdfDoc.context.getObjectRef(widget.dict)!);
+    widget.dict.delete(PDFName.of('P'));
+
+    tool.removeField('Orphan');
+    expect(tool.listFields()).toEqual([]);
   });
 
   it('leaves unrelated text fields untouched on save (no appearance regeneration)', async () => {

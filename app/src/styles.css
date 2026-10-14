@@ -750,6 +750,8 @@ h1, h2, h3, .panel, .panel * { font-family: var(--font-display); }
   align-items: center;
   gap: 6px;
   margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
   font-weight: 700;
   color: var(--coral-dark);
 }

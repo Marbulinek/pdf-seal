@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { DocumentStore } from '../../core/document.store';
 import { UiService } from '../../core/ui.service';
 import { SignaturesStore } from '../../features/signatures/signatures.store';
 import { isBackdropClick } from './backdrop-click';
@@ -19,6 +20,15 @@ import { isBackdropClick } from './backdrop-click';
           <p class="modal-hint remove-field-hint">
             Remove the field <strong id="removeFieldModalName">{{ ui.removeFieldName() }}</strong> from this document?
           </p>
+          @if (signed()) {
+            <p class="remove-field-warning" id="removeFieldSignedWarning">
+              <span class="icon icon-alert-triangle" aria-hidden="true"></span> This field is signed — removing it deletes the signature too.
+            </p>
+          } @else if (nonSignature()) {
+            <p class="remove-field-warning" id="removeFieldTypeWarning">
+              <span class="icon icon-alert-triangle" aria-hidden="true"></span> This isn't a signature field — PDF Seal can remove it but can't recreate it.
+            </p>
+          }
           <p class="modal-hint remove-field-hint">This is staged like any other change — you can still <strong>Discard</strong> it before hitting Apply.</p>
         </div>
       </div>
@@ -38,7 +48,18 @@ import { isBackdropClick } from './backdrop-click';
 })
 export class RemoveFieldModal {
   protected readonly ui = inject(UiService);
+  private readonly doc = inject(DocumentStore);
   private readonly signatures = inject(SignaturesStore);
+
+  private readonly field = computed(() => {
+    const name = this.ui.removeFieldName();
+    return name === null ? undefined : this.doc.fields().find((f) => f.name === name);
+  });
+  protected readonly signed = computed(() => this.field()?.signed === true);
+  protected readonly nonSignature = computed(() => {
+    const f = this.field();
+    return !!f && f.type !== 'Signature';
+  });
 
   protected close(): void {
     this.ui.removeFieldName.set(null);

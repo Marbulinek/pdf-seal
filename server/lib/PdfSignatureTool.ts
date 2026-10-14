@@ -1016,7 +1016,9 @@ class PdfSignatureTool {
    * pdf-lib's own `form.removeField()` throws on unsigned signature
    * fields because it assumes every widget has a normal appearance
    * stream (/AP /N). This version doesn't make that assumption, and
-   * handles both merged and split field shapes.
+   * handles both merged and split field shapes. Works for any field type,
+   * signed signatures included: a catalog /Perms entry (DocMDP/UR3) that
+   * pointed at the removed signature is dropped with it.
    */
   removeField(name: string) {
     const pdfDoc = this.pdfDoc;
@@ -1028,11 +1030,19 @@ class PdfSignatureTool {
     const pagesTouched = new Set<any>();
     for (const widget of widgets) {
       const widgetRef = pdfDoc.context.getObjectRef(widget.dict);
-      const page = form.findWidgetPage(widget);
+      let page;
+      try {
+        page = form.findWidgetPage(widget);
+      } catch (_e) {
+        continue; // orphan widget, on no page's /Annots
+      }
       pagesTouched.add(page);
       if (widgetRef) page.node.removeAnnot(widgetRef);
     }
     pagesTouched.forEach((page) => page.node.removeAnnot(field.ref));
+
+    const signature = acroField.dict.get(PDFName.of('V'));
+    if (signature instanceof PDFRef) this._dropPermsReferencing(signature);
 
     form.acroForm.removeField(acroField);
 
@@ -1088,9 +1098,9 @@ class PdfSignatureTool {
 
         this.setFieldRequired(newName, op.required === true || op.required === 'true');
       } else if (op.op === 'remove') {
+        // Any field may be removed, signed ones included; only add/edit are limited to unsigned signatures.
         const name = String(op.name || '');
         if (!name) throw new Error('Field name is required.');
-        this._requireEditableField(name);
         this.removeField(name);
       } else {
         throw new Error(`Unknown operation "${op.op}".`);
@@ -1825,7 +1835,7 @@ class PdfSignatureTool {
     return field;
   }
 
-  /** Only unsigned signature fields may be edited or removed through applyFieldOps(). */
+  /** Only unsigned signature fields may be edited through applyFieldOps() (any field may be removed). */
   _requireEditableField(name: string) {
     const field = this._requireField(name);
     const signed = field.acroField.dict.lookup(PDFName.of('V')) instanceof PDFDict;
@@ -1833,6 +1843,17 @@ class PdfSignatureTool {
       throw new Error(`Field "${name}" is not an unsigned signature field and can't be changed.`);
     }
     return field;
+  }
+
+  /** Drop each catalog /Perms entry (DocMDP, UR3) pointing at `signatureRef`, and /Perms itself once empty. */
+  _dropPermsReferencing(signatureRef: PDFRef) {
+    const catalog = this.pdfDoc.catalog;
+    const perms = catalog.lookup(PDFName.of('Perms'));
+    if (!(perms instanceof PDFDict)) return;
+    for (const key of perms.keys()) {
+      if (perms.get(key) === signatureRef) perms.delete(key);
+    }
+    if (perms.keys().length === 0) catalog.delete(PDFName.of('Perms'));
   }
 
   _getRawString(dict: any, key: string) {

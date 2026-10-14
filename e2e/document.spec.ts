@@ -62,6 +62,25 @@ test.describe('working with a document', () => {
     await expect(timeline).toContainText(/current/i);
   });
 
+  test('removes the signed field from the Edit sheet', async ({ page }) => {
+    await uploadSample(page, '/signatures');
+    const hero = page.locator('#sigSectionHero');
+    await expect(hero).toContainText('2 signature fields');
+
+    await page.locator('#btnNext').click(); // both signature fields sit on page 2
+    await page.locator('.field-overlay[data-field-name="Provider_Signature"]').click();
+    await expect(page.locator('#editSignedNotice')).toBeVisible();
+    await expect(page.locator('#editName')).toBeDisabled();
+    await page.locator('#btnRemoveField').click();
+    await expect(page.locator('#removeFieldSignedWarning')).toBeVisible();
+    await page.locator('#confirmRemoveFieldBtn').click();
+    await expect(page.locator('#pendingChangesLabel')).toHaveText('1 unsaved change');
+
+    await page.locator('#btnApplyFieldChanges').click();
+    await expect(hero).toContainText('1 signature field');
+    await expect(page.locator('.field-overlay[data-field-name="Provider_Signature"]')).toHaveCount(0);
+  });
+
   test('downloads the edited PDF with the new field in it', async ({ page }) => {
     await uploadSample(page, '/signatures');
     await page.locator('#sigName').fill('Downloaded_Signature');

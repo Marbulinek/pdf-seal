@@ -12,8 +12,8 @@
     <div id="editSignedNoticeText">
       {{
         field()?.signed === true
-          ? 'This field has been signed. Its name, position and size are covered by the signature, so editing or removing it here would break it. The Certificates section shows what the signature contains.'
-          : 'PDF Seal edits signature fields only. This field is shown for inspection.'
+          ? 'This field has been signed. Its name, position and size are covered by the signature, so they can\'t be edited here. You can still remove the field, which deletes the signature with it. The Certificates section shows what the signature contains.'
+          : 'PDF Seal edits signature fields only. This field is shown for inspection, but you can still remove it.'
       }}
     </div>
   </div>
@@ -97,7 +97,7 @@
   </form>
 </div>
 <div class="edit-sheet-footer">
-  <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" [disabled]="!doc.pdfDoc() || !editable()" (click)="signatures.requestRemoveActive()">
+  <button type="button" id="btnRemoveField" class="btn btn-danger btn-block" [disabled]="!doc.pdfDoc() || !removable()" (click)="signatures.requestRemoveActive()">
     <span class="icon icon-close" aria-hidden="true"></span> Remove field
   </button>
 </div>

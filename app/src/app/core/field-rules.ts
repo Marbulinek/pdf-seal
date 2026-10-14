@@ -6,11 +6,19 @@ export const FIELD_TYPE_CONFIG = {
 } as const;
 
 /**
- * The one rule for what the editor may move, resize, rename or delete: an
- * unsigned signature field. Keep in sync with PdfSignatureTool._requireEditableField().
+ * The one rule for what the editor may move, resize or rename: an unsigned
+ * signature field. Keep in sync with PdfSignatureTool._requireEditableField().
  */
 export function isEditableField(f: DocField | null | undefined): boolean {
   return !!f && f.type === 'Signature' && f.signed !== true;
+}
+
+/**
+ * What the Edit sheet's Remove button may delete: any named field -- text
+ * boxes, checkboxes and signed signatures too (the server removes by name).
+ */
+export function isRemovableField(f: DocField | null | undefined): boolean {
+  return !!f && !!f.name;
 }
 
 /**

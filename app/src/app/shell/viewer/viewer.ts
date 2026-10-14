@@ -119,7 +119,7 @@ export class Viewer {
         const title = invisible
           ? null
           : field.signed === true
-            ? `${field.name} — signed, so it cannot be moved or removed without breaking the signature${invisibleSuffix}`
+            ? `${field.name} — signed, so it can't be moved or resized without breaking the signature${invisibleSuffix}`
             : (field.tooltip ? `${field.name} — ${field.tooltip}${invisibleSuffix}` : `${field.name || 'Signature field'}${invisibleSuffix}`) +
               (field.type !== 'Signature' ? ' — shown for inspection; PDF Seal edits signature fields only' : '');
         const active = field.uid === activeUid;

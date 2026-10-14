@@ -1,5 +1,5 @@
 import { decodeFlags, ANNOTATION_FLAG_BITS, FIELD_FLAG_BITS } from './field-keys';
-import { choiceFieldIconClass, isEditableField, isRectPracticallyInvisible, rectsEqual } from './field-rules';
+import { choiceFieldIconClass, isEditableField, isRectPracticallyInvisible, isRemovableField, rectsEqual } from './field-rules';
 import type { DocField } from './models';
 
 const field = (patch: Partial<DocField>): DocField => ({ name: 'f', type: 'Signature', page: 0, rect: null, ...patch });
@@ -10,6 +10,14 @@ describe('field rules', () => {
     expect(isEditableField(field({ signed: true }))).toBe(false);
     expect(isEditableField(field({ type: 'TextField' }))).toBe(false);
     expect(isEditableField(null)).toBe(false);
+  });
+
+  it('any named field is removable, signed and non-signature ones included', () => {
+    expect(isRemovableField(field({}))).toBe(true);
+    expect(isRemovableField(field({ signed: true }))).toBe(true);
+    expect(isRemovableField(field({ type: 'TextField' }))).toBe(true);
+    expect(isRemovableField(field({ name: '' }))).toBe(false);
+    expect(isRemovableField(null)).toBe(false);
   });
 
   it('treats near-zero rects as invisible, with a smaller threshold for choice widgets', () => {

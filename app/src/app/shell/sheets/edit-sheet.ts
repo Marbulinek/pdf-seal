@@ -2,7 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, untracked, viewChild } from '@angular/core';
 import { DocumentStore } from '../../core/document.store';
 import { ANNOTATION_FLAG_BITS, FIELD_FLAG_BITS, FIELD_KEY_LABELS, decodeFlags } from '../../core/field-keys';
-import { isEditableField } from '../../core/field-rules';
+import { isEditableField, isRemovableField } from '../../core/field-rules';
 import { UiService } from '../../core/ui.service';
 import { SignaturesStore } from '../../features/signatures/signatures.store';
 
@@ -52,6 +52,8 @@ export class EditSheet {
     const f = this.field();
     return !!f && isEditableField(f);
   });
+  /** Remove works on any field, even one the other controls can't edit. */
+  protected readonly removable = computed(() => isRemovableField(this.field()));
   /** Every control is read-only without a selection or for a non-editable (signed / non-signature) field. */
   protected readonly locked = computed(() => !this.doc.pdfDoc() || !this.editable());
 
