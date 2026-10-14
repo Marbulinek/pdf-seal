@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/Marbulinek/pdf-seal/compare/v1.9.2...v1.10.0) (2026-10-14)
+
+
+### Features
+
+* whole frontend app ported to the angular ([#78](https://github.com/Marbulinek/pdf-seal/issues/78)) ([4d60604](https://github.com/Marbulinek/pdf-seal/commit/4d606040634f9d21a589e37ec81f4ea3436b8320))
+
 ## [1.9.2](https://github.com/Marbulinek/pdf-seal/compare/v1.9.1...v1.9.2) (2026-10-13)
 
 
