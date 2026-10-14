@@ -132,7 +132,11 @@ export const OverviewStore = signalStore(
 
     function closeSheet(): void {
       ui.closeSheet('overview');
-      patchState(store, { activeItem: null, history: null });
+      // Drop the snippet and the File it was drawn from -- otherwise a closed
+      // or replaced document stays pinned until the next item opens.
+      const snippet = store.visuals()?.snippet;
+      if (snippet) snippet.width = snippet.height = 0;
+      patchState(store, { activeItem: null, history: null, visuals: null, visualsPending: false });
     }
 
     function clearDiagnosticOrigin(): void {
@@ -293,6 +297,9 @@ export const OverviewStore = signalStore(
         } catch {
           patchState(store, { visualsPending: false });
           return;
+        } finally {
+          // Release the page's decoded images/fonts, as the viewer does.
+          page.cleanup();
         }
         snippet = canvasEl;
         mark = {

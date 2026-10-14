@@ -219,12 +219,14 @@ export class VersionStoreService {
   /**
    * Reconstructs the version at `index` as a Blob: its own bytes if stored in
    * full, or its base followed by each delta (versionReadPlan walks that chain,
-   * base first). Null for anything not cleanly reconstructable.
+   * base first). Null for anything not cleanly reconstructable, or when
+   * `expectedKey` is given and the row at `index` now holds another version.
    */
-  async getBlob(sessionId: string, index: number): Promise<Blob | null> {
+  async getBlob(sessionId: string, index: number, expectedKey?: string): Promise<Blob | null> {
     let chain: { index: number }[];
     try {
       const metas = await this.listMeta(sessionId);
+      if (expectedKey !== undefined && metas.find((m) => m.index === index)?.versionKey !== expectedKey) return null;
       chain = versionReadPlan(metas, index);
     } catch {
       return null;
@@ -388,9 +390,7 @@ export class VersionStoreService {
    * each later one as the literal delta between consecutive boundaries (read
    * via file.slice() so the full byte array can fall out of scope).
    */
-  private async hydrateNativeChain(sessionId: string, file: Blob, bytes: Uint8Array | null): Promise<HydrationResult | null> {
-    const boundaries = findRevisionEndOffsets(bytes!);
-    bytes = null;
+  private async hydrateNativeChain(sessionId: string, file: Blob, boundaries: number[]): Promise<HydrationResult | null> {
     if (boundaries.length < 2) return null;
 
     let storedIndex = 0;
@@ -426,16 +426,24 @@ export class VersionStoreService {
    * for a file with neither.
    */
   async hydrateRevisions(sessionId: string, file: Blob): Promise<HydrationResult | null> {
-    const arrayBuffer = await file.arrayBuffer();
-    const currentFileBytes = new Uint8Array(arrayBuffer);
+    // Nulled before the native walk: a local that is still in scope across
+    // an await keeps the whole file resident for the entire hydration.
+    let bytes: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
     if (!this.stillCurrent(sessionId)) return null;
 
-    const latin1Text = new TextDecoder('latin1').decode(currentFileBytes);
-    if (BUNDLED_CHAIN_HINT_STRINGS.some((needle) => latin1Text.includes(needle))) {
-      const bundled = await this.hydrateBundledChain(sessionId, file, currentFileBytes);
+    if (hasBundledChainHint(bytes)) {
+      const bundled = await this.hydrateBundledChain(sessionId, file, bytes);
       if (bundled) return bundled;
       if (!this.stillCurrent(sessionId)) return null;
     }
-    return this.hydrateNativeChain(sessionId, file, currentFileBytes);
+    const boundaries = findRevisionEndOffsets(bytes);
+    bytes = null;
+    return this.hydrateNativeChain(sessionId, file, boundaries);
   }
+}
+
+/** Synchronous so the whole-file string is garbage the moment it returns. */
+function hasBundledChainHint(bytes: Uint8Array): boolean {
+  const latin1Text = new TextDecoder('latin1').decode(bytes);
+  return BUNDLED_CHAIN_HINT_STRINGS.some((needle) => latin1Text.includes(needle));
 }

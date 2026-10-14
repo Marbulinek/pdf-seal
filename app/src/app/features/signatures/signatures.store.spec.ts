@@ -28,6 +28,20 @@ describe('SignaturesStore', () => {
     expect(store.isStaged(doc.fields().find((f) => f.name === 'New')!)).toBe(true);
   });
 
+  it('re-points history steps at the version hydration re-keyed', () => {
+    doc.update({ documentSessionId: 's1', documentRevisionCount: 1, activeVersionKey: 'pre' });
+    store.stageNewField({ name: 'A', page: 0, rect: { x: 1, y: 2, width: 100, height: 40 } });
+    doc.update({ documentSessionId: 's2' });
+    store.stageNewField({ name: 'B', page: 0, rect: { x: 1, y: 2, width: 100, height: 40 } });
+
+    store.remapHistoryVersion('s1', 'pre', 3, 'post');
+
+    const [first, second] = store.undoStack();
+    expect(first).toMatchObject({ documentSessionId: 's1', documentRevisionCount: 3, activeVersionKey: 'post' });
+    expect(first.fileName).toBeNull(); // snapshots never hold PDF bytes
+    expect(second).toMatchObject({ documentSessionId: 's2', documentRevisionCount: 1, activeVersionKey: 'pre' });
+  });
+
   it('summarises the signature fields for the section hero', () => {
     expect(store.hero()).toEqual({ total: 2, unsigned: 1, signed: 1 });
   });

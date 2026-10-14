@@ -81,6 +81,34 @@ test.describe('working with a document', () => {
     await expect(page.locator('.field-overlay[data-field-name="Provider_Signature"]')).toHaveCount(0);
   });
 
+  test('undoes an applied change back to the original document', async ({ page }) => {
+    // Undo history holds no PDF bytes: crossing the Apply re-reads the earlier
+    // version from IndexedDB, re-keyed by the sample's revision-chain hydration.
+    await uploadSample(page, '/signatures');
+    const hero = page.locator('#sigSectionHero');
+    await page.locator('#sigName').fill('Undo_Signature');
+    await page.locator('#btnPlaceField').click();
+    await page.locator('#pdf-canvas').click({ position: { x: 200, y: 600 } });
+    await page.locator('#btnApplyFieldChanges').click();
+    await expect(hero).toContainText('3 signature fields');
+
+    const undo = page.locator('#btnHistoryUndo');
+    const pending = page.locator('#pendingChangesLabel');
+    await undo.click(); // back across the Apply: staged again
+    await expect(pending).toHaveText('1 unsaved change');
+    await undo.click(); // and the placement itself
+    await expect(pending).toHaveText('0 unsaved changes');
+    await expect(page.locator('.field-overlay[data-field-name="Undo_Signature"]')).toHaveCount(0);
+
+    const redo = page.locator('#btnHistoryRedo');
+    await redo.click();
+    await expect(pending).toHaveText('1 unsaved change');
+    await redo.click(); // forward across the Apply again
+    await expect(hero).toContainText('3 signature fields');
+    await expect(pending).toHaveText('0 unsaved changes');
+    await expect(page.locator('#viewerFileName')).toHaveText('pdf-seal-sample.pdf');
+  });
+
   test('downloads the edited PDF with the new field in it', async ({ page }) => {
     await uploadSample(page, '/signatures');
     await page.locator('#sigName').fill('Downloaded_Signature');

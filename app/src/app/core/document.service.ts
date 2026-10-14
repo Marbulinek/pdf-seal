@@ -28,15 +28,26 @@ export interface ProcessFileOptions {
   knownFields?: DocField[] | null;
 }
 
-/** A field-history step: the File reference plus the small bits of state that aren't in IndexedDB. */
+/**
+ * A field-history step. Deliberately holds no File: the bytes are the local
+ * version at (documentSessionId, documentRevisionCount), checked against
+ * activeVersionKey, and are re-read from IndexedDB only when undo/redo
+ * crosses to another document -- so history depth costs no PDF copies in RAM.
+ */
 export interface DocumentSnapshot {
-  file: File | null;
+  fileName: string | null;
   pageNum: number;
   documentFields: StoreField[];
   fieldsBaseline: StoreField[];
   documentSessionId: string | null;
   documentRevisionCount: number;
   activeVersionKey: string | null;
+}
+
+/** A history step's document, rebuilt from local storage and opened. */
+export interface HistoryTarget {
+  file: File;
+  doc: PdfDocument;
 }
 
 interface HydrationTicket {
@@ -165,11 +176,15 @@ export class DocumentService implements DocumentsPort {
 
     const run = async () => {
       if (!stillCurrent()) return;
+      // Hydration rewrites the session's rows and re-keys the current file;
+      // history steps taken before it must follow (they hold no bytes of their own).
+      const preKey = this.store.activeVersionKey();
       try {
         const hydrated = await this.versionsDb.hydrateRevisions(sessionId, file);
         if (!stillCurrent()) return;
         if (hydrated) {
           this.store.update({ documentRevisionCount: hydrated.count, activeVersionKey: hydrated.versionKey });
+          this.signatures().remapHistoryVersion(sessionId, preKey, hydrated.count, hydrated.versionKey);
         }
       } catch {
         if (!stillCurrent()) return;
@@ -188,6 +203,7 @@ export class DocumentService implements DocumentsPort {
           })
           .catch(this.versionsDb.reportWriteFailure);
         this.store.update({ documentRevisionCount: 1, activeVersionKey: versionKey });
+        this.signatures().remapHistoryVersion(sessionId, preKey, 1, versionKey);
       }
       if (!stillCurrent()) return;
       this.versions().invalidateList();
@@ -612,7 +628,7 @@ export class DocumentService implements DocumentsPort {
 
   captureSnapshot(): DocumentSnapshot {
     return {
-      file: this.store.activeFile(),
+      fileName: this.store.activeFile()?.name ?? null,
       pageNum: this.viewer.pageNum(),
       documentFields: cloneFields(this.store.fields()),
       fieldsBaseline: cloneFields(this.store.fieldsBaseline()),
@@ -622,31 +638,41 @@ export class DocumentService implements DocumentsPort {
     };
   }
 
+  /** Whether `snapshot` was taken of the document that is open now (same stored version). */
+  isCurrentSnapshot(snapshot: DocumentSnapshot): boolean {
+    return snapshot.documentSessionId === this.store.documentSessionId() && snapshot.activeVersionKey === this.store.activeVersionKey();
+  }
+
   /**
-   * Opens `file` for an undo/redo that crosses a document boundary. Null if a
-   * newer load started meanwhile -- the caller must not commit to the swap.
+   * Rebuilds a history step's document from local storage and opens it, for
+   * an undo/redo that crosses a document boundary. Null if a newer load
+   * started meanwhile -- the caller must not commit to the swap. Throws when
+   * the version is no longer stored (e.g. its local write failed).
    */
-  async openHistoryTargetDoc(file: File): Promise<PdfDocument | null> {
+  async openHistoryTarget(snapshot: DocumentSnapshot): Promise<HistoryTarget | null> {
     const loadGeneration = ++this.documentLoadGeneration;
-    const arrayBuffer = await file.arrayBuffer();
-    const doc = await this.pdfjs.openShared(arrayBuffer);
+    const { documentSessionId: sessionId, documentRevisionCount: index, activeVersionKey: key } = snapshot;
+    const blob = sessionId && key ? await this.versionsDb.getBlob(sessionId, index, key) : null;
+    if (!blob) throw new Error('this step is no longer stored locally.');
+    const file = new File([blob], snapshot.fileName || 'document.pdf', { type: 'application/pdf' });
+    const doc = await this.pdfjs.openShared(await file.arrayBuffer());
     if (loadGeneration !== this.documentLoadGeneration) {
       destroyDocument(doc);
       return null;
     }
-    return doc;
+    return { file, doc };
   }
 
   /**
-   * Restores a history snapshot. Same document: only the staged-field state
-   * changes (session id/revision count reflect since-refreshed work and are
-   * kept). Different document: `loadedDoc` (opened by the caller first) is
-   * swapped in and every section re-derives from it.
+   * Restores a history snapshot. Same document (`target` null): only the
+   * staged-field state changes (session id/revision count reflect
+   * since-refreshed work and are kept). Different document: `target` (opened
+   * by the caller first) is swapped in and every section re-derives from it.
    */
-  async applySnapshot(snapshot: DocumentSnapshot, loadedDoc: PdfDocument | null): Promise<void> {
+  async applySnapshot(snapshot: DocumentSnapshot, target: HistoryTarget | null): Promise<void> {
     const store = this.store;
     const signatures = this.signatures();
-    if (snapshot.file === store.activeFile()) {
+    if (!target) {
       this.viewer.pageNum.set(snapshot.pageNum);
       store.update({ fields: snapshot.documentFields, fieldsBaseline: snapshot.fieldsBaseline });
       signatures.deselect();
@@ -656,8 +682,8 @@ export class DocumentService implements DocumentsPort {
 
     const outgoingDoc = store.pdfDoc();
     store.update({
-      activeFile: snapshot.file,
-      pdfDoc: loadedDoc,
+      activeFile: target.file,
+      pdfDoc: target.doc,
       fields: snapshot.documentFields,
       fieldsBaseline: snapshot.fieldsBaseline,
       documentSessionId: snapshot.documentSessionId,
@@ -670,7 +696,7 @@ export class DocumentService implements DocumentsPort {
     if (this.viewer.diffActive()) this.viewer.exitDiffViewMode();
     this.versions().resetDiffState();
 
-    const pageCount = loadedDoc?.numPages ?? 1;
+    const pageCount = target.doc.numPages;
     this.viewer.pageNum.set(Math.min(Math.max(snapshot.pageNum, 1), pageCount));
     this.viewer.indicatorCount.set(pageCount);
     await this.viewer.renderPage(this.viewer.pageNum());

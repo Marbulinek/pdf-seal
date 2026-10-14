@@ -172,6 +172,19 @@ export const SignaturesStore = signalStore(
       if (kept.length !== redo.length) patchState(store, { redoStack: kept });
     }
 
+    /**
+     * Revision hydration re-keyed the open file (and renumbered its stored
+     * version); steps that pointed at the old key now point at the new one.
+     */
+    function remapHistoryVersion(sessionId: string, fromKey: string | null, revisionCount: number, versionKey: string | null): void {
+      const remap = (snap: DocumentSnapshot): DocumentSnapshot =>
+        snap.documentSessionId === sessionId && snap.activeVersionKey === fromKey
+          ? { ...snap, documentRevisionCount: revisionCount, activeVersionKey: versionKey }
+          : snap;
+      if (store._rectEdit.snapshot) store._rectEdit.snapshot = remap(store._rectEdit.snapshot);
+      patchState(store, { undoStack: store.undoStack().map(remap), redoStack: store.redoStack().map(remap) });
+    }
+
     async function step(direction: 'undo' | 'redo'): Promise<void> {
       const source = direction === 'undo' ? store.undoStack() : store.redoStack();
       // Blocked mid-load/mid-update: the live state is momentarily inconsistent.
@@ -181,15 +194,18 @@ export const SignaturesStore = signalStore(
       const candidate = source[source.length - 1];
       patchState(store, { historyBusy: true });
       try {
-        let loadedDoc = null;
-        if (candidate.file !== doc.activeFile()) {
+        let target = null;
+        if (!store._documents().isCurrentSnapshot(candidate)) {
           try {
-            loadedDoc = candidate.file ? await store._documents().openHistoryTargetDoc(candidate.file) : null;
+            target = await store._documents().openHistoryTarget(candidate);
           } catch (err) {
+            // Its bytes are gone for good -- drop the step so it can't block the rest.
+            const drop = (stack: DocumentSnapshot[]) => stack.filter((snap) => snap !== candidate);
+            patchState(store, direction === 'undo' ? { undoStack: drop(store.undoStack()) } : { redoStack: drop(store.redoStack()) });
             notify.show(`Could not ${direction}: ${errorMessage(err)}`, 'error');
             return;
           }
-          if (!loadedDoc) return; // superseded while opening
+          if (!target) return; // superseded while opening
         }
         const current = store._documents().captureSnapshot();
         if (direction === 'undo') {
@@ -197,7 +213,7 @@ export const SignaturesStore = signalStore(
         } else {
           patchState(store, { redoStack: store.redoStack().slice(0, -1), undoStack: [...store.undoStack(), current] });
         }
-        await store._documents().applySnapshot(candidate, loadedDoc);
+        await store._documents().applySnapshot(candidate, target);
       } finally {
         patchState(store, { historyBusy: false });
       }
@@ -400,6 +416,7 @@ export const SignaturesStore = signalStore(
       pushHistory,
       resetHistory,
       dropStaleRedoEntries,
+      remapHistoryVersion,
       undo: () => step('undo'),
       redo: () => step('redo'),
       select,
