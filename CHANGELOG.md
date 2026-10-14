@@ -1,3 +1,10 @@
+## [1.10.2](https://github.com/Marbulinek/pdf-seal/compare/v1.10.1...v1.10.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* fixed signatures panel overlay when no document ([#80](https://github.com/Marbulinek/pdf-seal/issues/80)) ([d3e0838](https://github.com/Marbulinek/pdf-seal/commit/d3e08384a667fe30e0049172e2490838ffb0b3c2))
+
 ## [1.10.1](https://github.com/Marbulinek/pdf-seal/compare/v1.10.0...v1.10.1) (2026-10-14)
 
 
