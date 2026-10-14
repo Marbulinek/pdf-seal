@@ -90,12 +90,13 @@ const certUpload = multer({ dest: "uploads/", limits: { fileSize: MAX_CERT_UPLOA
 const WEB_ROOT = path.resolve(process.cwd(), "dist", "app", "browser");
 const INDEX_HTML = path.join(WEB_ROOT, "index.html");
 
-// Serve the self-hosted pdf.js vendor bundle (~1.3MB) with a long,
-// immutable cache: on a slow/constrained host, letting every colleague's
-// browser cache it across visits instead of re-fetching it each time saves
-// real bandwidth and avoids one more big synchronous read+send per request.
-// Scoped to /vendor only -- unlike index.html, these files don't change
-// between deploys of the app itself.
+// Serve /vendor (pdf.js's ~1MB worker, copied from pdfjs-dist by the Angular
+// build, and the visual-diff worker) with a long, immutable cache: on a
+// slow/constrained host, letting every colleague's browser cache it across
+// visits instead of re-fetching it each time saves real bandwidth and avoids
+// one more big synchronous read+send per request. The client requests the
+// pdf.js worker with its version in the query string, so a pdf.js upgrade
+// never pairs with a stale cached copy.
 app.use("/vendor", express.static(path.join(WEB_ROOT, "vendor"), { maxAge: "30d", immutable: true }));
 
 // The Angular bundles carry a content hash in their file name

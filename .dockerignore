@@ -1,6 +1,6 @@
 node_modules
 dist
-app/.angular
+.angular
 app/out-tsc
 coverage
 uploads

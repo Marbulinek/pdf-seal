@@ -17,6 +17,7 @@ import { errorMessage } from '../../core/document.service';
 import { isRectPracticallyInvisible } from '../../core/field-rules';
 import type { ErrorPayload, PdfRect, RawObjectPreview, RevisionDiff, RevisionSummary } from '../../core/models';
 import { NotificationService } from '../../core/notification.service';
+import { destroyDocument } from '../../core/pdfjs-types';
 import { UiService } from '../../core/ui.service';
 import { cssEscape, downloadBlob, waitFor } from '../../core/util/dom';
 import { formatDisplayDate } from '../../core/util/format';
@@ -564,10 +565,10 @@ export const VersionsStore = signalStore(
       try {
         const revDoc = await engine.fetchRevisionDoc(sessionId, index);
         if (sessionId !== currentSession()) {
-          revDoc.destroy();
+          destroyDocument(revDoc);
           return;
         }
-        if (engine.revisionViewDoc && engine.revisionViewDoc !== revDoc) engine.revisionViewDoc.destroy();
+        if (engine.revisionViewDoc && engine.revisionViewDoc !== revDoc) destroyDocument(engine.revisionViewDoc);
         engine.revisionViewDoc = revDoc;
         patchState(store, { revisionViewIndex: index, selectedView: index });
         enterDiffViewMode();

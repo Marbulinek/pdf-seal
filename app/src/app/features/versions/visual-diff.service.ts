@@ -1,7 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, inject } from '@angular/core';
 import type { PdfRect } from '../../core/models';
-import { isRenderingCancelled, type PdfDocument, type PdfPage, type PdfViewport } from '../../core/pdfjs-types';
+import { destroyDocument, isRenderingCancelled, type PdfDocument, type PdfPage, type PdfViewport } from '../../core/pdfjs-types';
 import { PdfJsService } from '../../core/pdfjs.service';
 import { VersionStoreService } from '../../core/version-store.service';
 import { ViewerService } from '../../core/viewer.service';
@@ -132,8 +132,8 @@ export class VisualDiffService {
   }
 
   private destroyPairDocs(): void {
-    this.docA?.destroy();
-    this.docB?.destroy();
+    destroyDocument(this.docA);
+    destroyDocument(this.docB);
     this.docA = null;
     this.docB = null;
   }
@@ -166,8 +166,8 @@ export class VisualDiffService {
     const docB = resultB.status === 'fulfilled' ? resultB.value : null;
 
     if (epoch !== this.docsEpoch || sessionId !== this.pair.sessionId || from !== this.pair.from || to !== this.pair.to) {
-      if (docA && docA !== this.docA) docA.destroy();
-      if (docB && docB !== this.docB) docB.destroy();
+      if (docA && docA !== this.docA) destroyDocument(docA);
+      if (docB && docB !== this.docB) destroyDocument(docB);
       return;
     }
 
@@ -191,7 +191,7 @@ export class VisualDiffService {
    */
   releaseAll(): void {
     this.generation++;
-    this.revisionViewDoc?.destroy();
+    destroyDocument(this.revisionViewDoc);
     this.revisionViewDoc = null;
     this.invalidateDocs();
     this.destroyPairDocs();
@@ -217,7 +217,7 @@ export class VisualDiffService {
   }
 
   closeRevisionView(): void {
-    this.revisionViewDoc?.destroy();
+    destroyDocument(this.revisionViewDoc);
     this.revisionViewDoc = null;
   }
 
@@ -277,7 +277,7 @@ export class VisualDiffService {
     const offCtx = off.getContext('2d', { willReadFrequently: true });
     if (!offCtx) throw new Error('Canvas is unavailable.');
     if (page) {
-      await page.render({ canvasContext: offCtx, viewport: page.getViewport({ scale }) }).promise;
+      await page.render({ canvas: null, canvasContext: offCtx, viewport: page.getViewport({ scale }) }).promise;
     } else {
       // This page doesn't exist on that side -- compare against blank white.
       offCtx.fillStyle = '#ffffff';
@@ -351,7 +351,7 @@ export class VisualDiffService {
     offCtx.fillStyle = '#ffffff';
     offCtx.fillRect(0, 0, width, height);
     try {
-      await page.render({ canvasContext: offCtx, viewport: page.getViewport({ scale }) }).promise;
+      await page.render({ canvas: null, canvasContext: offCtx, viewport: page.getViewport({ scale }) }).promise;
     } catch (err) {
       off.width = 0;
       off.height = 0;

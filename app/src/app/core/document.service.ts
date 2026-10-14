@@ -5,7 +5,7 @@ import { ApiService, type UploadRequest } from './api.service';
 import { DocumentStore, cloneFields, type StoreField } from './document.store';
 import type { DocField, InfoFieldsResponse } from './models';
 import { NotificationService } from './notification.service';
-import type { PdfDocument } from './pdfjs-types';
+import { destroyDocument, type PdfDocument } from './pdfjs-types';
 import { PdfJsService } from './pdfjs.service';
 import { CERTIFICATES, OVERVIEW, SHARE, SIGNATURES, VERSIONS, type DocumentsPort } from './ports';
 import { UiService } from './ui.service';
@@ -396,7 +396,7 @@ export class DocumentService implements DocumentsPort {
       setLoadingProgress(65);
       nextPdfDoc = await this.pdfjs.openShared(arrayBuffer);
       if (!isCurrentLoad()) {
-        nextPdfDoc.destroy();
+        destroyDocument(nextPdfDoc);
         cleanupPendingRevision();
         return;
       }
@@ -418,7 +418,7 @@ export class DocumentService implements DocumentsPort {
       if (fieldsPromise) {
         const data = await fieldsPromise;
         if (!isCurrentLoad()) {
-          if (outgoing && outgoing !== nextPdfDoc) outgoing.destroy();
+          if (outgoing && outgoing !== nextPdfDoc) destroyDocument(outgoing);
           return;
         }
         if (this.activeDocumentFieldsRequest === fieldsRequest) this.activeDocumentFieldsRequest = null;
@@ -427,7 +427,7 @@ export class DocumentService implements DocumentsPort {
       }
 
       // Commit point: the outgoing document's resources can be released.
-      if (outgoing && outgoing !== nextPdfDoc) outgoing.destroy();
+      if (outgoing && outgoing !== nextPdfDoc) destroyDocument(outgoing);
 
       // A genuinely new upload clears undo/redo -- only now it has committed.
       if (!isEdit) this.signatures().resetHistory();
@@ -449,9 +449,9 @@ export class DocumentService implements DocumentsPort {
     } catch (err) {
       if (!isCurrentLoad()) {
         if (adopted) {
-          if (outgoing && outgoing !== nextPdfDoc) outgoing.destroy();
+          if (outgoing && outgoing !== nextPdfDoc) destroyDocument(outgoing);
         } else if (nextPdfDoc) {
-          nextPdfDoc.destroy();
+          destroyDocument(nextPdfDoc);
         }
         return;
       }
@@ -466,7 +466,7 @@ export class DocumentService implements DocumentsPort {
         if (cleanup.type === 'session') this.versionsDb.clearSession(cleanup.sessionId).catch(() => {});
         else this.versionsDb.deleteVersion(cleanup.sessionId, cleanup.index).catch(() => {});
       }
-      if (adopted && nextPdfDoc && nextPdfDoc !== previous?.pdfDoc) nextPdfDoc.destroy();
+      if (adopted && nextPdfDoc && nextPdfDoc !== previous?.pdfDoc) destroyDocument(nextPdfDoc);
 
       if (previous) {
         // Roll back to the last valid document.
@@ -531,7 +531,7 @@ export class DocumentService implements DocumentsPort {
     const store = this.store;
     if (!store.activeFile() && !store.pdfDoc()) return;
     const sessionToClear = store.documentSessionId();
-    store.pdfDoc()?.destroy();
+    destroyDocument(store.pdfDoc());
     store.update({
       activeFile: null,
       pdfDoc: null,
@@ -631,7 +631,7 @@ export class DocumentService implements DocumentsPort {
     const arrayBuffer = await file.arrayBuffer();
     const doc = await this.pdfjs.openShared(arrayBuffer);
     if (loadGeneration !== this.documentLoadGeneration) {
-      doc.destroy();
+      destroyDocument(doc);
       return null;
     }
     return doc;
@@ -675,7 +675,7 @@ export class DocumentService implements DocumentsPort {
     this.viewer.indicatorCount.set(pageCount);
     await this.viewer.renderPage(this.viewer.pageNum());
 
-    outgoingDoc?.destroy();
+    destroyDocument(outgoingDoc);
 
     store.clearMeta();
     store.update({ documentMetaLoadedFor: null });

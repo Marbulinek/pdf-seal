@@ -1,23 +1,35 @@
 #!/usr/bin/env node
-// `npm run dev`: one command for local development on http://localhost:3000.
+// `npm run dev`: the whole app -- UI and API -- on http://localhost:3000.
 //
-// Runs the Angular CLI in watch mode in app/ (rebuilding dist/app/browser on
-// every change to app/src or app/public) next to the Express server under
-// `tsx watch` (restarting on every change to server/ or shared/). The server serves the
-// freshly built UI, exactly like production -- reload the page to pick up a
-// UI rebuild. For hot module replacement instead, run `npm run dev:server`
-// and `npm run dev:web` in two terminals and open http://localhost:4200 (the
-// Angular dev server proxies /api and /signal to the API, see app/proxy.conf.json).
+// Runs two processes and stops both when either exits (or on Ctrl+C):
+//   - the Angular dev server (`ng serve`) on port 3000, with live reload and
+//     hot module replacement for everything in app/ and shared/;
+//   - the Express API under `tsx watch` on port 3001 (DEV_API_PORT),
+//     restarting on every change to server/ or shared/.
+// The dev server proxies /api and the /signal WebSocket to the API
+// (app/proxy.conf.json), so the browser only ever talks to port 3000.
+//
+// `npm run dev:server` alone runs the API on port 3000 serving the last
+// `npm run build:web` output, exactly like production.
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const WEB_PORT = '3000';
+// Must match the proxy target in app/proxy.conf.json.
+const API_PORT = '3001';
+
+// The CLIs' own entry points, run with this Node: no npx/shell wrapper in
+// between, so stopping this script really stops the dev server and the API.
+const cli = (pkg, bin) => path.join(root, 'node_modules', pkg, bin);
+const run = (entry, args, env = {}) =>
+  spawn(process.execPath, [entry, ...args], { cwd: root, stdio: 'inherit', env: { ...process.env, ...env } });
+
 const children = [
-  spawn(npx, ['ng', 'build', '--watch', '--configuration', 'development'], { cwd: path.join(root, 'app'), stdio: 'inherit' }),
-  spawn(npx, ['tsx', 'watch', 'server/server.ts'], { cwd: root, stdio: 'inherit' }),
+  run(cli('tsx', 'dist/cli.mjs'), ['watch', 'server/server.ts'], { PORT: API_PORT }),
+  run(cli('@angular/cli', 'bin/ng.js'), ['serve', '--port', WEB_PORT]),
 ];
 
 let exiting = false;

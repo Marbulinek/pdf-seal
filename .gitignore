@@ -4,5 +4,5 @@ node_modules
 /coverage
 /app/public/perf-fixtures
 /extension.pem
-/app/.angular
+/.angular
 /app/out-tsc

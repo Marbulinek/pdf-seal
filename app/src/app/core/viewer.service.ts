@@ -246,7 +246,7 @@ export class ViewerService {
       canvas.style.height = '';
     }
 
-    const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
+    const renderTask = page.render({ canvas: null, canvasContext: ctx, viewport: renderViewport });
     this.currentRenderTask = renderTask;
     try {
       await renderTask.promise;

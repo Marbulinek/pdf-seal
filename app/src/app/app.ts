@@ -1,9 +1,11 @@
 import { DOCUMENT } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, afterNextRender, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
+import { PdfJsService } from './core/pdfjs.service';
 import { UiService, type SectionId } from './core/ui.service';
+import { runAtIdle } from './core/util/dom';
 import { CertificatesStore } from './features/certificates/certificates.store';
 import { OverviewStore } from './features/overview/overview.store';
 import { ShareService } from './features/share/share.service';
@@ -107,6 +109,11 @@ export class App {
         takeUntilDestroyed(inject(DestroyRef)),
       )
       .subscribe(() => this.onNavigated(this.leafSnapshot()));
+
+    // Fetch the pdf.js chunk while the user is still picking a file, so the
+    // first document opens without waiting on it.
+    const pdfjs = inject(PdfJsService);
+    afterNextRender(() => runAtIdle(() => pdfjs.preload(), 2000, 500));
   }
 
   private leafSnapshot(): ActivatedRouteSnapshot {

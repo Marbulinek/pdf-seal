@@ -15,28 +15,33 @@
           "skipTests": false
         }
       },
-      "root": "",
-      "sourceRoot": "src",
+      "root": "app",
+      "sourceRoot": "app/src",
       "prefix": "app",
       "architect": {
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "outputPath": "../dist/app",
-            "index": "src/index.html",
-            "browser": "src/main.ts",
-            "tsConfig": "tsconfig.app.json",
+            "outputPath": "dist/app",
+            "index": "app/src/index.html",
+            "browser": "app/src/main.ts",
+            "tsConfig": "app/tsconfig.app.json",
             "assets": [
               {
                 "glob": "**/*",
-                "input": "public",
+                "input": "app/public",
                 "ignore": [
                   "perf-fixtures/**"
                 ]
+              },
+              {
+                "glob": "pdf.worker.min.mjs",
+                "input": "node_modules/pdfjs-dist/legacy/build",
+                "output": "vendor/pdfjs"
               }
             ],
             "styles": [
-              "src/styles.css"
+              "app/src/styles.css"
             ]
           },
           "configurations": {
@@ -66,7 +71,7 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
-            "proxyConfig": "proxy.conf.json"
+            "proxyConfig": "app/proxy.conf.json"
           },
           "configurations": {
             "production": {
@@ -81,12 +86,12 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "tsConfig": "tsconfig.spec.json",
+            "tsConfig": "app/tsconfig.spec.json",
             "coverageInclude": [
-              "src/app/**/*.ts"
+              "app/src/app/**/*.ts"
             ],
             "setupFiles": [
-              "src/test-setup.ts"
+              "app/src/test-setup.ts"
             ]
           }
         }

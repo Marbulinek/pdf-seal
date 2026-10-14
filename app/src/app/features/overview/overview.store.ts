@@ -8,6 +8,7 @@ import { DocumentStore } from '../../core/document.store';
 import { errorMessage } from '../../core/document.service';
 import { isRectPracticallyInvisible } from '../../core/field-rules';
 import type { InfoFullResponse } from '../../core/models';
+import { toViewportRectangle } from '../../core/pdfjs-types';
 import { UiService } from '../../core/ui.service';
 import { lazyInject } from '../../core/util/lazy';
 import { CERTIFICATES, SIGNATURES, VERSIONS } from '../../core/ports';
@@ -249,7 +250,7 @@ export const OverviewStore = signalStore(
       // Viewport space (top-left origin, rotation applied), in points.
       const base = page.getViewport({ scale: 1 });
       const r = item.rect;
-      const [x1, y1, x2, y2] = base.convertToViewportRectangle([r.x, r.y, r.x + r.width, r.y + r.height]);
+      const [x1, y1, x2, y2] = toViewportRectangle(base, [r.x, r.y, r.x + r.width, r.y + r.height]);
       const box = { left: Math.min(x1, x2), top: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) };
       const pct = (v: number, of: number) => `${Math.max(0, Math.min(100, (v / of) * 100))}%`;
       const map = {
@@ -284,6 +285,7 @@ export const OverviewStore = signalStore(
         if (!ctx) return;
         try {
           await page.render({
+            canvas: null,
             canvasContext: ctx,
             viewport: page.getViewport({ scale }),
             transform: [1, 0, 0, 1, -crop.left * scale, -crop.top * scale],

@@ -51,12 +51,16 @@ Requires Node.js ^22.22.3, ^24.15.0 or 26+ (the Angular CLI's minimum; `ng build
 
 ```bash
 npm install
-npm run dev          # Angular build in watch mode + API under tsx watch
+npm run dev          # UI (Angular dev server, live reload) + API (tsx watch), together
 # or
 npm run build && npm start
 ```
 
-Then open <http://localhost:3000>. For hot module replacement, run `npm run dev:server` and `npm run dev:web` in two terminals and open <http://localhost:4200> instead (the Angular dev server proxies `/api` and `/signal` to the API).
+Then open <http://localhost:3000>. `npm run dev` serves the Angular dev server on port 3000 and runs the API on port 3001 behind it (`/api` and the `/signal` WebSocket are proxied, see `app/proxy.conf.json`), so there's one URL with live reload for the UI and auto-restart for the API.
+
+### Railway
+
+The live app is deployed on [Railway](https://railway.com). `railway.json` pins the build to the `Dockerfile` below and health-checks `/api/version`; the server listens on Railway's `PORT`. Without the config file, the plain Node flow works too: `npm ci`, `npm run build`, `npm start`.
 
 ### Docker
 
@@ -70,7 +74,7 @@ The image is a multi-stage Node 24 / Alpine build shipping only production depen
 
 ## Development
 
-The repository has four top-level code folders sharing one `package.json`: `app/` (the Angular workspace — `app/src`, `app/public`, `angular.json`), `server/` (the Express API, `server/lib`, its tests and build scripts), `shared/` (pure TypeScript logic imported by both the server and the app as `@shared/*`) and `extension/` (the browser extension).
+The repository has four top-level code folders sharing one `package.json`: `app/` (the Angular app — `app/src`, `app/public`; the workspace's `angular.json` sits at the root), `server/` (the Express API, `server/lib`, its tests and build scripts), `shared/` (pure TypeScript logic imported by both the server and the app as `@shared/*`) and `extension/` (the browser extension).
 
 | Command | Purpose |
 | --- | --- |
@@ -78,9 +82,8 @@ The repository has four top-level code folders sharing one `package.json`: `app/
 | `npm run build:server` | Type-check the server (`tsc`) and bundle it to `dist/server/server.js` (esbuild) |
 | `npm run build:web` | Production build of the Angular UI to `dist/app/browser` |
 | `npm start` | Run the built server on port 3000 (serves the built UI) |
-| `npm run dev` | Angular build in watch mode + server under `tsx watch`, on port 3000 |
-| `npm run dev:server` | Server only, under `tsx watch` (port 3000) |
-| `npm run dev:web` | Angular dev server with HMR (port 4200, proxies `/api` and `/signal` to port 3000) |
+| `npm run dev` | Local development on port 3000: Angular dev server (live reload) proxying to the API under `tsx watch` on port 3001 |
+| `npm run dev:server` | Server only, under `tsx watch` (port 3000, serves the last `build:web` output) |
 | `npm test` | Both suites: `test:server` (Vitest projects `server/test`, `shared/test`, `extension/test`) and `test:web` (Angular, `app/src/**/*.spec.ts`) |
 | `npm run test:coverage` | Coverage with enforced thresholds on `server/lib/**` and `shared/*.ts`, plus Angular coverage |
 | `npm run build:demo-sample` | Regenerate the Help-tour sample PDF and demo root CA |

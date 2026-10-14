@@ -1,15 +1,13 @@
-// The subset of the pdf.js 3.x API this app uses. pdf.js ships as a vendored
-// UMD bundle (public/vendor/pdfjs), so these are hand-written rather than
-// imported from pdfjs-dist.
+// The pdf.js API (the `pdfjs-dist` npm package, legacy build) under the names
+// this app uses. Type-only: the library itself is a lazy chunk loaded by PdfJsService.
+import type { PDFDocumentProxy, PDFPageProxy, PDFWorker, PageViewport, RenderTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
-export interface PdfViewport {
-  width: number;
-  height: number;
-  scale: number;
-  /** [x1, y1, x2, y2] of the page in PDF space -- viewBox[3] is the page height. */
-  viewBox: number[];
-  convertToViewportRectangle(rect: number[]): number[];
-}
+export type PdfJsLib = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+export type PdfDocument = PDFDocumentProxy;
+export type PdfPage = PDFPageProxy;
+export type PdfViewport = PageViewport;
+export type PdfWorker = PDFWorker;
+export type PdfRenderTask = RenderTask;
 
 /** A viewport tagged with the per-axis scale the overlay maths uses. */
 export interface ScaledViewport extends PdfViewport {
@@ -17,47 +15,16 @@ export interface ScaledViewport extends PdfViewport {
   scaleY: number;
 }
 
-export interface PdfRenderTask {
-  promise: Promise<void>;
-  cancel(): void;
+/** Releases a document and its loading task (pdf.js 5+ has no `PDFDocumentProxy.destroy()`). */
+export function destroyDocument(doc: PdfDocument | null | undefined): void {
+  void doc?.loadingTask.destroy();
 }
 
-export interface PdfRenderParams {
-  canvasContext: CanvasRenderingContext2D;
-  viewport: PdfViewport;
-  transform?: number[];
-}
-
-export interface PdfPage {
-  getViewport(params: { scale: number }): PdfViewport;
-  render(params: PdfRenderParams): PdfRenderTask;
-  cleanup(): void;
-}
-
-export interface PdfMetadataResult {
-  info?: { Custom?: Record<string, string> };
-}
-
-export interface PdfDocument {
-  numPages: number;
-  getPage(pageNumber: number): Promise<PdfPage>;
-  getMetadata(): Promise<PdfMetadataResult>;
-  destroy(): void;
-}
-
-export interface PdfWorker {
-  destroyed: boolean;
-  destroy(): void;
-}
-
-export interface PdfLoadingTask {
-  promise: Promise<PdfDocument>;
-}
-
-export interface PdfJsLib {
-  GlobalWorkerOptions: { workerSrc: string };
-  PDFWorker: new (params: { name: string }) => PdfWorker;
-  getDocument(params: { data: ArrayBuffer | Uint8Array; worker: PdfWorker }): PdfLoadingTask;
+/** `rect` ([x1, y1, x2, y2] in PDF space) in viewport coordinates. */
+export function toViewportRectangle(viewport: PdfViewport, rect: readonly number[]): [number, number, number, number] {
+  const [x1, y1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+  const [x2, y2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+  return [x1, y1, x2, y2];
 }
 
 export function isRenderingCancelled(err: unknown): boolean {

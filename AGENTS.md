@@ -12,12 +12,12 @@ Key features: upload/preview PDFs, place/move/resize/remove **unsigned signature
 
 One npm package (a single `package.json`/`node_modules` at the root) holding four parts:
 
-- **`app/`** — the Angular UI: its own workspace (`app/angular.json`, `app/tsconfig*.json`, `app/proxy.conf.json`), sources in `app/src`, static files (pdf.js vendor bundle, images, the tour's demo sample) in `app/public`. Builds to `dist/app/browser`.
+- **`app/`** — the Angular UI (the workspace config, `angular.json`, sits at the repo root next to `node_modules`; `app/tsconfig*.json`, `app/proxy.conf.json`), sources in `app/src`, static files (images, the tour's demo sample, the visual-diff worker) in `app/public`. Builds to `dist/app/browser`.
 - **`server/`** — the Express server: `server/server.ts`, its modules in `server/lib`, tests in `server/test` (helpers in `server/test/lib/helpers`), the sample/fixture generators in `server/scripts`, `server/tsconfig.json` and `server/esbuild.config.mjs`. Builds to `dist/server/server.js`.
 - **`shared/`** — isomorphic, pure modules used by both sides (`VersionHistory`, `DemoTour`, `DocumentOverview`, `SignatureTemplates`, `VisualDiffStrokes`, `FieldHistory`), tests in `shared/test`. The app imports them as `@shared/<Module>` (a path alias in `app/tsconfig.json`); the server imports them relatively (`../shared/...`).
 - **`extension/`** — the Chromium extension (see `extension/AGENTS.md`), tests in `extension/test`.
 
-At the root: `package.json` (all scripts), `vitest.config.mjs` (the Node-side test projects), `scripts/dev.mjs` (the `npm run dev` runner), `Dockerfile`, `docs/`.
+At the root: `package.json` (all scripts), `angular.json`, `vitest.config.mjs` (the Node-side test projects), `scripts/dev.mjs` (the `npm run dev` runner), `Dockerfile`, `railway.json` (Railway: build with the Dockerfile, health-check `/api/version`), `docs/`.
 
 ## Development commands
 
@@ -25,11 +25,10 @@ At the root: `package.json` (all scripts), `vitest.config.mjs` (the Node-side te
 npm install             # Install dependencies (Node ^22.22.3 / ^24.15.0 / 26+, the Angular CLI's minimum; .nvmrc pins 24)
 npm run build           # Build the whole solution: build:server, then build:web
 npm run build:server    # Type-check the server (tsc -p server/tsconfig.json) and bundle it to dist/server/server.js (esbuild)
-npm run build:web       # Build the Angular UI to dist/app/browser (ng build, run in app/)
+npm run build:web       # Build the Angular UI to dist/app/browser (ng build)
 npm start               # Run the compiled server (node dist/server/server.js, serving dist/app/browser)
-npm run dev             # Angular build --watch + server under `tsx watch`, served together on http://localhost:3000
-npm run dev:server      # Server only, under `tsx watch` (serves the last build of dist/app/browser)
-npm run dev:web         # Angular dev server with HMR on http://localhost:4200 (proxies /api and /signal, see app/proxy.conf.json)
+npm run dev             # Local dev on http://localhost:3000: `ng serve` (live reload/HMR) proxying /api and /signal to the API under `tsx watch` on port 3001 (scripts/dev.mjs, app/proxy.conf.json)
+npm run dev:server      # Server only, under `tsx watch` on port 3000 (serves the last build of dist/app/browser, like production)
 npm run build:demo-sample     # Regenerate the bundled Help-tour sample PDF + demo root CA
 npm run build:perf-fixtures   # Regenerate app/public/perf-fixtures/ (gitignored) -- see docs/performance.md
 npm run build:extension       # Zip extension/ into dist/pdf-seal-extension.zip (Chrome Web Store upload) -- see extension/AGENTS.md
@@ -38,7 +37,7 @@ npm run build:extension       # Zip extension/ into dist/pdf-seal-extension.zip 
 There is no linter configured. There are two unit-test suites, both on Vitest, and `npm test` runs both:
 
 - **Node side** (`npm run test:server`, i.e. `vitest run` with the root `vitest.config.mjs`): three Vitest projects — `server` (`server/test`, mirroring `server/lib`, e.g. `server/test/lib/PdfSignatureTool.test.ts`), `shared` (`shared/test`) and `extension` (`extension/test`). Run one project with `npx vitest run --project shared`, a single file with `npx vitest run server/test/lib/PdfSignatureTool.test.ts`, or filter by name with `npx vitest run -t "some test name"`.
-- **Angular** (`npm run test:web`, i.e. `ng test --no-watch` in `app/`): `app/src/**/*.spec.ts` next to the code they cover, run by `@angular/build:unit-test` in jsdom, with `app/src/test-setup.ts` stubbing the browser APIs jsdom lacks (`ResizeObserver`, canvas). Shared typed fixtures and the TestBed provider helper live in `app/src/app/testing/`. Narrow a run from `app/` with `npx ng test --no-watch --include app/features/signatures` (paths are relative to `app/src/`) or `--filter "SignaturesStore"`.
+- **Angular** (`npm run test:web`, i.e. `ng test --no-watch`): `app/src/**/*.spec.ts` next to the code they cover, run by `@angular/build:unit-test` in jsdom, with `app/src/test-setup.ts` stubbing the browser APIs jsdom lacks (`ResizeObserver`, canvas). Shared typed fixtures and the TestBed provider helper live in `app/src/app/testing/`. Narrow a run with `npx ng test --no-watch --include app/features/signatures` (paths are relative to `app/src/`) or `--filter "SignaturesStore"`.
 
 Verify changes with `npm run build` (type checking + strict template checking), `npm test`, and manual testing against `http://localhost:3000`; add focused tests only for critical logic if needed.
 
@@ -70,7 +69,7 @@ CI (`.github/workflows/ci.yml`) type-checks and bundles the server, builds the A
   - `app/src/app/app.routes.ts`: one lazily-loaded route per section (`''` Overview — the default, `signatures`, `versions`, `certificates`, and `share/:sessionId`, which opens Overview and starts the receive flow; a `canMatch` sends malformed session ids to the 404 page), plus the `**` "Page not found" route. Modals (`shell/modals/`) and sheets (`shell/sheets/`) load in `@defer (on idle)` blocks. Structural components use attribute selectors (`section[appViewer]`, `aside[appEditSheet]`, `div[appSettingsModal]`…) so the rendered DOM is the original one; wrapper hosts use `display: contents`.
   - State: the four feature states are NgRx SignalStores — `OverviewStore`, `SignaturesStore` (+ `TemplatesStore`), `VersionsStore`, `CertificatesStore` (each `features/<name>/<name>.store.ts`, `providedIn: 'root'`, immutable state, `patchState` only). The open document lives in `DocumentStore` (`core/document.store.ts`); fields carry a client-side `uid` so selection never depends on object identity. Imperative work (pdf.js rendering, IndexedDB, WebRTC) lives in services: `DocumentService` (`processNewFile`, apply, snapshots), `ViewerService` (canvas, zoom, diff view mode), `VisualDiffService`, `VersionStoreService`, `ShareService`, `ExportService`, `TourService`, `PdfJsService`. Cross-feature calls go through the ports in `core/ports.ts` (bound in `core/port-providers.ts`, resolved lazily) to avoid DI/import cycles.
   - Pure view-model functions sit next to each store (`overview-model.ts`, `versions-model.ts`, `certificates-model.ts`, `signatures/field-ops.ts`) and are what the specs exercise most. Shared presentational components (hero/facts/flags, cert chain, validation list, validity timeline, meta tree, diff bits) live in `app/src/app/shared/`.
-  - pdf.js stays the self-hosted UMD build under `app/public/vendor/` (loaded on demand by `PdfJsService`, never from a CDN); everything in `app/public/` is copied verbatim into the build output. Development builds expose the services/stores on `window.pdfSeal` for the console-driven scenarios in `docs/performance.md`; every build exposes `window.processNewFile`, which the browser extension probes for (see `extension/AGENTS.md`).
+  - pdf.js is the `pdfjs-dist` npm package (legacy build — the modern one needs built-ins like `Map.prototype.getOrInsertComputed` that browsers don't ship yet), never a CDN: `PdfJsService` imports it lazily (its own chunk, warmed up at idle), the `angular.json` assets copy its worker to `/vendor/pdfjs/`, and its types are aliased in `core/pdfjs-types.ts` (`destroyDocument()`, `toViewportRectangle()` cover APIs pdf.js 5+ removed). Everything in `app/public/` is copied verbatim into the build output. Development builds expose the services/stores on `window.pdfSeal` for the console-driven scenarios in `docs/performance.md`; every build exposes `window.processNewFile`, which the browser extension probes for (see `extension/AGENTS.md`).
   - Every section's right panel opens with the Overview's visual vocabulary — an `<app-ov-hero>` plus `<app-ov-facts>` tiles (`#sigSectionHero`, `#revisionsHero`, the Certificates summary), and rows/collapsibles styled like `.overview-row`/`.overview-more`.
 - **Sharing** — `/share/:sessionId` pages plus a `WebSocketServer` in `server/server.ts` handle signaling only (the browser side is `ShareService`, `app/src/app/features/share/share.service.ts`); the actual PDF bytes move browser-to-browser over a WebRTC data channel in chunks with backpressure, verified by the recipient via SHA-256. Share sessions exist only in server memory (`socketSessions`/session maps in `server/server.ts`) and expire after 15 minutes — there is no persistence to design around.
 
@@ -78,7 +77,7 @@ CI (`.github/workflows/ci.yml`) type-checks and bundles the server, builds the A
 
 - **Filesystem safety**: any request-derived path must be reduced to a bare filename with `path.basename()` and rejoined onto the fixed, trusted `UPLOADS_DIR` (`server/server.ts`) before touching `fs.*`. Inline this check next to the fs call itself — see the pattern around line 39 of `server/server.ts`.
 - **Rate limiting**: every new HTTP route needs `generalLimiter`, plus `uploadLimiter` if it handles file uploads.
-- **No CDN scripts**: self-host third-party libraries under `app/public/vendor/` (or bundle them through the Angular build) instead of loading from external CDNs.
+- **No CDN scripts**: install third-party libraries from npm and bundle them through the Angular build (or, for files that must stay separate like workers, copy them to `/vendor` via `angular.json` assets) instead of loading from external CDNs.
 - **Angular conventions**: standalone components, signals (`signal`/`computed`/`effect`/`input`/`output`/`viewChild`) rather than RxJS for state, NgRx SignalStore for feature state, `ChangeDetectionStrategy.OnPush`, no `any` (narrow `unknown` instead), and keep the existing DOM ids/classes stable.
 - **Proxy trust**: `app.set("trust proxy", 1)` is intentional for Railway's single proxy hop — don't change it without understanding the tradeoff.
 
