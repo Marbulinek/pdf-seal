@@ -24,7 +24,7 @@
     "test:server": "vitest run",
     "test:web": "ng test --no-watch",
     "test:coverage": "vitest run --coverage && ng test --no-watch --coverage",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run build && playwright install chromium && playwright test",
     "build:demo-sample": "tsx server/scripts/build-demo-sample.ts",
     "build:perf-fixtures": "tsx server/scripts/build-perf-fixtures.ts"
   },

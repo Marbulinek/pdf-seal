@@ -49,10 +49,10 @@ npm run dev      # develop at http://localhost:3000 with live reload
 npm run build    # build server + UI into dist/
 npm start        # run the built app at http://localhost:3000
 npm test         # unit tests (server + Angular); no running server needed
-npm run test:e2e # end-to-end tests in Chromium (after npm run build)
+npm run test:e2e # end-to-end tests in Chromium (builds the app first)
 ```
 
-The Angular unit tests run in jsdom with every server call mocked, so they work anywhere, CI included. The e2e tests (`e2e/`, Playwright) start the built app themselves and drive it in a real browser; run `npx playwright install chromium` once before the first run.
+The Angular unit tests run in jsdom with every server call mocked, so they work anywhere, CI included. The e2e tests (`e2e/`, Playwright) build and start the app themselves and drive it in a real browser; the first run also downloads Playwright's Chromium. On Linux, if Chromium then fails to launch, install its system libraries with `npx playwright install-deps chromium`.
 
 Or with Docker:
 

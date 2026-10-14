@@ -53,16 +53,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Chromium plus its system libraries (test:e2e's own install is then a no-op).
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
-
-      - name: Build server and web UI
-        run: npm run build
 
       - name: Type-check the e2e tests
         run: npx tsc -p e2e/tsconfig.json
 
-      # Playwright starts the built server itself (playwright.config.ts).
+      # Builds the app, then Playwright starts the built server itself.
       - name: Run e2e tests
         run: npm run test:e2e
 

@@ -2,13 +2,14 @@ import { defineConfig, devices } from '@playwright/test';
 
 // End-to-end tests (e2e/): the real built app -- Express server plus the
 // Angular build -- driven in Chromium. Playwright starts the server itself
-// (webServer below), so nothing has to be running beforehand; it only needs
-// `npm run build` to have produced dist/.
+// (webServer below), so nothing has to be running beforehand.
 //
-//   npm run build && npm run test:e2e
+//   npm run test:e2e
 //
-// PLAYWRIGHT_CHROMIUM_PATH points at an already-installed Chromium instead of
-// the one `npx playwright install chromium` downloads.
+// builds the app, downloads Playwright's Chromium (a no-op once it's there)
+// and runs the suite. `npx playwright test` alone skips the first two steps,
+// for quick re-runs against an existing build. PLAYWRIGHT_CHROMIUM_PATH points
+// at an already-installed Chromium instead of the downloaded one.
 const PORT = Number(process.env.E2E_PORT || 3100);
 const baseURL = `http://localhost:${PORT}`;
 
