@@ -17,6 +17,7 @@ export function highlightParts(text: string, term: string): HighlightParts {
 @Component({
   selector: 'app-meta-highlight',
   template: `{{ parts().before }}@if (parts().match) {<mark class="meta-highlight">{{ parts().match }}</mark>}{{ parts().after }}`,
+  styleUrl: './meta-highlight.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MetaHighlight {

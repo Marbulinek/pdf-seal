@@ -1,0 +1,63 @@
+.share-modal-box { width: min(760px, 100%); display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+.share-modal-box.is-receiver { width: min(720px, 100%); }
+.share-modal-hero-panel {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px;
+  border-radius: var(--radius-m);
+  background: #fff;
+}
+.share-hero-seal {
+  display: block;
+  flex: 0 0 auto;
+  width: 151px;
+  height: 80px;
+  border-radius: 12px;
+  background: #fff;
+  object-fit: cover;
+  object-position: 42% center;
+}
+.share-modal-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.share-link-row { display: flex; gap: 10px; align-items: center; margin: 0; }
+.share-link-row[hidden], .share-progress-wrap[hidden] { display: none !important; }
+.copy-share-wrap { position: relative; flex: 0 0 auto; }
+.copy-share-tooltip { position: absolute; right: 0; bottom: calc(100% + 9px); z-index: 1; padding: 6px 10px; border: 1px solid var(--ice); border-radius: 9px; background: var(--navy); color: #fff; box-shadow: none; font-size: 0.72rem; font-weight: 700; opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease; }
+.copy-share-tooltip::after { content: ''; position: absolute; right: 15px; top: 100%; border: 5px solid transparent; border-top-color: var(--navy); }
+.copy-share-tooltip.is-visible { opacity: 1; visibility: visible; transform: translateY(0); }
+.share-progress-wrap { margin: 0; }
+.share-progress-label { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 7px; color: var(--ocean-dark); font-size: 0.78rem; font-weight: 700; }
+.share-progress-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-progress-track { height: 12px; overflow: hidden; border: 1px solid var(--ice); border-radius: 999px; background: var(--cream); }
+.share-status { min-height: 22px; margin: 0; color: var(--ocean-dark); font-size: 0.84rem; font-weight: 600; }
+.share-status.success { color: #18734a; }
+.share-status.error { color: var(--coral-dark); }
+.share-status.waiting { color: var(--ocean-dark); }
+.share-security-note { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; border: 1px solid var(--ice); border-radius: 999px; background: #fff; color: var(--ocean-dark); padding: 6px 12px; font-size: 0.72rem; font-weight: 600; line-height: 1.3; }
+@media (max-width: 560px) {
+  .share-modal-hero-panel { flex-direction: column; text-align: center; }
+  .share-hero-seal { width: 100%; max-width: 220px; height: auto; object-position: center; }
+  .share-modal-hero-copy { align-items: center; text-align: center; }
+  .share-security-note { align-self: center; } }
+.share-recipient-note { margin: 0; color: var(--ocean-dark); font-size: 0.73rem; line-height: 1.45; }
+.share-modal-box.is-receiver .share-recipient-note { color: var(--navy); font-weight: 600; }
+.share-steps { display: flex; align-items: flex-start; margin: 0; padding: 0; list-style: none; }
+.share-steps[hidden] { display: none !important; }
+.share-step { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 88px; flex: 0 0 auto; text-align: center; }
+.share-step-badge { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--ice); background: #fff; color: var(--ocean-dark); font-weight: 800; font-size: 0.82rem; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+.share-step-label { font-size: 0.66rem; font-weight: 700; color: var(--ocean-dark); line-height: 1.25; opacity: 0.65; }
+.share-step-connector { flex: 1 1 auto; height: 3px; margin-top: 14px; min-width: 10px; background: var(--ice); transition: background 0.15s ease; }
+.share-step-connector.is-done { background: #249c63; }
+.share-step.is-active .share-step-badge { background: var(--ocean); border-color: var(--ocean-dark); color: #fff; box-shadow: none; }
+.share-step.is-active .share-step-label { opacity: 1; color: var(--navy); }
+.share-step.is-done .share-step-badge { background: #249c63; border-color: #18734a; color: #fff; }
+.share-step.is-done .share-step-label { opacity: 1; color: #18734a; }
+@media (max-width: 640px) {
+  .share-link-row { align-items: stretch; flex-direction: column; }
+  .share-step { width: 58px; }
+  .share-step-label { font-size: 0.6rem; } }

@@ -1,0 +1,19 @@
+.cert-bytemap { margin: 0 0 20px; display: flex; flex-direction: column; gap: 7px; }
+.cert-bytemap-row { display: flex; align-items: center; gap: 9px; }
+.cert-bytemap-label { flex: 0 0 auto; width: 84px; font-size: 0.68rem; font-weight: 600; color: var(--ocean-dark); }
+.cert-bytemap-bar {
+  flex: 1 1 auto;
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--ice);
+  border: 1px solid var(--ice);
+}
+.cert-bytemap-seg { height: 100%; min-width: 1px; }
+.cert-bytemap-seg.is-signed    { background: var(--success); }
+.cert-bytemap-seg.is-gap       { background: var(--amber); }
+.cert-bytemap-seg.is-trailing  { background: var(--coral); }
+.cert-bytemap-seg.is-occupied  { background: var(--ocean); }
+.cert-bytemap-seg.is-headroom  { background: var(--ice); }
+.cert-bytemap-note { margin: -2px 0 0; font-size: 0.7rem; color: var(--coral-dark); }

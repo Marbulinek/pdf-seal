@@ -217,6 +217,11 @@
             (click)="onOverlayClick($event, o.field)"
           >
             <span class="field-overlay-icon" aria-hidden="true"><span class="icon" [class]="o.icon" aria-hidden="true"></span></span>
+            @if ((ui.activeSection() === 'metadata' || ui.activeSection() === 'signatures') && !o.invisible) {
+              <span class="overview-tag" aria-hidden="true"
+                ><span class="icon {{ o.kindIcon }}"></span>{{ o.tag.text }}@if (o.tag.name) {<span class="overview-tag-name">{{ o.tag.name }}</span>}</span
+              >
+            }
             <div class="field-invisible-pin" aria-hidden="true" [style.display]="o.invisible ? null : 'none'">
               <span class="icon" [class]="o.pinIcon" aria-hidden="true"></span>
             </div>
@@ -225,7 +230,7 @@
               <div class="field-label-tooltip field-label-invisible" [hidden]="!o.invisible">Invisible field — no visible footprint on the page</div>
               <div class="field-label-tooltip field-label-generic" [hidden]="!o.field.tooltip">{{ o.field.tooltip || '' }}</div>
             </div>
-            <div class="resize-handle" [style.display]="o.locked ? 'none' : null" (mousedown)="onResizeStart($event, o.field)"></div>
+            <div class="resize-handle" [style.display]="!o.movable ? 'none' : null" (mousedown)="onResizeStart($event, o.field)"></div>
             <div
               class="template-save-handle"
               draggable="true"
@@ -270,8 +275,14 @@
               [style.top.px]="h.box.top"
               [style.width.px]="h.box.width"
               [style.height.px]="h.box.height"
-              (click)="overview.openSheet(h.item.kind, h.item.key)"
+              (mouseenter)="fitTags()"
+              (click)="toggleOverviewSheet(h.item.kind, h.item.key); $event.stopPropagation()"
             >
+              @if (!h.invisible) {
+                <span class="overview-tag" aria-hidden="true"
+                ><span class="icon {{ h.icon }}"></span>{{ h.tag.text }}@if (h.tag.name) {<span class="overview-tag-name">{{ h.tag.name }}</span>}</span
+              >
+              }
               @if (h.invisible) {
                 <div class="field-invisible-pin" [attr.data-label]="h.item.label || ''">
                   <span class="icon" [class]="h.icon" aria-hidden="true"></span>

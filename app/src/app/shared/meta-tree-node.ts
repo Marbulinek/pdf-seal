@@ -34,6 +34,7 @@ import { isExpandableMetaValue, metaEntriesOf, type MetaValue } from './meta-val
       </div>
     }
   `,
+  styleUrl: './meta-tree-node.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

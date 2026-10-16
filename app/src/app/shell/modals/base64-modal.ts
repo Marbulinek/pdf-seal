@@ -50,6 +50,7 @@ const VALIDITY_COPY: Record<Base64Validity, { icon: string; text: string }> = {
       </div>
     </div>
   `,
+  styleUrl: './base64-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'base64UploadModal',

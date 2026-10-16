@@ -41,6 +41,7 @@ const ICON_CLASS: Record<Exclude<NotificationType, 'loading'>, string> = {
       </div>
     }
   `,
+  styleUrl: './notification-stack.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { id: 'notificationStack', class: 'notification-stack', 'aria-live': 'polite', 'aria-atomic': 'false' },
 })

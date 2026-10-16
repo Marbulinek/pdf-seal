@@ -1,0 +1,9 @@
+.diff-dict-changes { display: flex; flex-direction: column; gap: 4px; }
+.diff-dict-change-row { display: flex; gap: 8px; align-items: baseline; font-size: 0.74rem; flex-wrap: wrap; }
+.diff-dict-change-key { font-family: monospace; font-weight: 700; color: var(--navy); flex-shrink: 0; }
+.diff-dict-change-values { color: var(--ocean-dark); word-break: break-word; }
+.diff-dict-change-values del { color: var(--coral-dark); text-decoration: line-through; opacity: 0.8; }
+.diff-dict-change-values ins { color: var(--ocean-dark); text-decoration: none; font-weight: 700; }
+.diff-dict-added { color: var(--ocean-dark); font-weight: 700; }
+.diff-dict-removed { color: var(--coral-dark); font-weight: 700; }
+.diff-dict-change-help { margin-left: 4px; }

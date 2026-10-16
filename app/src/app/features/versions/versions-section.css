@@ -1,0 +1,35 @@
+.revisions-list-panel,
+.revisions-diff-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.revisions-diff-panel[hidden] {
+  display: none;
+}
+
+.revisions-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+}
+.revisions-timeline[hidden] { display: none; }
+
+.revisions-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ocean-dark);
+  cursor: pointer;
+}
+/* Load-bearing, same as .panel-loading[hidden]: the display above would
+   otherwise beat the hidden attribute. */
+.revisions-filter-toggle[hidden] { display: none; }
+.revisions-filter-note { margin-top: -6px; }

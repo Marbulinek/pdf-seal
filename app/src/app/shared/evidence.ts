@@ -35,6 +35,7 @@ import { CertDot } from './cert-dot';
       }
     </div>
   `,
+  styleUrl: './evidence.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

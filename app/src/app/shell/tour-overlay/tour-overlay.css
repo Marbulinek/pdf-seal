@@ -1,0 +1,79 @@
+.tour-spotlight {
+  position: fixed;
+  z-index: 200;
+  border-radius: 10px;
+  pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(23, 27, 43, 0.55);
+  transition: top 0.18s ease, left 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+.tour-spotlight[hidden] { display: none; }
+
+.tour-popover {
+  position: fixed;
+  z-index: 201;
+  width: min(340px, calc(100vw - 32px));
+  background: #ffffff;
+  border: 1px solid var(--ice);
+  border-radius: var(--radius-m);
+  box-shadow: 0 12px 32px rgba(30, 33, 51, 0.22);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: top 0.18s ease, left 0.18s ease;
+}
+.tour-popover[hidden] { display: none; }
+.tour-popover-body { position: relative; min-height: 24px; }
+.tour-popover-title { margin: 0 0 6px; font-size: 0.92rem; color: var(--navy); }
+.tour-popover-text { margin: 0; font-size: 0.8rem; line-height: 1.55; color: var(--ocean-dark); }
+.tour-popover-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+}
+.tour-popover-spinner[hidden] { display: none; }
+.tour-popover-spinner::after {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ice);
+  border-top-color: var(--ocean);
+  animation: tour-spin 0.7s linear infinite;
+}
+.tour-popover-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tour-popover-progress { font-size: 0.7rem; font-weight: 700; color: var(--ocean-dark); white-space: nowrap; }
+.tour-popover-actions { display: flex; gap: 6px; }
+
+/* The popover itself flashes an explicit "Switching to X..." message while a
+   section change is in flight -- the popover is what the user is already
+   reading, so this is the clearest possible signal that something is
+   happening, on top of the nav-tab pulse above. */
+.tour-popover.tour-popover-switching {
+  background: rgba(69, 123, 157, 0.08);
+  border-color: var(--ocean);
+}
+.tour-popover-switching .tour-popover-title {
+  color: var(--ocean-dark);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tour-popover-switching .tour-popover-title::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--ice);
+  border-top-color: var(--ocean);
+  animation: tour-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight, .tour-popover { transition: none; }
+  .tour-popover-spinner::after, .tour-popover-switching .tour-popover-title::before { animation: none; }
+}
+@keyframes tour-spin { to { transform: rotate(360deg); } }

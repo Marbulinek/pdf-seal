@@ -44,6 +44,7 @@ import { UiService } from '../core/ui.service';
       </div>
     }
   `,
+  styleUrl: './dictionary-changes.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

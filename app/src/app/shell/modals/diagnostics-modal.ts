@@ -20,6 +20,7 @@ import { isBackdropClick } from './backdrop-click';
       </div>
     </div>
   `,
+  styleUrl: './diagnostics-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'diagnosticsModal',

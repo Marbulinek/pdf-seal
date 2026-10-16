@@ -1,0 +1,16 @@
+.diff-object-badge {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--cream);
+  color: var(--navy);
+}
+.diff-object-badge.badge-structural { background: rgba(30, 33, 51, 0.08); color: var(--navy); }
+.diff-object-badge.badge-dictionary { background: rgba(69, 123, 157, 0.12); color: var(--ocean-dark); }
+.diff-object-badge.badge-content { background: rgba(16, 185, 129, 0.15); color: var(--ocean-dark); }
+.diff-object-badge.badge-visual { background: rgba(16, 185, 129, 0.22); color: var(--ocean-dark); }
+.diff-object-badge.badge-signing { background: rgba(249, 115, 22, 0.14); color: var(--coral-dark); }
+.diff-object-badge.badge-invisible { background: rgba(233, 162, 59, 0.18); color: var(--amber-dark); display: inline-flex; align-items: center; gap: 3px; }

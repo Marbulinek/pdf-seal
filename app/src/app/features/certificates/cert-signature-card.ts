@@ -77,6 +77,7 @@ import { CertificatesStore } from './certificates.store';
       </div>
     </details>
   `,
+  styleUrl: './cert-signature-card.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'cert-signature-card',

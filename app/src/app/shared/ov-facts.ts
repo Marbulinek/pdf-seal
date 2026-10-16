@@ -45,6 +45,7 @@ export function dateFact(label: string, value: string | null | undefined, wide =
       </dl>
     }
   `,
+  styleUrl: './ov-facts.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

@@ -10,6 +10,7 @@ import { isBackdropClick } from './backdrop-click';
 @Component({
   selector: 'div[appShareModal]',
   templateUrl: './share-modal.html',
+  styleUrl: './share-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'shareModal',

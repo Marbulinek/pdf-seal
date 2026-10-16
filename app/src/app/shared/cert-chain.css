@@ -1,0 +1,82 @@
+.cert-chain { list-style: none; margin: 0; padding: 0; }
+.cert-chain-node {
+  position: relative;
+  padding-left: calc(var(--depth, 0) * 20px);
+  margin-bottom: 8px;
+  animation: fadeInUp 0.34s ease both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+.cert-chain-node:last-child { margin-bottom: 0; }
+
+/* Every chain node is an only child, so one L-shaped connector per node is
+   enough: it drops out of the parent card's bottom edge and elbows over into
+   this node's status dot. No full-height rail needed. */
+.cert-chain-node:not(:first-child)::before {
+  content: ''; position: absolute; top: -8px; height: 28px; width: 8px;
+  left: calc((var(--depth, 1) - 1) * 20px + 12px);
+  border-left: 2px solid var(--ice);
+  border-bottom: 2px solid var(--ice);
+  border-bottom-left-radius: 6px;
+}
+
+/* The "Other certificates" list is a flat set of siblings -- no connectors. */
+.cert-chain.is-flat .cert-chain-node::before { content: none; }
+
+.cert-node-body {
+  display: flex; align-items: flex-start; gap: 9px;
+  width: 100%;
+  padding: 9px 11px;
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-left-width: 3px;
+  border-radius: 10px;
+  font-family: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+button.cert-node-body:hover {
+  border-color: var(--ocean);
+  background: var(--cream);
+}
+button.cert-node-body:focus-visible { outline: 2px solid var(--ocean); outline-offset: 2px; }
+.cert-chain-node.is-pass    > .cert-node-body { border-left-color: var(--success); }
+.cert-chain-node.is-warn    > .cert-node-body { border-left-color: var(--amber); }
+.cert-chain-node.is-fail    > .cert-node-body { border-left-color: var(--coral); }
+.cert-chain-node.is-unknown > .cert-node-body { border-left-color: var(--ocean); }
+.cert-chain-node.is-selected > .cert-node-body {
+  border-color: var(--ocean);
+  background: rgba(69, 123, 157, 0.06);
+}
+.cert-chain-node.is-root > .cert-node-body {
+  border-top-color: var(--ocean);
+  border-right-color: var(--ocean);
+  border-bottom-color: var(--ocean);
+}
+
+.cert-node-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cert-node-name {
+  font-size: 0.83rem; font-weight: 700; color: var(--navy);
+  white-space: normal; overflow-wrap: break-word; word-break: break-word;
+}
+.cert-node-role { font-size: 0.7rem; font-weight: 600; color: var(--ocean-dark); }
+.cert-node-detail { font-size: 0.7rem; color: var(--ocean-dark); }
+
+/* The signature itself, sitting at the bottom of the tree below its signer certificate. */
+.cert-chain-node.is-signature > .cert-node-body {
+  background: var(--cream);
+  border-left-color: var(--coral);
+}
+
+/* A gap in the chain has to be legible without reading the label. */
+.cert-chain-node.is-missing > .cert-node-body {
+  border-style: dashed;
+  border-left-style: dashed;
+  border-color: var(--amber);
+  cursor: default;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(233, 162, 59, 0.07) 0 6px,
+    transparent 6px 12px
+  );
+}

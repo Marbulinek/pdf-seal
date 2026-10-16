@@ -17,6 +17,7 @@ import { isBackdropClick } from './backdrop-click';
   selector: 'div[appRawObjectModal]',
   imports: [MetaTree, DictionaryChanges, StreamDiff, ObjectBadges],
   templateUrl: './raw-object-modal.html',
+  styleUrl: './raw-object-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'rawObjectModal',

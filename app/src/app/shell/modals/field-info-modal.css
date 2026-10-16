@@ -1,0 +1,18 @@
+:host(.info-modal) {
+  z-index: 120;
+}
+
+/* The wrapper is a plain div with no layout of its own; without this it becomes
+   the backdrop's flex item at full width and the box inside it lands off-centre. */
+.field-info-overlay { display: contents; }
+
+.field-info-modal-box {
+  width: min(560px, 100%);
+}
+
+.field-info-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--navy);
+}

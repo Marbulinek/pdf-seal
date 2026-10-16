@@ -1,0 +1,166 @@
+.cert-hint {
+  margin: -8px 0 16px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ocean-dark);
+}
+.cert-trust-banner {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  background: rgba(233, 162, 59, 0.1);
+  border: 1.5px solid rgba(233, 162, 59, 0.45);
+  border-radius: var(--radius-m);
+  font-size: 0.76rem; line-height: 1.55;
+  color: var(--navy);
+}
+.cert-trust-banner[hidden] { display: none; }
+.cert-empty {
+  padding: 18px;
+  background: var(--cream);
+  border: 1.5px dashed var(--ice);
+  border-radius: var(--radius-m);
+  font-size: 0.82rem; line-height: 1.55;
+  color: var(--ocean-dark);
+}
+.cert-empty-error { border-color: rgba(230, 57, 70, 0.5); background: rgba(230, 57, 70, 0.06); color: var(--coral-dark); }
+
+/* One toolbar row: filter chips, the search input, and the copy actions all
+   sit side by side and wrap together on narrow widths -- replaces the old
+   stacked .cert-copy-actions + .cert-filter-bar blocks. */
+.cert-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 8px;
+  margin-bottom: 12px;
+}
+.cert-toolbar-copy { display: flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+.cert-toolbar-caption {
+  margin: 0 0 10px; font-size: 0.7rem; color: var(--ocean-dark);
+  display: flex; align-items: center; gap: 8px;
+}
+.cert-toolbar-caption-clear {
+  background: none; border: none; padding: 0;
+  font: inherit; font-weight: 700; color: var(--ocean);
+  cursor: pointer; text-decoration: underline;
+}
+.cert-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Same chip as .overview-chip. */
+.cert-filter-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px;
+  font: inherit; font-size: 0.76rem; font-weight: 600;
+  color: var(--navy);
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.cert-filter-chip.is-active { opacity: 1; }
+.cert-filter-chip.is-fail.is-active    { border-color: var(--coral); }
+.cert-filter-chip.is-warn.is-active    { border-color: var(--amber); }
+.cert-filter-chip.is-pass.is-active    { border-color: var(--success); }
+.cert-filter-chip.is-unknown.is-active { border-color: var(--ocean); }
+.cert-filter-chip-count {
+  display: inline-block; min-width: 1.4em; padding: 0 6px; border-radius: 999px; text-align: center;
+  background: var(--ice); color: var(--navy); font-size: 0.7rem;
+}
+
+.cert-status-list { display: flex; flex-direction: column; gap: 8px; }
+.cert-status-row {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 9px 11px;
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-left-width: 3px;
+  border-radius: 10px;
+  font-size: 0.79rem; line-height: 1.45;
+  color: var(--navy);
+  /* Reuses the existing keyframe; the stagger makes the list read top-down as
+     it lands rather than appearing all at once. */
+  animation: fadeInUp 0.32s ease both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+.cert-status-row.is-pass    { border-left-color: var(--success); }
+.cert-status-row.is-warn    { border-left-color: var(--amber); }
+.cert-status-row.is-fail    { border-left-color: var(--coral); }
+.cert-status-row.is-unknown { border-left-color: var(--ocean); border-left-style: dashed; }
+.cert-status-label { font-weight: 700; }
+.cert-status-detail { color: var(--ocean-dark); }
+.cert-status-block.is-pass    { border-left-color: var(--success); }
+.cert-status-block.is-warn    { border-left-color: var(--amber); }
+.cert-status-block.is-fail    { border-left-color: var(--coral); }
+.cert-status-block.is-unknown { border-left-color: var(--ocean); border-left-style: dashed; }
+.cert-status-block .cert-status-label { font-size: 0.79rem; }
+.cert-status-caption { margin: 0 0 8px; font-size: 0.72rem; line-height: 1.45; color: var(--ocean-dark); }
+.cert-scratchpad-dropzone {
+  padding: 12px;
+  border: 1.5px dashed var(--ice);
+  border-radius: var(--radius-m);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cert-scratchpad-dropzone.is-dragover { border-color: var(--ocean); background: rgba(69, 123, 157, 0.06); }
+.cert-scratchpad-textarea {
+  width: 100%; min-height: 90px; resize: vertical;
+  padding: 8px 10px;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem; line-height: 1.5;
+  color: var(--navy);
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  margin-bottom: 8px;
+}
+.cert-scratchpad-textarea:focus { outline: none; border-color: var(--ocean); }
+.cert-scratchpad-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cert-scratchpad-filename { font-size: 0.72rem; color: var(--ocean-dark); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cert-simulated-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--coral-dark);
+  background: rgba(230, 57, 70, 0.1);
+  border: 1px solid rgba(230, 57, 70, 0.35);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.cert-trustsim-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 10px, rgba(230, 57, 70, 0.035) 10px, rgba(230, 57, 70, 0.035) 20px);
+  border: 1.5px dashed var(--ice);
+  border-radius: var(--radius-m);
+}
+.cert-trustsim-card.is-pass { border-color: rgba(42, 157, 143, 0.45); }
+.cert-trustsim-card.is-fail { border-color: rgba(230, 57, 70, 0.45); }
+.cert-trustsim-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.cert-trustsim-detail { margin: 0 0 6px; font-size: 0.79rem; color: var(--navy); }
+.cert-signature-list, .cert-card-list { display: flex; flex-direction: column; gap: 14px; }
+
+/* Modify tools are off by default -- see "Enable certificate modification
+   tools" in Settings. */
+:host-context(body.hide-certificate-modify-panel) #certificatesModifyPanel { display: none; }
+
+/* Trust simulation is opt-in -- see "Enable trust simulation" in Settings. */
+:host-context(body.hide-trust-simulation-panel) #certificatesTrustSimPanel { display: none; }
+
+/* The scratchpad is opt-in -- see "Enable certificate scratchpad" in Settings. */
+:host-context(body.hide-certificate-scratchpad-panel) #certificatesScratchpadPanel { display: none; }
+@media (max-width: 640px) {
+  .cert-toolbar { flex-direction: column; }
+  .cert-toolbar-copy { align-self: flex-end; }
+}
+.certificates-modify-panel { background: #fffdfb; border-color: rgba(230, 57, 70, 0.28); }
+.cert-modify-list { display: flex; flex-direction: column; gap: 14px; }
+
+.cert-modify-group {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-m);
+}
+.cert-modify-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.cert-modify-title { font-size: 0.88rem; font-weight: 700; color: var(--navy); }
+.cert-modify-room { margin: 0 0 12px; font-size: 0.73rem; line-height: 1.5; color: var(--ocean-dark); }
+.cert-modify-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.cert-modify-btn { flex: 1 1 auto; font-size: 0.75rem; }
+.cert-modify-btn:disabled { opacity: 0.45; cursor: not-allowed; }

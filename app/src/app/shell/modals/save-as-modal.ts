@@ -39,6 +39,7 @@ import { ExportService } from '../../features/export/export.service';
       </div>
     </div>
   `,
+  styleUrl: './save-as-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'saveAsModal',

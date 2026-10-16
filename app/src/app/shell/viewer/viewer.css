@@ -1,0 +1,508 @@
+.icon-wrench { -webkit-mask-image: url(/assets/images/icons/wrench.svg); mask-image: url(/assets/images/icons/wrench.svg); }
+.icon-file-simple { -webkit-mask-image: url(/assets/images/icons/file-simple.svg); mask-image: url(/assets/images/icons/file-simple.svg); }
+.icon-plus { -webkit-mask-image: url(/assets/images/icons/plus.svg); mask-image: url(/assets/images/icons/plus.svg); }
+
+/* The name shares one strip with the control pills, so it is the elastic item:
+   it takes what they leave (min 0 so the ellipsis can actually kick in) and
+   carries no pill chrome of its own -- two nested pills on one row read as
+   noise next to the controls they sit beside. */
+.viewer-file-name {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  /* The hover target used to be just the icon+text's own tight box, which
+     was fiddly to land the pointer on before the reveal kicked in. Padding
+     plus an equal negative margin grows the actual hoverable/clickable area
+     (mouse events fire over padding too) to fill the toolbar row's height
+     and give some horizontal slack, without shifting where the icon/text
+     themselves sit or affecting sibling layout. */
+  padding: 8px 10px;
+  margin: -8px -10px;
+  border-radius: 10px;
+}
+.viewer-file-name.is-visible { display: flex; }
+.viewer-file-name-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--coral);
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-image: url(/assets/images/icons/file-simple.svg);
+  mask-image: url(/assets/images/icons/file-simple.svg);
+}
+.viewer-file-name-text {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--navy);
+  font-size: 0.88rem;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.viewer-file-close-btn {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--navy);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.viewer-file-close-btn:hover { background: var(--coral); color: #fff; }
+@media (max-width: 640px) {
+  /* Too narrow for one strip: the name gets its own line again, but as plain
+     text rather than the full-width pill it used to be. Touch has no real
+     hover, so the pill groups stay the default here rather than the wrench. */
+  .viewer-toolbar { flex-wrap: wrap; }
+  .viewer-file-name { flex: 1 1 100%; }
+  .viewer-controls-row { flex: 1 1 100%; justify-content: flex-end; }
+  .viewer-controls-group { flex: 0 1 auto; font-size: 0.78rem; padding: 4px 8px; gap: 4px; }
+  .viewer-file-name-text { font-size: 0.8rem; }
+  .page-indicator-label { display: none; } }
+@media (max-width: 360px) {
+  .viewer-controls-row { gap: 8px; }
+  .viewer-controls-group { padding: 4px 6px; } }
+.viewer-scroll {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: 0 -4px 14px -4px;
+  padding: 0 4px 14px 4px;
+  min-height: 0;
+  height: 100%;
+}
+/* Only allow horizontal scroll once the user has actually zoomed in. At
+   100% (fit-to-container), flex-shrink: 0 on .pdf-container above can
+   still leave it a sub-pixel wider than the panel due to rounding between
+   computeFitScale() and the real layout width -- without this, that shows
+   a phantom horizontal scrollbar with nothing meaningful to pan to. */
+.viewer-scroll.is-zoomed {
+  overflow-x: auto;
+}
+.viewer-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+.viewer-scroll::-webkit-scrollbar-track { background: var(--cream); border-radius: 999px; }
+.viewer-scroll::-webkit-scrollbar-thumb { background: var(--ice); border-radius: 999px; border: 2px solid var(--cream); }
+.viewer-scroll::-webkit-scrollbar-thumb:hover { background: var(--ocean); }
+.viewer-tool-btn { transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+.viewer-tool-btn.is-active:hover:not(:disabled) {
+  background: var(--ocean-dark);
+  color: #fff;
+}
+.viewer-scroll.is-panning { cursor: grab; touch-action: none; }
+.viewer-scroll.is-panning.is-dragging,
+.viewer-scroll.is-panning.is-dragging * { cursor: grabbing; }
+.viewer-scroll.is-dragging { user-select: none; -webkit-user-select: none; }
+.viewer-scroll.is-dragging canvas,
+.viewer-scroll.is-dragging #overlay-layer { pointer-events: none; }
+.viewer-controls { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.viewer-controls[hidden] { display: none; }
+/* Name left, controls right, on one line. The row is what gets hidden while no
+   document is open, so `margin-left: auto` on it (rather than on the name) is
+   what keeps the pills right-aligned either way. */
+.viewer-toolbar { display: flex; align-items: center; gap: 12px; min-height: 34px; }
+.viewer-controls-row {
+  margin-left: auto;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+.viewer-controls-row:not([hidden]) { display: flex; }
+.viewer-controls-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 1;
+  transition: width 0.25s ease, opacity 0.2s ease;
+}
+/* Hovering (or focusing) the document name slides the pill groups out of the
+   way so a truncated name gets the room to un-ellipsis, instead of relying on
+   the browser's plain-text title tooltip alone. JS (initFileNameHoverReveal)
+   locks the row's current pixel width before adding this class so the
+   collapse animates as a clean slide -- animating straight from an
+   auto/max-width guess let it visibly squish instead of moving. `overflow`
+   only turns on for this collapsed state -- kept off the base rule so an open
+   popover elsewhere in the row is never at risk of being clipped by it. */
+.viewer-controls-inline.is-collapsed {
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* The wrench toggle + its popover, shown only in place of the collapsed pill
+   groups above (see .is-visible, toggled alongside .is-collapsed). Wrapping
+   div is the positioning context so the popover can hang off the toggle. */
+.viewer-tools {
+  position: relative;
+  flex-shrink: 0;
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.25s ease, opacity 0.2s ease;
+}
+.viewer-tools.is-visible {
+  width: 27px;
+  opacity: 1;
+  pointer-events: auto;
+  overflow: visible;
+}
+.viewer-tools-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid var(--ice);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(29, 53, 87, 0.18);
+  max-width: calc(100vw - 24px);
+}
+.viewer-tools-menu[hidden] { display: none; }
+.viewer-controls-group {
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0;
+  background: var(--cream);
+  border: 1px solid var(--ice);
+  border-radius: 999px;
+  padding: 4px 8px;
+  box-shadow: none;
+  font-size: 0.82rem;
+}
+.viewer-tools-menu .viewer-controls-group { white-space: nowrap; }
+.viewer-controls-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 3px 2px;
+  background: var(--ice);
+}
+.page-indicator, .zoom-level { font-weight: 600; color: var(--navy); white-space: nowrap; }
+.page-indicator { padding: 0 2px; }
+.page-indicator-sep { color: var(--ocean-dark); opacity: 0.55; }
+/* The readout is also the reset-to-fit button, so it needs to look pressable
+   without growing into a third pill. */
+.zoom-level {
+  min-width: 46px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--navy);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.zoom-level:hover:not(:disabled) { background: #fff; border-color: var(--ice); color: var(--ocean-dark); }
+.zoom-level:disabled { cursor: default; opacity: 0.55; }
+
+/* Empty State Viewer */
+.empty-state-viewer {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%;
+  min-height: 100%;
+  padding: 70px 20px; text-align: center; background: var(--cream);
+  border: 1px solid var(--ice); border-radius: var(--radius-l); color: var(--ocean-dark);
+}
+.empty-state-viewer.drag-active {
+  border-color: var(--coral);
+  background: rgba(249, 115, 22, 0.06);
+}
+.empty-state-base64-btn { margin-top: 18px; font-family: var(--font-mono); font-size: 0.78rem; }
+.empty-state-dropline {
+  margin-top: 26px;
+  width: 70%;
+  max-width: 260px;
+  height: 1px;
+  background: var(--ice);
+  position: relative;
+  overflow: hidden;
+}
+.empty-state-dropline::after {
+  display: none;
+}
+.empty-icon-wrap {
+  margin-bottom: 12px;
+  animation: bob 3s ease-in-out infinite;
+}
+.empty-icon-wrap img { display: block; width: 240px; max-width: 100%; height: auto; }
+.empty-state-viewer h3 { margin: 0 0 8px 0; color: var(--navy); font-size: 1.2rem; font-weight: 600; }
+.empty-state-viewer p { margin: 0; font-size: 0.875rem; max-width: 350px; line-height: 1.6; }
+
+.pdf-container {
+  position: relative;
+  display: inline-block;
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 3px 14px rgba(30, 33, 51, 0.08);
+  animation: fadeInUp 0.4s ease both;
+  max-width: 100%;
+  max-height: none;
+  align-self: flex-start;
+  /* Flexbox gives a flex item's automatic minimum size as content-based
+     ONLY when its overflow is `visible`. Because this element has
+     `overflow: hidden` (for the rounded-corner clip), its automatic min
+     width collapses to 0 -- so .viewer-scroll (a flex container) was
+     shrinking it down to fit the panel's width even after the max-width
+     fix, silently squeezing/clipping the zoomed canvas horizontally. It
+     never affected the vertical axis, which isn't governed by this rule
+     -- that's exactly why up/down panning worked but left/right didn't.
+     flex-shrink: 0 stops the flex algorithm from touching its width at
+     all, so it always renders at its natural (canvas) size and any excess
+     becomes real scrollable overflow in .viewer-scroll. */
+  flex-shrink: 0;
+}
+/* Once the user has zoomed past fit-to-container, the canvas legitimately
+   needs to be wider/taller than the viewer panel so it can be panned/
+   scrolled into view. `max-width: 100%` here was capping the container to
+   the flex parent's width and, combined with `overflow: hidden` above,
+   silently clipping the zoomed-in portion of the page instead of letting
+   it overflow into the scrollable .viewer-scroll -- which is what made the
+   hand tool look like it had nothing left to drag. */
+.viewer-scroll.is-zoomed .pdf-container {
+  max-width: none;
+}
+.pdf-container.drag-active {
+  animation: dropZonePulse 1.2s ease-in-out infinite;
+}
+
+/* Shown while dragging a file over an already-loaded document, to make it
+   clear that dropping here replaces the current document rather than
+   doing nothing (the container isn't an upload target visually otherwise).
+   The tint covers the full page (so it's visible wherever the user has
+   scrolled/zoomed to); the badge is a separate sticky-positioned sibling so
+   it stays pinned near the top of the visible viewport even on tall pages
+   instead of centering on a spot that may be scrolled out of view. */
+.document-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  background: var(--cream);
+  border: 1px solid var(--ice);
+  border-radius: var(--radius-l);
+}
+.document-loading-overlay[hidden] {
+  display: none;
+}
+.document-loading-page {
+  transform: scale(0.35);
+  opacity: 0.4;
+  transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+}
+.document-loading-page img {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+}
+.document-loading-progress {
+  width: min(260px, 70%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.document-loading-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ice);
+  overflow: hidden;
+}
+.document-loading-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--ocean);
+  transition: width 0.2s ease-out;
+}
+.document-loading-label {
+  font-size: 0.85rem;
+  color: var(--ocean-dark);
+  font-weight: 500;
+}
+
+.drop-replace-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgba(249, 115, 22, 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.pdf-container.drag-active .drop-replace-overlay { opacity: 1; }
+
+.drop-replace-badge-wrap {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.drop-replace-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--navy);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(30, 33, 51, 0.3);
+}
+
+/* Interactive Overlays */
+#overlay-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+/* The page under the icon is dark (sampled from the canvas, see Viewer.darkBgUids). */
+.field-overlay.on-dark > .field-overlay-icon { color: #fff; filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.6)); }
+/* Icon-only pin (field overlays): a plain circle; the text lives in the tooltip. */
+.field-invisible-pin:not([data-label]) { width: 22px; padding: 0; }
+.field-invisible-pin[data-label]:not([data-label=""])::after {
+  content: attr(data-label);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2px;
+}
+
+/* Placement mode: user is about to click on the PDF to drop a new field */
+.pdf-container.placing-mode canvas { cursor: crosshair; }
+.pdf-container.placing-mode::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.5);
+  animation: placingPulse 1.4s ease-in-out infinite;
+}
+
+/* Dragging a template field over the page -- same visual language as
+   placement mode above, in ocean rather than coral so the two read as
+   related but distinct. */
+.pdf-container.template-drop-active::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 0 3px rgba(69, 123, 157, 0.6);
+  background: rgba(69, 123, 157, 0.06);
+}
+.template-save-handle:hover { background: var(--ocean); }
+.template-save-handle:active { cursor: grabbing; }
+:host(.viewer-column) .viewer-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+:host(.viewer-column) .viewer-scroll.is-zoomed {
+  overflow: marquee;
+}
+@media (max-width: 960px) {
+  /* The desktop rule sets an explicit `height: calc(100vh - 70px)` on
+     .viewer-column (so it fills the sticky column next to .section-column).
+     That `height` was never reset here before -- only `max-height` was --
+     so on mobile the PDF viewer stayed pinned to nearly the full viewport
+     height even after stacking, shoving the signature/edit panel far
+     below the fold. `height: auto` above lets it size to content instead;
+     this gives it a sane fixed height so it's still comfortably scrollable
+     rather than collapsing or growing unpredictably. */
+  :host(.viewer-column) { height: 60vh; min-height: 320px; } }
+
+.diff-object-hover-overlay {
+  position: absolute;
+  background-color: rgba(69, 123, 157, 0.1);
+  /* Marching-ants dashed border in --ocean blue */
+  background-image:
+    linear-gradient(90deg, var(--ocean) 50%, transparent 50%),
+    linear-gradient(90deg, var(--ocean) 50%, transparent 50%),
+    linear-gradient(0deg,  var(--ocean) 50%, transparent 50%),
+    linear-gradient(0deg,  var(--ocean) 50%, transparent 50%);
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  background-size: 10px 2px, 10px 2px, 2px 10px, 2px 10px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  border-radius: 4px;
+  animation: marchingAnts 0.45s linear infinite;
+  z-index: 3;
+}
+/* Set once more than a handful of change markers are on screen at the same
+   time: 50 elements each repainting a slice of the canvas every frame is the
+   dominant cost on screen, and adds nothing over a static outline. */
+#overlay-layer.has-many-diff-markers .diff-object-hover-overlay {
+  animation: none;
+}
+.empty-state-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.overview-hotspot[data-kind="stamp"] { --kind: #8b5cf6; }
+.overview-hotspot[data-kind="link"] { --kind: #0ea5e9; }
+.overview-hotspot[data-kind="comment"] { --kind: #f59e0b; }
+.overview-hotspot .field-invisible-pin { background: var(--kind); }
+
+/* Kind tag: "[icon] Text field · Name" just above the outline, on hover and
+   while selected. In Overview it replaces the fields' name-only .field-label. */
+.overview-tag {
+  display: none; position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); z-index: 11; pointer-events: none;
+  align-items: center; gap: 5px; max-width: 280px; padding: 3px 8px; border-radius: 6px;
+  background: var(--kind, var(--ocean)); color: #fff; font-size: 0.72rem; font-weight: 700; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+}
+.overview-tag-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.overview-tag-name::before { content: '· '; }
+/* Viewer toolbar eye: hide the whole overlay layer. */
+#overlay-layer.is-overlays-hidden { visibility: hidden; }
+
+    /* ---- Viewer diff banner: shown in the main (left) document viewer while it's
+       displaying a single revision snapshot or a revision-vs-revision visual diff,
+       instead of the live editable document. `[hidden] { display: none !important }`
+       matches the same defensive pattern used by .btn elsewhere in styles.css --
+       without it, the unconditional `display: flex` below wins the cascade over the
+       browser's default [hidden] rule and the banner never actually hides. ---- */
+    .viewer-diff-banner {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 8px 14px; margin-bottom: 8px; border-radius: var(--radius-s);
+      border: none;
+      background: var(--navy); color: #ffffff;
+      font-size: 0.82rem; font-weight: 600;
+      box-shadow: none;
+    }
+    .viewer-diff-banner[hidden] { display: none !important; }
+    .viewer-diff-banner button { flex-shrink: 0; }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes dropZonePulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.35), 0 3px 14px rgba(30, 33, 51, 0.08); }
+  50% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.75), 0 3px 14px rgba(30, 33, 51, 0.08); }
+}
+@keyframes placingPulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.25); }
+  50% { box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.7); }
+}

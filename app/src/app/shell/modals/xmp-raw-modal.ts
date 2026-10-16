@@ -15,6 +15,7 @@ import { isBackdropClick } from './backdrop-click';
       <pre class="xmp-raw-body" id="xmpRawBody">{{ ui.xmpRaw() }}</pre>
     </div>
   `,
+  styleUrl: './xmp-raw-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'xmpRawModal',

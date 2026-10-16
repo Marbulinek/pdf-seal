@@ -37,6 +37,7 @@ import { isBackdropClick } from './backdrop-click';
       </div>
     </div>
   `,
+  styleUrl: './template-name-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'templateNameModal',

@@ -1,0 +1,21 @@
+.cert-check-row {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 10px 11px;
+  margin-bottom: 7px;
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-left-width: 3px;
+  border-radius: 10px;
+}
+.cert-check-row.is-pass    { border-left-color: var(--success); }
+.cert-check-row.is-warn    { border-left-color: var(--amber); }
+.cert-check-row.is-fail    { border-left-color: var(--coral); }
+.cert-check-row.is-unknown { border-left-color: var(--ocean); border-left-style: dashed; }
+.cert-check-row.is-openable { cursor: pointer; transition: border-color var(--transition-fast); }
+.cert-check-row.is-openable:hover,
+.cert-check-row.is-openable:focus-visible { border-color: var(--ocean); }
+.cert-check-row.is-openable:focus-visible { outline: 2px solid var(--ocean); outline-offset: 1px; }
+.cert-check-text { flex: 1; min-width: 0; }
+.cert-check-source { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ocean-dark); margin-bottom: 2px; }
+.cert-check-label { font-size: 0.79rem; font-weight: 700; color: var(--navy); }
+.cert-check-detail { font-size: 0.75rem; color: var(--navy); }

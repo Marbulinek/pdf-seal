@@ -13,6 +13,11 @@ export function isEditableField(f: DocField | null | undefined): boolean {
   return !!f && f.type === 'Signature' && f.signed !== true;
 }
 
+/** Position-only edits: any unsigned field (a signed one's /Rect is inside the signed bytes). */
+export function isMovableField(f: DocField | null | undefined): boolean {
+  return !!f && !!f.name && f.signed !== true;
+}
+
 /**
  * What the Edit sheet's Remove button may delete: any named field -- text
  * boxes, checkboxes and signed signatures too (the server removes by name).

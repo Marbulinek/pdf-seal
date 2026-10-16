@@ -1,0 +1,7 @@
+.ov-fact { padding: 9px 11px; border-radius: 10px; background: #fff; border: 1px solid rgba(0, 0, 0, 0.07); }
+.ov-fact.is-wide { grid-column: 1 / -1; }
+.ov-fact dt { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ocean-dark); }
+.ov-fact dd { margin: 3px 0 0; font-size: 0.88rem; font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
+.ov-fact-sub { margin-left: 4px; font-size: 0.76rem; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ocean-dark); }
+.ov-meter { display: inline-block; width: 64px; height: 6px; margin-right: 6px; vertical-align: middle; border-radius: 3px; background: rgba(0, 0, 0, 0.08); overflow: hidden; }
+.ov-meter > span { display: block; height: 100%; background: var(--kind); }

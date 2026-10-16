@@ -39,6 +39,7 @@ import { isBackdropClick } from './backdrop-click';
       </div>
     </div>
   `,
+  styleUrl: './place-template-cleanup-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'placeTemplateCleanupModal',

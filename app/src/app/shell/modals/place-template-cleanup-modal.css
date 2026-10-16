@@ -1,0 +1,10 @@
+/* The generic `label { text-transform: uppercase }` rule at the top of this
+   file is meant for compact form labels; this card uses <label> only for
+   its click-to-select behaviour, so it opts back out to read as a normal
+   sentence rather than a shouted one. */
+.place-template-choice { text-transform: none; letter-spacing: normal; }
+.place-template-choice strong { font-size: 0.85rem; font-weight: 700; }
+.place-template-choice input[type="radio"] { margin-top: 2px; accent-color: var(--ocean); flex-shrink: 0; }
+.place-template-choice-meta { font-weight: 400; color: var(--ocean-dark); line-height: 1.4; }
+.place-template-choice.is-disabled { cursor: not-allowed; opacity: 0.5; }
+.place-template-choice.is-disabled:hover { border-color: var(--ice); }

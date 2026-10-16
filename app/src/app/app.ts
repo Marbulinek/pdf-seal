@@ -75,6 +75,7 @@ import { SHARE_SESSION_ID } from './app.routes';
     <footer appFooter></footer>
     }
   `,
+  styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '(document:keydown)': 'onKeydown($event)',

@@ -111,6 +111,21 @@ export interface OverviewSheetModel {
 
 type SheetSource = Partial<DocField> & Partial<DocStamp> & Partial<DocAnnotation>;
 
+/** The specific type of an element ("Text field", "Web link"…) -- the page tag and the sheet's eyebrow. */
+export function overviewTypeLabel(kind: OverviewKind, item: OverviewItem['source']): string {
+  const source = item as SheetSource;
+  switch (kind) {
+    case 'field':
+      return (source.type && FIELD_TYPE_LABELS[source.type]) || 'Form field';
+    case 'stamp':
+      return source.kind === 'text' ? 'Text stamp' : source.kind === 'image' ? 'Image stamp' : 'Stamp';
+    case 'link':
+      return source.uri ? 'Web link' : Number.isInteger(source.destPage) ? 'Page link' : 'Link';
+    default:
+      return OVERVIEW_KINDS[kind].single;
+  }
+}
+
 function pill(text: string, tone: PillTone): HeroBadge {
   return { type: 'pill', text, tone };
 }
@@ -138,7 +153,7 @@ export function placementLines(item: OverviewItem): OverviewSheetModel['placemen
 export function overviewSheetModel(item: OverviewItem, report: CertificateReport | null, settled: boolean): OverviewSheetModel {
   const s = item.source as SheetSource;
   const meta = OVERVIEW_KINDS[item.kind];
-  const base = { kind: item.kind, label: item.label, icon: meta.icon };
+  const base = { kind: item.kind, label: item.label, icon: meta.icon, eyebrow: overviewTypeLabel(item.kind, s) };
   const model: OverviewSheetModel = {
     title: meta.single,
     icon: meta.icon,
@@ -197,17 +212,15 @@ export function overviewSheetModel(item: OverviewItem, report: CertificateReport
       model.actions.push({ kind: 'edit-signature', field: s.name ?? '' });
     }
   } else if (item.kind === 'field') {
-    const typeLabel = (s.type && FIELD_TYPE_LABELS[s.type]) || s.type || 'Form field';
-    model.hero = { ...base, subtitle: typeLabel, badge: pill(item.status, FIELD_STATE_FILLED.has(item.status) ? 'positive' : 'neutral') };
+    model.hero = { ...base, badge: pill(item.status, FIELD_STATE_FILLED.has(item.status) ? 'positive' : 'neutral') };
     model.facts = [{ label: 'Tooltip', value: s.tooltip, wide: true }];
     model.flags = [
       ['Required', !!s.required],
       ['Read-only', !!s.readOnly],
     ];
   } else if (item.kind === 'stamp') {
-    const kindLabel = s.kind === 'text' ? 'Text stamp' : s.kind === 'image' ? 'Image stamp' : 'Stamp from another tool';
     const opacity = Math.round((s.opacity ?? 1) * 100);
-    model.hero = { ...base, subtitle: [kindLabel, s.author].filter(Boolean).join(' · '), badge: pill(item.status, 'neutral') };
+    model.hero = { ...base, subtitle: [s.kind === 'text' || s.kind === 'image' ? null : 'From another tool', s.author].filter(Boolean).join(' · '), badge: pill(item.status, 'neutral') };
     model.quote = s.text || null;
     model.facts = [
       { label: 'Note', value: s.note === item.label ? null : s.note, wide: true },

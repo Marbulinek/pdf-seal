@@ -38,6 +38,7 @@ import { isBackdropClick } from './backdrop-click';
       </div>
     </div>
   `,
+  styleUrl: './remove-field-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'removeFieldModal',

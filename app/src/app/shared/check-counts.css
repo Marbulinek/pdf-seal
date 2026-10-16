@@ -1,0 +1,10 @@
+.cert-check-count {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.68rem; font-weight: 700;
+}
+.cert-check-count.is-pass    { background: rgba(42, 157, 143, 0.14);  color: var(--success-dark); }
+.cert-check-count.is-warn    { background: rgba(233, 162, 59, 0.18); color: var(--amber-dark); }
+.cert-check-count.is-fail    { background: rgba(230, 57, 70, 0.13);  color: var(--coral-dark); }
+.cert-check-count.is-unknown { background: rgba(69, 123, 157, 0.12); color: var(--ocean-dark); }

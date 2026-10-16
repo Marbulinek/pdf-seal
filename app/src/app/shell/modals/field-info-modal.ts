@@ -23,6 +23,7 @@ import { UiService } from '../../core/ui.service';
       </div>
     </div>
   `,
+  styleUrl: './field-info-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'fieldInfoModal',

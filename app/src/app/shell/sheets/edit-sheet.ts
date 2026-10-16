@@ -23,6 +23,7 @@ interface FieldDetailRow {
 @Component({
   selector: 'aside[appEditSheet]',
   templateUrl: './edit-sheet.html',
+  styleUrl: './edit-sheet.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'editSheet',

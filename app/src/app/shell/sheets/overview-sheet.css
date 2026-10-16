@@ -1,0 +1,43 @@
+/* Everything in the sheet wraps, so it only ever scrolls vertically. overflow-y:auto
+   alone makes x scrollable too, and collapsing "Technical details" could leave a
+   stray horizontal scrollbar behind. */
+#overviewSheetBody { overflow-x: hidden; }
+
+.ov-quote {
+  margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--kind); border-radius: 0 10px 10px 0;
+  background: color-mix(in srgb, var(--kind) 7%, #fff); font-size: 0.9rem; color: var(--navy);
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow: auto;
+}
+
+/* On the page: rendered crop of the object + a mini page map. */
+.ov-snippet {
+  display: flex; justify-content: center; margin: 0 0 10px; padding: 10px; border-radius: var(--radius-m);
+  background: repeating-conic-gradient(rgba(0, 0, 0, 0.035) 0 25%, transparent 0 50%) 0 0 / 16px 16px, #f6f7f9;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+}
+.ov-snippet-loading, .ov-snippet-note { margin: 0; padding: 18px 0; font-size: 0.8rem; color: var(--ocean-dark); }
+.ov-snippet-frame { position: relative; max-width: 100%; line-height: 0; box-shadow: 0 2px 10px rgba(29, 53, 87, 0.14); border-radius: 4px; overflow: hidden; }
+.ov-snippet-mark { position: absolute; border: 2px dashed var(--kind); border-radius: 3px; background: color-mix(in srgb, var(--kind) 8%, transparent); pointer-events: none; }
+.ov-placement { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.ov-pagemap { flex: none; width: 44px; }
+.ov-pagemap-page { position: relative; width: 100%; background: #fff; border: 1px solid rgba(29, 53, 87, 0.25); border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.ov-pagemap-mark { position: absolute; min-width: 4px; min-height: 4px; border-radius: 1px; background: var(--kind); }
+.ov-placement-text { display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem; color: var(--ocean-dark); }
+.ov-placement-page { font-size: 0.9rem; font-weight: 700; color: var(--navy); }
+
+.overview-callout { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--cream); font-size: 0.85rem; }
+.overview-url { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--cream); }
+.overview-url-host { font-weight: 700; color: var(--navy); overflow-wrap: anywhere; }
+.overview-url-full { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ocean-dark); word-break: break-all; user-select: all; }
+
+.overview-tech { margin-top: 20px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: var(--radius-m); background: #fff; }
+.overview-tech > summary { display: flex; align-items: center; gap: 6px; padding: 10px 12px; cursor: pointer; font-weight: 700; font-size: 0.8rem; color: var(--ocean-dark); }
+.ov-tech { margin: 0; padding: 0 12px 6px; }
+.ov-tech-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; padding: 7px 0; border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.ov-tech-row dt { font-size: 0.78rem; font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
+.ov-tech-row dd { margin: 0; font-family: var(--font-mono); font-size: 0.72rem; color: var(--navy); overflow-wrap: anywhere; }
+.ov-tech-key { padding: 0 4px; border-radius: 4px; background: rgba(69, 123, 157, 0.1); font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; color: var(--ocean-dark); white-space: nowrap; }
+.overview-history { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.overview-history .overview-callout { margin: 0; }
+#overviewSheetFooter:not([hidden]) { display: flex; flex-wrap: wrap; gap: 10px; }
+.overview-history:empty { display: none; }

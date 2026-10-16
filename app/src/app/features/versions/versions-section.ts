@@ -17,6 +17,7 @@ import { VersionsStore, type CardModel } from './versions.store';
   selector: 'section[appVersionsSection]',
   imports: [OvHero, OvFacts, RevisionCard],
   templateUrl: './versions-section.html',
+  styleUrl: './versions-section.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'sectionRevisions',

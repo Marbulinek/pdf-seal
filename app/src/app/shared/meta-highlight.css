@@ -1,0 +1,6 @@
+mark.meta-highlight {
+  background: rgba(249, 115, 22, 0.25);
+  color: var(--coral-dark);
+  border-radius: 3px;
+  padding: 0 2px;
+}

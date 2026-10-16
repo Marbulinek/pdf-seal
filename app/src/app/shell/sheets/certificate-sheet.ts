@@ -27,6 +27,7 @@ const TABS: { id: CertificateTab; icon: string; label: string; panel: string }[]
   selector: 'aside[appCertificateSheet]',
   imports: [CertBadge, ValidationList],
   templateUrl: './certificate-sheet.html',
+  styleUrl: './certificate-sheet.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'certificateSheet',

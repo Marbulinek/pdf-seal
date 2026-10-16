@@ -16,12 +16,13 @@ import { DocumentStore, type StoreField } from '../../core/document.store';
 import {
   choiceFieldIconClass,
   isEditableField,
+  isMovableField,
   isRectPracticallyInvisible,
 } from '../../core/field-rules';
 import type { PdfRect } from '../../core/models';
 import { UiService } from '../../core/ui.service';
 import { MIN_MEASURABLE_VIEWER_WIDTH, ViewerService, type ScreenRect } from '../../core/viewer.service';
-import { OVERVIEW_KINDS } from '../../features/overview/overview-model';
+import { OVERVIEW_KINDS, overviewTypeLabel, type OverviewKind } from '../../features/overview/overview-model';
 import { OverviewStore } from '../../features/overview/overview.store';
 import { isFieldStaged } from '../../features/signatures/field-ops';
 import { SignaturesStore } from '../../features/signatures/signatures.store';
@@ -45,10 +46,16 @@ const INVISIBLE_PIN_LABEL_GAP = 8;
  * drag-to-template), Overview hotspots, and the diff markers the Versions
  * section draws while it owns the canvas.
  */
+/** Overview tooltip: stamps just "Stamp", everything else its type plus name. */
+function overviewTag(kind: string, type: string, name: string | null | undefined): { text: string; name: string } {
+  return { text: type, name: kind === 'stamp' ? '' : (name ?? '') };
+}
+
 @Component({
   selector: 'section[appViewer]',
   imports: [NgOptimizedImage, NgTemplateOutlet],
   templateUrl: './viewer.html',
+  styleUrl: './viewer.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'panel viewer-panel viewer-column',
@@ -140,13 +147,14 @@ export class Viewer {
           : field.signed === true
             ? `${field.name} — signed, so it can't be moved or resized without breaking the signature${invisibleSuffix}`
             : (field.tooltip ? `${field.name} — ${field.tooltip}${invisibleSuffix}` : `${field.name || 'Signature field'}${invisibleSuffix}`) +
-              (field.type !== 'Signature' ? ' — shown for inspection; PDF Seal edits signature fields only' : '');
+              (field.type !== 'Signature' ? ' — drag to move or resize; other properties are read-only' : '');
         const active = field.uid === activeUid;
         return {
           field,
           box: drag?.uid === field.uid ? drag.box : this.viewer.pdfRectToScreen(rect, viewport),
           invisible,
           locked,
+          movable: isMovableField(field),
           staged: isFieldStaged(field, baseline),
           active,
           onDark: darkBg.has(field.uid),
@@ -155,6 +163,8 @@ export class Viewer {
           hovered: !!hoverItem && hoverItem.kind === kind && hoverItem.key === field.name,
           icon: field.signed === true ? 'icon-lock' : choice || (field.type === 'Signature' ? 'icon-pen' : 'icon-file-text'),
           pinIcon: field.signed === true ? 'icon-lock' : choice || 'icon-eye-off',
+          kindIcon: OVERVIEW_KINDS[kind].icon,
+          tag: overviewTag(kind, overviewTypeLabel(kind, field), field.name),
           title,
         };
       });
@@ -191,6 +201,7 @@ export class Viewer {
       box: this.viewer.pdfRectToScreen(item.rect as PdfRect, viewport),
       title: `${OVERVIEW_KINDS[item.kind].single}: ${item.label}`,
       icon: OVERVIEW_KINDS[item.kind].icon,
+      tag: overviewTag(item.kind, overviewTypeLabel(item.kind, item.source), item.label),
       selected: !!active && active.kind === item.kind && active.key === item.key,
       hovered: !!hover && hover.kind === item.kind && hover.key === item.key,
     }));
@@ -249,6 +260,7 @@ export class Viewer {
         const label = div?.querySelector<HTMLElement>('.field-label');
         if (div && label) this.positionLabel(div, label);
       }
+      this.fitTags();
     });
   }
 
@@ -326,6 +338,20 @@ export class Viewer {
     if (this.viewer.isPanning()) {
       e.preventDefault();
       e.stopPropagation();
+      return;
+    }
+    // Overview: a click on the page outside any outlined object closes the detail sheet.
+    if (this.ui.activeSection() === 'metadata' && this.ui.sheets.overview() && !(e.target as Element).closest('.field-overlay, .overview-hotspot')) {
+      this.overview.closeSheet();
+    }
+    // Signatures: a click on the page outside any field deselects it (closing the edit sheet).
+    if (
+      this.ui.activeSection() === 'signatures' &&
+      this.signatures.activeFieldUid() &&
+      !this.signatures.isPlacing() &&
+      !(e.target as Element).closest('.field-overlay')
+    ) {
+      this.signatures.deselect();
     }
   }
 
@@ -413,6 +439,7 @@ export class Viewer {
 
   protected onOverlayEnter(e: MouseEvent, uid: string): void {
     this.hoveredUid.set(uid);
+    this.fitTags();
   }
 
   protected onOverlayLeave(uid: string): void {
@@ -434,7 +461,10 @@ export class Viewer {
     const wasActive = this.signatures.activeFieldUid() === field.uid;
     this.signatures.select(field.uid);
     // Selectable but not draggable: a signed /Rect is inside the signed bytes.
-    if (!isEditableField(field) || !field.rect) return;
+    if (!isMovableField(field) || !field.rect) {
+      if (wasActive) this.signatures.deselect();
+      return;
+    }
 
     const viewport = this.viewer.viewport();
     if (!viewport) return;
@@ -469,7 +499,7 @@ export class Viewer {
   }
 
   protected onResizeStart(e: MouseEvent, field: StoreField): void {
-    if (this.viewer.isPanning() || !field.rect || !isEditableField(field)) return;
+    if (this.viewer.isPanning() || !field.rect || !isMovableField(field)) return;
     this.commitPendingRename();
     e.preventDefault();
     e.stopPropagation();
@@ -502,8 +532,15 @@ export class Viewer {
   protected onOverlayClick(e: MouseEvent, field: StoreField): void {
     // Overview mode: clicking an outlined object opens its detail sheet.
     if (this.ui.activeSection() !== 'metadata') return;
-    this.overview.openSheet(field.type === 'Signature' ? 'signature' : 'field', field.name);
+    this.toggleOverviewSheet(field.type === 'Signature' ? 'signature' : 'field', field.name);
     e.stopPropagation();
+  }
+
+  /** Overview: clicking the open object again closes its detail sheet. */
+  protected toggleOverviewSheet(kind: OverviewKind, key: string): void {
+    const active = this.overview.activeItem();
+    if (this.ui.sheets.overview() && active?.kind === kind && active.key === key) this.overview.closeSheet();
+    else this.overview.openSheet(kind, key);
   }
 
   protected onTemplateGripDragStart(e: DragEvent, field: StoreField): void {
@@ -523,6 +560,20 @@ export class Viewer {
    * The label defaults to centred above the field; near a page edge it
    * re-anchors to whichever side (and above/below) actually has room.
    */
+  /** Keep every shown kind tag fully inside the page layer: flip below / shift sideways near an edge. */
+  protected fitTags(): void {
+    const layer = this.overlayRef().nativeElement;
+    const bounds = layer.getBoundingClientRect();
+    for (const tag of layer.querySelectorAll<HTMLElement>('.overview-tag')) {
+      tag.style.cssText = '';
+      if (tag.getClientRects().length === 0) continue; // not shown
+      const r = tag.getBoundingClientRect();
+      if (r.right > bounds.right) Object.assign(tag.style, { left: 'auto', right: '0', transform: 'none' });
+      else if (r.left < bounds.left) Object.assign(tag.style, { left: '0', transform: 'none' });
+      if (r.top < bounds.top) Object.assign(tag.style, { bottom: 'auto', top: 'calc(100% + 4px)' });
+    }
+  }
+
   private positionLabel(div: HTMLElement, label: HTMLElement): void {
     const layer = this.overlayRef().nativeElement;
     if (div.classList.contains('is-invisible-field') && div.dataset['pinLocalX'] !== undefined) {

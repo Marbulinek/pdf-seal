@@ -16,6 +16,7 @@ import { OvSectionTitle } from '../../shared/ov-section-title';
   selector: 'aside[appOverviewSheet]',
   imports: [OvHero, OvFacts, OvFlags, OvSectionTitle, Evidence, AppendNode],
   templateUrl: './overview-sheet.html',
+  styleUrl: './overview-sheet.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'overviewSheet',

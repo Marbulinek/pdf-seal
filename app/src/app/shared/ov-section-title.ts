@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 @Component({
   selector: 'app-ov-section-title',
   template: `<p class="overview-section-title"><span class="icon {{ icon() }}" aria-hidden="true"></span> {{ title() }}</p>`,
+  styleUrl: './ov-section-title.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

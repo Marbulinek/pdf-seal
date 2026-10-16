@@ -47,6 +47,7 @@ import { OverviewSheet } from './overview-sheet';
     ></div>
     <aside appCertificateTimelineSheet></aside>
   `,
+  styleUrl: './sheets.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Sheets {

@@ -1,0 +1,21 @@
+.save-as-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  background: var(--cream);
+  padding: 0 14px 0 0;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.save-as-input-group:focus-within {
+  border-color: var(--ocean);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
+}
+.save-as-ext {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ocean-dark);
+  white-space: nowrap;
+}

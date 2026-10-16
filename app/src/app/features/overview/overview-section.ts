@@ -22,6 +22,7 @@ interface KvRow {
   selector: 'section[appOverviewSection]',
   imports: [OvFacts],
   templateUrl: './overview-section.html',
+  styleUrl: './overview-section.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'sectionMetaData',
