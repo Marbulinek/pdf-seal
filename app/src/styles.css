@@ -1490,7 +1490,7 @@ input[type="number"]:focus, input[type="text"]:focus {
   width: 100%;
   min-height: 100%;
   padding: 70px 20px; text-align: center; background: var(--cream);
-  border: 1px solid var(--ice); border-radius: var(--radius-l); color: var(--ocean-dark); margin-top: 4px;
+  border: 1px solid var(--ice); border-radius: var(--radius-l); color: var(--ocean-dark);
 }
 .empty-state-viewer.drag-active {
   border-color: var(--coral);
@@ -1668,7 +1668,10 @@ canvas { display: block; }
   pointer-events: auto; cursor: pointer; display: flex; align-items: center; justify-content: center;
   font-size: 1.2rem; transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
   border-radius: 6px; user-select: none;
+  container-type: size;
 }
+/* Icon follows the box (and so the zoom): 40% of its shorter side, capped. */
+.field-overlay-icon { display: flex; line-height: 1; font-size: min(40cqmin, 3rem); }
 .field-overlay .field-label {
   display: none; position: absolute; left: 50%; top: -34px;
   transform: translateX(-50%); padding: 6px 8px; border-radius: 8px; background: var(--navy); color: white;
@@ -1681,7 +1684,7 @@ canvas { display: block; }
 .field-overlay:hover .field-label,
 .field-overlay.active .field-label { display: block; }
 .field-overlay:not(:hover):not(.active) .field-label { display: none; }
-.field-overlay:hover { background: rgba(16, 185, 129, 0.28); transform: scale(1.02); }
+.field-overlay:hover { background: rgba(16, 185, 129, 0.28); }
 .field-overlay.required {
   border-color: var(--coral); background: rgba(249, 115, 22, 0.16);
 }
@@ -4994,6 +4997,14 @@ body:not([data-active-section="metadata"]) .field-overlay.is-signed.required:hov
 body:not([data-active-section="metadata"]) .field-overlay.is-signed .field-label,
 body:not([data-active-section="metadata"]) .field-overlay.is-signed.required .field-label { background: var(--ocean); }
 body:not([data-active-section="metadata"]) .field-overlay.is-signed .field-label-invisible { color: #fff; }
+/* Non-signature fields (text boxes, checkboxes…) use the Overview's field blue. */
+body:not([data-active-section="metadata"]) .field-overlay.is-signed[data-overview-kind="field"],
+body:not([data-active-section="metadata"]) .field-overlay.is-signed.required.active[data-overview-kind="field"] {
+  border-color: #3b82f6; background: rgba(59, 130, 246, 0.1);
+}
+body:not([data-active-section="metadata"]) .field-overlay.is-signed[data-overview-kind="field"]:hover,
+body:not([data-active-section="metadata"]) .field-overlay.is-signed.required[data-overview-kind="field"]:hover { border-color: #2563eb; background: rgba(59, 130, 246, 0.18); }
+body:not([data-active-section="metadata"]) .field-overlay.is-signed[data-overview-kind="field"] .field-label { background: #3b82f6; }
 
 .edit-signed-notice {
   display: flex; gap: 10px; align-items: flex-start;
@@ -5415,6 +5426,33 @@ body[data-active-section="metadata"] .field-overlay .field-label,
 body[data-active-section="metadata"] .field-overlay.required .field-label { background: var(--kind, var(--navy)); }
 body[data-active-section="metadata"] .field-overlay .field-label-invisible { color: #fff; }
 
+/* Kind tag: "[icon] Text field · Name" just above the outline, on hover and
+   while selected. In Overview it replaces the fields' name-only .field-label. */
+.overview-tag {
+  display: none; position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); z-index: 11; pointer-events: none;
+  align-items: center; gap: 5px; max-width: 280px; padding: 3px 8px; border-radius: 6px;
+  background: var(--kind, var(--ocean)); color: #fff; font-size: 0.72rem; font-weight: 700; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+}
+.overview-tag .icon { flex: none; font-size: 0.8rem; }
+.overview-tag-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.overview-tag-name::before { content: '· '; }
+.overview-hotspot:hover .overview-tag,
+.overview-hotspot.is-hover .overview-tag,
+.overview-hotspot.is-selected .overview-tag,
+body[data-active-section="metadata"] .field-overlay:hover .overview-tag,
+body[data-active-section="metadata"] .field-overlay.is-hover .overview-tag,
+body[data-active-section="metadata"] .field-overlay.is-selected .overview-tag { display: inline-flex; }
+body[data-active-section="metadata"] .field-overlay:not(.is-invisible-field) .field-label { display: none !important; }
+
+/* Signatures: same kind tag as Overview instead of the name-only label. */
+body[data-active-section="signatures"] .field-overlay[data-overview-kind="field"] { --kind: #3b82f6; }
+body[data-active-section="signatures"] .field-overlay[data-overview-kind="signature"] { --kind: var(--ocean); }
+body[data-active-section="signatures"] .field-overlay[data-overview-kind="signature"].required:not(.is-signed) { --kind: var(--coral); }
+body[data-active-section="signatures"] .field-overlay:hover .overview-tag,
+body[data-active-section="signatures"] .field-overlay.active .overview-tag { display: inline-flex; }
+body[data-active-section="signatures"] .field-overlay:not(.is-invisible-field) .field-label { display: none !important; }
+
 /* Eye toggles: hide a kind's hotspots without re-rendering. */
 body[data-overview-hide~="signature"][data-active-section="metadata"] .field-overlay[data-overview-kind="signature"],
 body[data-overview-hide~="field"][data-active-section="metadata"] .field-overlay[data-overview-kind="field"],
@@ -5456,6 +5494,10 @@ body[data-overview-hide~="comment"][data-active-section="metadata"] .overview-ho
 }
 .ov-hero-lead.is-avatar { border-radius: 50%; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.02em; }
 .ov-hero-main { flex: 1; min-width: 0; }
+.ov-hero-eyebrow {
+  margin: 0 0 2px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--kind) 80%, var(--navy));
+}
 .ov-hero-label { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--navy); overflow-wrap: anywhere; }
 .ov-hero-sub { margin: 2px 0 0; font-size: 0.82rem; color: var(--ocean-dark); overflow-wrap: anywhere; }
 .ov-hero > .cert-badge, .ov-hero > .ov-pill { flex: none; align-self: flex-start; }

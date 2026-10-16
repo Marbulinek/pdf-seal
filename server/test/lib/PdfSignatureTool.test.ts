@@ -902,15 +902,16 @@ describe('applyFieldOps', () => {
     expect(edited?.rect).toMatchObject({ x: 20, y: 50, width: 60, height: 25 });
   });
 
-  it("refuses to create text fields and to edit non-signature or signed fields", async () => {
+  it("refuses to create text fields, edit signed fields, or edit more than the position of non-signature fields", async () => {
     const fixture = await buildSignedPdfFixture({ fieldName: 'SignedField' });
     const tool = await PdfSignatureTool.fromBytes(fixture.bytes);
     tool.addTextField(0, 'Txt', { x: 10, y: 10, width: 80, height: 20 });
 
     expect(() => tool.applyFieldOps([{ op: 'add', page: 0, name: 'T2', type: 'text' }])).toThrow(/can't be created/);
-    for (const name of ['Txt', 'SignedField']) {
-      expect(() => tool.applyFieldOps([{ op: 'edit', originalName: name, name: 'X' }])).toThrow(/unsigned signature/);
-    }
+    expect(() => tool.applyFieldOps([{ op: 'edit', originalName: 'SignedField', name: 'X' }])).toThrow(/unsigned signature/);
+    // Non-signature fields can be moved/resized, but never renamed.
+    tool.applyFieldOps([{ op: 'edit', originalName: 'Txt', name: 'X', x: 30, y: 40, width: 50, height: 25 }]);
+    expect(tool.listFields().find((f: any) => f.name === 'Txt')?.rect).toMatchObject({ x: 30, y: 40, width: 50, height: 25 });
     expect(() => tool.applyFieldOps([{ op: 'remove', name: '' }])).toThrow(/Field name is required/);
   });
 

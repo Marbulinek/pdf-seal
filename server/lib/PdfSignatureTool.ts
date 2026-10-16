@@ -1083,6 +1083,13 @@ class PdfSignatureTool {
         const newName = String(op.name || originalName);
         if (!originalName) throw new Error('Field name is required.');
 
+        // Non-signature fields (text boxes, checkboxes...) may only be moved/resized; signed signatures not at all.
+        const target = this._requireField(originalName);
+        if (fieldTypeName(target) !== 'Signature') {
+          const rect = { x: parseFloat(op.x), y: parseFloat(op.y), width: parseFloat(op.width), height: parseFloat(op.height) };
+          if (Object.values(rect).every((value) => Number.isFinite(value))) this.setFieldRect(originalName, rect);
+          continue;
+        }
         this._requireEditableField(originalName);
         if (originalName !== newName) {
           this.renameField(originalName, newName);

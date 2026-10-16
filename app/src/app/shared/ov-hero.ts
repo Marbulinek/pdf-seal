@@ -13,6 +13,8 @@ export interface HeroModel {
   /** Drives the `is-<kind>` tint. */
   kind: string;
   label: string;
+  /** The element's type, small and uppercase above the label ("Text field"). */
+  eyebrow?: string | null;
   subtitle?: string | null;
   /** Initials shown instead of the icon. */
   avatar?: string | null;
@@ -34,6 +36,9 @@ export interface HeroModel {
         <span class="ov-hero-lead" aria-hidden="true"><span class="icon {{ h.icon }}"></span></span>
       }
       <div class="ov-hero-main">
+        @if (h.eyebrow) {
+          <p class="ov-hero-eyebrow">{{ h.eyebrow }}</p>
+        }
         <p class="ov-hero-label">{{ h.label }}</p>
         @if (h.subtitle) {
           <p class="ov-hero-sub">{{ h.subtitle }}</p>

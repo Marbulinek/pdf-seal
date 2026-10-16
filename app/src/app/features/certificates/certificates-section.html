@@ -128,10 +128,6 @@
   <div class="cert-empty" id="certificatesEmptyState" [hidden]="state() !== 'empty' && state() !== 'unsigned'">
     @if (state() === 'unsigned' && report(); as r) {
       <app-ov-hero [hero]="unsignedHero()" />
-      <p>
-        pdf-seal prepares signature fields; it does not sign documents itself. Certificates appear here once the document has been signed somewhere
-        else and loaded back in.
-      </p>
       @if (r.unsignedSignatureFieldNames.length) {
         <p><strong>Waiting to be signed:</strong> {{ r.unsignedSignatureFieldNames.join(', ') }} — place and edit these in the Signatures section.</p>
       }

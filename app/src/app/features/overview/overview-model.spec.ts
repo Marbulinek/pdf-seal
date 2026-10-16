@@ -1,7 +1,7 @@
 import { overviewItems } from './document-overview';
 import type { DocAnnotation, DocStamp } from '../../core/models';
 import { makeField, makeReport, makeSignature } from '../../testing/fixtures';
-import { groupPages, overviewActionLabel, overviewSelector, overviewSheetModel, placementLines } from './overview-model';
+import { groupPages, overviewActionLabel, overviewSelector, overviewSheetModel, overviewTypeLabel, placementLines } from './overview-model';
 
 const item = (kind: 'signature' | 'field', patch = {}) =>
   overviewItems({ fields: [makeField('Sig1', { type: kind === 'signature' ? 'Signature' : 'TextField', ...patch })] })[0];
@@ -29,6 +29,7 @@ describe('overview model', () => {
   it('offers editing for an unsigned signature', () => {
     const m = overviewSheetModel(item('signature'), null, false);
     expect(m.title).toBe('Signature');
+    expect(m.hero.eyebrow).toBe('Signature');
     expect(m.hero.badge).toEqual({ type: 'pill', text: 'Unsigned', tone: 'pending' });
     expect(m.hero.required).toBe(false);
     expect(overviewSheetModel(item('signature', { required: true }), null, false).hero.required).toBe(true);
@@ -63,6 +64,7 @@ describe('overview model', () => {
     expect(s.tech[0]).toEqual({ label: 'Object', key: 'ref', value: '9 0 R' });
 
     const links = items.filter((i) => i.kind === 'link').map((i) => overviewSheetModel(i, null, false));
+    expect(links.map((l) => l.hero.eyebrow)).toEqual(['Web link', 'Page link']);
     expect(links.find((l) => l.url)?.url).toEqual({ host: 'example.com', full: 'https://example.com/a' });
     expect(links.find((l) => !l.url)?.actions).toEqual([{ kind: 'goto-page', page: 3 }]);
 
@@ -70,5 +72,17 @@ describe('overview model', () => {
     expect(c.hero).toMatchObject({ label: 'Note', avatar: 'RL' });
     expect(c.quote).toBe('Check this');
     expect(c.traceable).toBe(false);
+  });
+
+  it('names the specific type of each element', () => {
+    expect(overviewTypeLabel('field', makeField('F', { type: 'TextField' }))).toBe('Text field');
+    expect(overviewTypeLabel('field', makeField('F', { type: 'CheckBox' }))).toBe('Checkbox');
+    expect(overviewTypeLabel('field', makeField('F', { type: '' }))).toBe('Form field');
+    expect(overviewTypeLabel('signature', makeField('S'))).toBe('Signature');
+    expect(overviewTypeLabel('stamp', { kind: 'image' })).toBe('Image stamp');
+    expect(overviewTypeLabel('link', { uri: 'https://example.com' })).toBe('Web link');
+    expect(overviewTypeLabel('link', { destPage: 0 })).toBe('Page link');
+    expect(overviewTypeLabel('link', {})).toBe('Link');
+    expect(overviewTypeLabel('comment', { subtype: 'Text' })).toBe('Comment');
   });
 });
