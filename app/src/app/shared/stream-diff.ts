@@ -28,6 +28,7 @@ import type { StreamDiffResult } from '../core/models';
       }
     }
   `,
+  styleUrl: './stream-diff.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

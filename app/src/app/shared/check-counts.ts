@@ -10,6 +10,7 @@ import { CERT_STATUS_GLYPH } from '../features/certificates/certificates-model';
       <span class="cert-check-count is-{{ c.status }}">{{ c.glyph }} {{ c.count }}</span>
     }
   `,
+  styleUrl: './check-counts.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

@@ -1,0 +1,42 @@
+.meta-branch {
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  background: var(--cream);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.meta-branch .meta-branch { background: #ffffff; margin: 8px 10px; }
+.meta-key { color: inherit; word-break: break-word; }
+.meta-count {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  background: var(--ice);
+  color: var(--navy);
+  border-radius: 999px;
+  padding: 1px 8px;
+  flex-shrink: 0;
+}
+.meta-branch-body { padding: 2px 12px 10px; }
+
+.meta-leaf {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.12);
+}
+.meta-leaf:last-child { border-bottom: none; }
+.meta-leaf .meta-key {
+  flex: 0 0 40%;
+  font-weight: 600;
+  color: var(--navy);
+  word-break: break-word;
+}
+.meta-leaf .meta-value {
+  flex: 1;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: var(--ocean-dark);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}

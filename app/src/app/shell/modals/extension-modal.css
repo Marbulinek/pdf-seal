@@ -1,0 +1,2 @@
+.ext-modal-box { width: min(440px, 100%); text-align: center; }
+.ext-modal-img { display: block; width: 100%; max-height: 220px; object-fit: contain; margin: 4px 0 14px; }

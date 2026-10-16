@@ -1,0 +1,6 @@
+.ov-flags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; }
+.ov-flag {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px;
+  font-size: 0.76rem; font-weight: 600; background: rgba(0, 0, 0, 0.04); color: rgba(29, 53, 87, 0.55);
+}
+.ov-flag.is-on { background: rgba(42, 157, 143, 0.14); color: var(--success-dark); }

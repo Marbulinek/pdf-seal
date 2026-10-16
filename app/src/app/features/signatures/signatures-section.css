@@ -1,0 +1,280 @@
+.icon-undo { -webkit-mask-image: url(/assets/images/icons/undo.svg); mask-image: url(/assets/images/icons/undo.svg); }
+.icon-redo { -webkit-mask-image: url(/assets/images/icons/redo.svg); mask-image: url(/assets/images/icons/redo.svg); }
+
+.btn-place-template { padding: 10px 16px; font-size: 0.86rem; }
+
+.add-sig-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--ice); }
+.add-sig-actions[hidden] { display: none; }
+
+.icon-btn-danger { margin-left: auto; border-color: var(--coral); color: var(--coral-dark); }
+.icon-btn-danger:hover:not(:disabled) { background: rgba(230, 57, 70, 0.1); }
+
+/* Pushes a non-destructive header action (e.g. "New template") to the far
+   side of a flex h3, the same way .icon-btn-danger does for "Remove". */
+.panel-h3-action { margin-left: auto; }
+
+.placement-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--ocean-dark);
+  background: var(--cream);
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  margin: 16px 0;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.placement-hint-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 1rem;
+}
+.placement-hint-text { flex: 1; }
+.placement-hint.is-active {
+  background: rgba(168, 218, 220, 0.4);
+  border-color: var(--ocean);
+  color: var(--navy);
+}
+.placement-hint.is-placed {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: var(--success);
+  color: var(--navy);
+}
+
+.status-text {
+  min-height: 20px;
+  margin-top: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 999px;
+}
+.status-text:not(:empty) { display: inline-flex; align-items: center; padding: 8px 14px; }
+.status-text.success:not(:empty) { background: rgba(16, 185, 129, 0.15); color: var(--ocean-dark); border: 1.5px solid var(--ocean); }
+.status-text.error:not(:empty) { background: rgba(249, 115, 22, 0.12); color: var(--coral-dark); border: 1.5px solid var(--coral); }
+.status-text.loading:not(:empty) { background: rgba(168, 218, 220, 0.4); color: var(--navy); border: 1px solid var(--ice); }
+
+:host-context(body.hide-signature-templates-panel) #sigTabTemplates,
+:host-context(body.hide-signature-templates-panel) .templates-panel {
+  display: none;
+}
+/* With only one tab left there is nothing to switch between -- but the strip is
+   also this panel's only title, so hiding it left the card with no header at
+   all while every other panel kept its <h3>. The strip stays; the lone control
+   just stops looking like a tab and reads as the heading instead (matching
+   .panel h3, whose bottom rule .sig-tabs already provides).
+   setSignatureTab() drops the tablist/tab roles to match. */
+:host-context(body.hide-signature-templates-panel) .sig-tabs { border-bottom-width: 1px; }
+:host-context(body.hide-signature-templates-panel) #sigTabAdd {
+  margin-bottom: 0;
+  padding-bottom: 12px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--navy);
+  border-bottom-color: transparent;
+  cursor: default;
+}
+:host-context(body.hide-signature-templates-panel) #sigTabAdd:hover { color: var(--navy); }
+.history-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 7px 8px 7px 16px;
+  background: #ffffff;
+  border: 1px solid var(--ice);
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(29, 53, 87, 0.05);
+}
+.history-strip-label {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--navy);
+  letter-spacing: 0.02em;
+}
+/* Pushed toward the right of the strip (this is where the eye lands after
+   reading "History") but held off the pill's actual edge with margin-right,
+   so it doesn't read as glued to the border like the old flush-right layout. */
+.history-strip .history-actions { margin-left: auto; margin-right: 12px; }
+
+/* Underline tabs (the settings-modal idiom) rather than pills, so the
+   Signature/TextBox pill switcher nested inside the Add tab stays readable
+   as a different level of choice. */
+.signature-panel { padding-top: 20px; }
+.sig-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 18px;
+  border-bottom: 1.5px solid var(--ice);
+}
+.sig-tab {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 2px 10px;
+  margin-bottom: -1.5px;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ocean-dark);
+  border-bottom: 2.5px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.sig-tab:hover { color: var(--navy); }
+.sig-tab.is-active { color: var(--navy); border-bottom-color: var(--coral); }
+.sig-tabs-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-bottom: 6px;
+}
+.sig-tabs-actions[hidden] { display: none; }
+
+.sig-tab-panel { position: relative; }
+.sig-tab-panel[hidden] { display: none; }
+
+.history-actions {
+  display: flex;
+  gap: 10px;
+}
+.template-mode-tab.active {
+  background: var(--coral);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(230, 111, 81, 0.35);
+}
+.template-mode-tab:disabled { cursor: not-allowed; opacity: 0.55; }
+.template-mode-tabs.is-disabled { opacity: 0.7; }
+
+.template-picker { margin-bottom: 12px; }
+.template-picker label {
+  display: block; margin-bottom: 6px;
+  font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ocean-dark);
+}
+.template-picker-row { display: flex; gap: 8px; align-items: center; }
+/* .icon-btn-danger pushes itself right by default; in this row the two
+   buttons sit together, right after the select. */
+.template-picker-row .template-delete-btn { margin-left: 0; }
+
+/* The drop target for fields dragged off the page. Hidden at rest — it only
+   appears while a field is actively being dragged off the document, so the
+   panel doesn't permanently dedicate space to a landing target. */
+.template-dropzone {
+  position: relative;
+  margin-bottom: 12px;
+  padding: 22px 14px;
+  min-height: 84px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--ice);
+  border-radius: var(--radius-m);
+  background: rgba(168, 218, 220, 0.09);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+/* While a field is being dragged off the page, the panel advertises itself. */
+:host-context(body.is-capturing-field) .template-dropzone { display: flex; border-color: var(--ocean); }
+.template-dropzone.is-drop-target {
+  border-color: var(--ocean);
+  background: rgba(69, 123, 157, 0.1);
+  box-shadow: 0 0 0 3px rgba(69, 123, 157, 0.2);
+}
+
+.template-dropzone-idle {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  font-size: 0.84rem; font-weight: 600; text-align: center;
+  color: var(--ocean-dark);
+}
+.template-dropzone.is-drop-target .template-dropzone-idle { visibility: hidden; }
+
+.template-dropzone-cue {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center; justify-content: center; gap: 8px;
+  padding: 10px;
+  border-radius: inherit;
+  background: var(--cream);
+  color: var(--ocean-dark);
+  font-size: 0.82rem; font-weight: 700; text-align: center;
+  pointer-events: none;
+}
+.template-dropzone.is-drop-target .template-dropzone-cue { display: flex; }
+/* Same collapsible card as the Overview's .overview-more. */
+.template-item-list-details { margin-bottom: 14px; border: 1px solid var(--ice); border-radius: 14px; background: #fff; overflow: hidden; }
+
+/* The saved-fields list, collapsed by default so a long list of templates
+   doesn't push the placement controls below the fold. */
+.template-item-list-summary {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px;
+  font-size: 0.82rem; font-weight: 700; color: var(--ocean-dark);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.template-item-list-summary::-webkit-details-marker { display: none; }
+.template-item-list-caret { transition: transform 0.15s ease; flex-shrink: 0; }
+.template-item-list-details[open] .template-item-list-caret { transform: rotate(90deg); }
+.template-item-list-details .template-item-list { margin: 0; padding: 0 12px 12px; }
+
+.template-item-list { display: flex; flex-direction: column; gap: 6px; }
+
+/* Same row look as the Overview list (.overview-row). */
+.template-item-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 8px 8px 10px;
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  color: var(--navy);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.template-item-row.is-draggable { cursor: grab; }
+.template-item-row.is-draggable:hover {
+  border-color: var(--ocean);
+  background: var(--cream);
+}
+.template-item-row.is-draggable:active { cursor: grabbing; }
+.template-item-row.is-dragging { opacity: 0.45; }
+
+.template-item-icon { color: var(--ocean); flex-shrink: 0; }
+.template-item-name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600;
+}
+
+.template-item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.template-item-btn { width: 22px; height: 22px; font-size: 0.7rem; }
+.template-item-btn.icon-btn-danger { margin-left: 0; }
+
+/* Empty states name the next action rather than just reporting emptiness. */
+.template-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 20px 16px;
+  text-align: center;
+}
+.template-empty-icon { font-size: 1.5rem; color: var(--ice); }
+.template-empty-title { margin: 0; font-size: 0.84rem; font-weight: 700; color: var(--navy); }
+.template-empty-hint {
+  margin: 0; max-width: 270px;
+  font-size: 0.78rem; line-height: 1.45; color: var(--ocean-dark);
+}
+
+.template-place-hint {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  color: var(--ocean-dark);
+}
+.template-place-hint[hidden] { display: none; }

@@ -1,0 +1,69 @@
+.modal-textarea {
+  width: 100%;
+  min-height: 160px;
+  max-height: min(60vh, 420px);
+  padding: 12px 14px;
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  background: var(--cream);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--navy);
+  outline: none;
+  resize: vertical;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  overflow-x: hidden;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  -webkit-overflow-scrolling: touch;
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.modal-textarea:focus {
+  border-color: var(--ocean);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
+}
+
+.modal-textarea-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  min-height: 30px;
+}
+
+.base64-validity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  animation: base64ValidityPop 0.15s ease;
+}
+.base64-validity.is-idle {
+  background: var(--cream);
+  color: var(--ocean-dark);
+  border: 1.5px solid var(--ice);
+  font-weight: 600;
+}
+.base64-validity.is-valid {
+  background: rgba(42, 157, 143, 0.15);
+  color: var(--success-dark);
+  border: 1.5px solid var(--success);
+}
+.base64-validity.is-invalid {
+  background: rgba(230, 57, 70, 0.1);
+  color: var(--coral-dark);
+  border: 1.5px solid var(--coral);
+}
+@keyframes base64ValidityPop {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}

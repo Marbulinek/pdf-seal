@@ -1,0 +1,108 @@
+/* Anchored bottom-right so toasts never sit over the topbar's Upload/
+   Download dropdown menus, regardless of topbar height or dropdown state. */
+:host(.notification-stack) {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.notification {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 34px 14px 14px;
+  background: var(--surface);
+  border: 1px solid var(--ice);
+  border-left: 4px solid var(--ocean);
+  border-radius: var(--radius-m);
+  box-shadow: 0 10px 30px rgba(29, 53, 87, 0.14);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(24px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.notification.is-visible { opacity: 1; transform: translateX(0); }
+.notification.is-leaving { opacity: 0; transform: translateX(24px); }
+
+.notification-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--ocean-dark);
+}
+.notification-message {
+  flex: 1;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--navy);
+  word-break: break-word;
+}
+.notification-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--ocean-dark);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.95rem;
+}
+.notification-close:hover { background: var(--ice); }
+
+.notification-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--ocean);
+  opacity: 0.35;
+  transform-origin: left;
+  animation-name: notification-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.notification-success { border-left-color: var(--success); }
+.notification-success .notification-icon { color: var(--success-dark); }
+.notification-success .notification-progress { background: var(--success); }
+
+.notification-error { border-left-color: var(--coral); }
+.notification-error .notification-icon { color: var(--coral-dark); }
+.notification-error .notification-progress { background: var(--coral); }
+
+.notification-info { border-left-color: var(--ocean); }
+.notification-subtle .notification-message { font-weight: 400; }
+
+.notification-loading { border-left-color: var(--ocean); }
+.notification-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(30, 33, 51, 0.2);
+  border-top-color: var(--ocean-dark);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+@media (max-width: 640px) {
+  :host(.notification-stack) { bottom: 12px; right: 8px; left: 8px; width: auto; }
+}
+@keyframes notification-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}

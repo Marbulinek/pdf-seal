@@ -1,0 +1,70 @@
+.cert-timeline { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--ice); }
+.cert-timeline-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.cert-timeline-title { margin: 0; font-size: 0.8rem; font-weight: 700; color: var(--navy); }
+.cert-timeline-scroll-wrap { overflow-x: auto; }
+.cert-timeline-scroll { min-width: 380px; display: flex; flex-direction: column; gap: 8px; position: relative; padding-top: 4px; }
+.cert-timeline-row { display: flex; align-items: center; gap: 8px; font-size: 0.68rem; }
+.cert-timeline-row-label { flex: 0 0 120px; color: var(--ocean-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cert-timeline-track { position: relative; flex: 1 1 auto; height: 15px; background: var(--cream); border-radius: 999px; }
+.cert-timeline-bar { position: absolute; top: 0; bottom: 0; border-radius: 999px; transition: filter 0.15s ease; }
+.cert-timeline-bar:hover { filter: brightness(1.1); }
+.cert-timeline-bar.is-pass    { background: var(--success); }
+.cert-timeline-bar.is-warn    { background: var(--amber); }
+.cert-timeline-bar.is-fail    { background: var(--coral); }
+.cert-timeline-bar.is-unknown { background: var(--ocean); opacity: 0.5; }
+.cert-timeline-marker-row { opacity: 0.9; }
+.cert-timeline-marker {
+  position: absolute; top: -2px; width: 2px; height: 19px;
+  transform: translateX(-1px);
+}
+.cert-timeline-marker.is-claimed   { background: var(--ocean); }
+.cert-timeline-marker.is-timestamp { background: var(--navy); }
+.cert-timeline-marker::before {
+  content: ''; position: absolute; top: -3px; left: -3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: inherit;
+}
+/* Positioned to start exactly where .cert-timeline-track starts (past the
+   fixed-width row-label column + gap), so the "now" guide and axis ticks
+   only ever cross the graph itself and never run through the row labels. */
+.cert-timeline-now-overlay {
+  position: absolute; top: 0; bottom: 0;
+  left: calc(120px + 8px); right: 0;
+  pointer-events: none;
+}
+.cert-timeline-now {
+  position: absolute; top: 4px; bottom: 0; width: 1px;
+  background: repeating-linear-gradient(to bottom, var(--coral) 0 4px, transparent 4px 7px);
+}
+.cert-timeline-now-label {
+  position: absolute; top: -14px; left: 0; transform: translateX(-50%);
+  font-size: 0.6rem; font-weight: 700; color: var(--coral-dark); white-space: nowrap;
+}
+.cert-timeline-axis { position: relative; height: 15px; margin-top: 2px; margin-left: calc(120px + 8px); }
+.cert-timeline-tick { position: absolute; top: 0; font-size: 0.62rem; color: var(--stone); white-space: nowrap; }
+.cert-timeline-tick-start  { transform: translateX(0); }
+.cert-timeline-tick-center { transform: translateX(-50%); }
+.cert-timeline-tick-end    { transform: translateX(-100%); }
+.cert-timeline-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--ice); }
+.cert-timeline-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 0.68rem; color: var(--stone); white-space: nowrap; }
+.cert-timeline-legend-swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.cert-timeline-legend-swatch.is-pass    { background: var(--success); }
+.cert-timeline-legend-swatch.is-warn    { background: var(--amber); }
+.cert-timeline-legend-swatch.is-fail    { background: var(--coral); }
+.cert-timeline-legend-swatch.is-unknown { background: var(--ocean); opacity: 0.5; }
+.cert-timeline-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.cert-timeline-legend-dot.is-claimed   { background: var(--ocean); }
+.cert-timeline-legend-dot.is-timestamp { background: var(--navy); }
+.cert-timeline-legend-dot.is-now       { background: var(--coral); }
+
+/* The same chart, shown large in #certificateTimelineSheet. */
+.cert-timeline-large { margin-top: 0; padding-top: 0; border-top: none; }
+.cert-timeline-large .cert-timeline-scroll { min-width: 480px; gap: 14px; }
+.cert-timeline-large .cert-timeline-row { font-size: 0.82rem; gap: 12px; }
+.cert-timeline-large .cert-timeline-row-label { flex-basis: 180px; font-size: 0.78rem; font-weight: 600; }
+.cert-timeline-large .cert-timeline-track { height: 24px; }
+.cert-timeline-large .cert-timeline-marker { height: 28px; }
+.cert-timeline-large .cert-timeline-now-overlay,
+.cert-timeline-large .cert-timeline-axis { left: 0; margin-left: calc(180px + 12px); }
+.cert-timeline-large .cert-timeline-tick { font-size: 0.7rem; }
+.cert-timeline-large .cert-timeline-legend-item { font-size: 0.76rem; }

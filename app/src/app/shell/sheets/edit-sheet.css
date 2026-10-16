@@ -1,0 +1,81 @@
+.field-details {
+  margin-top: 4px;
+  margin-bottom: 16px;
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  background: var(--cream);
+  overflow: hidden;
+}
+.field-details summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ocean-dark);
+  letter-spacing: 0.02em;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+.field-details summary::-webkit-details-marker { display: none; }
+.field-details summary::before {
+  content: '▸';
+  transition: transform 0.15s ease;
+  font-size: 0.7rem;
+}
+.field-details[open] summary::before { transform: rotate(90deg); }
+
+.field-details-body { padding: 6px 14px 14px; }
+.flag-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; }
+.flag-tag {
+  display: inline-block;
+  background: var(--ice);
+  color: var(--navy);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+}
+/* Dragging a field into the template dropzone needs the column back for the
+   length of the drag -- without dropping the selection. */
+:host(.edit-sheet.is-open.is-suppressed) {
+  transform: translateX(calc(100% + 28px));
+  opacity: 0;
+  visibility: hidden;
+  /* visibility only takes effect at the end of the transition; the drag needs
+     the column back immediately. */
+  pointer-events: none;
+}
+
+/* No card chrome here -- it's a label plus two form-rows just like the Add
+   field panel's own Width/Height, not a distinct boxed-off group. The title
+   itself needs no custom rule either: it's a plain <label>, so it already
+   matches "Field Name" and every other field label via the base `label` rule
+   below. */
+.field-geometry { margin-bottom: 16px; }
+.field-geometry .form-row-last { margin-bottom: 0; }
+.field-geometry-note {
+  margin: 10px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--ocean-dark);
+  opacity: 0.85;
+}
+@media (max-width: 960px) {
+  :host(.edit-sheet.is-open.is-suppressed) { transform: translateY(100%); }
+}
+
+.edit-signed-notice {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  background: rgba(69, 123, 157, 0.08);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-m);
+  font-size: 0.76rem; line-height: 1.55;
+  color: var(--navy);
+}
+.edit-signed-notice[hidden] { display: none; }

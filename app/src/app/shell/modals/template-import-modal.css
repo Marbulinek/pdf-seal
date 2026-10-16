@@ -1,0 +1,30 @@
+/* Used outside the item row too (e.g. the import-preview field count). */
+.template-item-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--ice);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--ocean-dark);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.template-import-preview {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 220px; overflow-y: auto;
+  margin: 12px 0;
+}
+.template-import-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px;
+  background: var(--cream);
+  border: 1.5px solid var(--ice);
+  border-radius: var(--radius-s);
+  font-size: 0.82rem;
+  color: var(--navy);
+}
+.template-import-name {
+  flex: 1; min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

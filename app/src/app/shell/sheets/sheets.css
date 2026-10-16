@@ -1,0 +1,14 @@
+/* Desktop has the whole column to slide over, so no backdrop is needed. */
+.edit-sheet-scrim { display: none; }
+@media (max-width: 960px) {
+  .edit-sheet-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 94;
+    background: rgba(29, 53, 87, 0.38);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.24s ease, visibility 0.24s;
+  }
+  .edit-sheet-scrim.is-open { opacity: 1; visibility: visible; } }

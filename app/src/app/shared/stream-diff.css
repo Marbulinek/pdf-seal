@@ -1,0 +1,19 @@
+.diff-stream-size-note { font-size: 0.7rem; color: var(--ocean-dark); margin: 4px 0 0; }
+.diff-stream-diff {
+  font-family: monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 8px;
+  border-radius: var(--radius-s);
+  background: var(--cream);
+  display: flex;
+  flex-direction: column;
+  max-height: 400px;
+  overflow: auto;
+}
+.diff-stream-line { display: block; padding: 0 4px; border-radius: 3px; }
+.diff-stream-line.diff-stream-add { background: rgba(16, 185, 129, 0.14); color: var(--ocean-dark); }
+.diff-stream-line.diff-stream-remove { background: rgba(249, 115, 22, 0.12); color: var(--coral-dark); }

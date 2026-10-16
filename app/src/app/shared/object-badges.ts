@@ -27,6 +27,7 @@ export function isInvisibleObject(item: Pick<RawObjectPreview, 'rects'>): boolea
       >
     }
   `,
+  styleUrl: './object-badges.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

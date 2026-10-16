@@ -14,6 +14,7 @@ export function isGoogleChrome(): boolean {
 @Component({
   selector: 'footer[appFooter]',
   templateUrl: './footer.html',
+  styleUrl: './footer.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'site-footer' },
 })

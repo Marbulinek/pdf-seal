@@ -1,0 +1,15 @@
+/* Signature evidence + element history (Overview sheet and Certificates card). */
+.evidence { margin: 0 0 12px; border: 1px solid var(--ice); border-radius: 12px; overflow: hidden; background: #fff; }
+.evidence-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; }
+.evidence-row + .evidence-row { border-top: 1px solid var(--ice); }
+.evidence-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  font-size: 0.7rem; font-weight: 700; font-style: italic;
+  background: rgba(69, 123, 157, 0.12); color: var(--ocean-dark);
+}
+.evidence-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.evidence-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ocean-dark); }
+.evidence-text { font-size: 0.85rem; overflow-wrap: anywhere; }
+.evidence-action { margin-top: 6px; }
+.evidence-action:empty { display: none; }

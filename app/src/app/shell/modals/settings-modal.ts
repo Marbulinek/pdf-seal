@@ -72,6 +72,7 @@ const CHANGE_MESSAGES: Record<keyof AppSettings, [on: string, off: string]> = {
 @Component({
   selector: 'div[appSettingsModal]',
   templateUrl: './settings-modal.html',
+  styleUrl: './settings-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'settingsModal',

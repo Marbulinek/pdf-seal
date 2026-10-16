@@ -10,6 +10,7 @@ import { TourService } from '../../features/tour/tour.service';
 @Component({
   selector: 'header[appTopbar]',
   templateUrl: './topbar.html',
+  styleUrl: './topbar.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'topbar', '(document:click)': 'actionsOpen.set(false)' },
 })

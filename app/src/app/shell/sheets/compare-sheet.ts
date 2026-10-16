@@ -34,6 +34,7 @@ const TABS: { id: DiffTab; elementId: string; panel: string; icon: string; label
   selector: 'aside[appCompareSheet]',
   imports: [DictionaryChanges, ObjectBadges],
   templateUrl: './compare-sheet.html',
+  styleUrl: './compare-sheet.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'revisionsCompareSheet',

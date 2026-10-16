@@ -1,0 +1,31 @@
+.cert-modify-choice.is-static { cursor: default; }
+.cert-modify-choice.is-static:hover { border-color: var(--ice); }
+
+.cert-compare { display: flex; align-items: stretch; gap: 10px; margin-top: 12px; }
+.cert-compare-arrow { align-self: center; font-size: 1.2rem; color: var(--ocean); flex: 0 0 auto; }
+
+.cert-modify-error {
+  margin-top: 10px; padding: 10px 12px;
+  background: rgba(230, 57, 70, 0.07);
+  border: 1.5px solid rgba(230, 57, 70, 0.4);
+  border-radius: var(--radius-s);
+  font-size: 0.76rem; line-height: 1.5; color: var(--coral-dark);
+}
+
+/* Two states, because the consequence genuinely differs: replacing the signer
+   breaks the signature, and the other operations do not. */
+.cert-danger-block {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--radius-m);
+  font-size: 0.77rem; line-height: 1.55; color: var(--navy);
+}
+.cert-danger-block.is-breaking { background: rgba(230, 57, 70, 0.07); border: 1.5px solid rgba(230, 57, 70, 0.4); }
+.cert-danger-block.is-preserving { background: rgba(69, 123, 157, 0.07); border: 1.5px solid var(--ice); }
+.cert-modify-note { margin-top: 6px; font-size: 0.72rem; color: var(--ocean-dark); }
+
+.cert-modify-footer { display: flex; gap: 8px; }
+
+@media (max-width: 640px) {
+  .cert-compare { flex-direction: column; }
+  .cert-compare-arrow { transform: rotate(90deg); } }

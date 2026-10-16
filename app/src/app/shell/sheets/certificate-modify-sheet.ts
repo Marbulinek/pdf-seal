@@ -14,6 +14,7 @@ import { CertCompareCard } from './cert-compare-card';
   selector: 'aside[appCertificateModifySheet]',
   imports: [CertCompareCard],
   templateUrl: './certificate-modify-sheet.html',
+  styleUrl: './certificate-modify-sheet.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'certificateModifySheet',

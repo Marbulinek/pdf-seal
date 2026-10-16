@@ -20,6 +20,7 @@ const PLACEMENT_HINT_PLACING = 'Click anywhere on the PDF to drop the field.';
   selector: 'section[appSignaturesSection]',
   imports: [OvHero],
   templateUrl: './signatures-section.html',
+  styleUrl: './signatures-section.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'sectionSignatures',

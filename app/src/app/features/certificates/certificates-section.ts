@@ -35,6 +35,7 @@ const STATUS_ROWS: { status: ValidationStatus; label: (n: number) => string; det
   selector: 'section[appCertificatesSection]',
   imports: [OvHero, OvFacts, CertDot, CertChain, ValidationList, CertSignatureCard],
   templateUrl: './certificates-section.html',
+  styleUrl: './certificates-section.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'sectionCertificates',

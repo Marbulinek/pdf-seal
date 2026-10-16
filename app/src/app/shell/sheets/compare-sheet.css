@@ -1,0 +1,233 @@
+.icon-dot { -webkit-mask-image: url(/assets/images/icons/dot.svg); mask-image: url(/assets/images/icons/dot.svg); }
+@media (max-width: 960px) {
+  .revisions-compare-header { padding: 10px 20px 12px; } }
+
+/* The two revisions being compared, in the compare sheet's own header: the
+   sheet slides over the column the selects used to live in, so leaving them
+   behind meant closing the results just to compare a different pair. */
+.revisions-compare-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  padding: 12px 24px 14px;
+  background: var(--cream);
+  border-bottom: 1px solid var(--ice);
+}
+.revisions-compare-header[hidden] { display: none; }
+.revisions-compare-header .revisions-compare-select { flex: 1 1 120px; }
+.revisions-compare-header .revisions-compare-select select { width: 100%; }
+.revisions-compare-swap {
+  margin-bottom: 3px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.revisions-compare-select { display: flex; flex-direction: column; gap: 4px; }
+.revisions-compare-select label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--ocean-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.revisions-compare-select select {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 8px 10px;
+  border: 1px solid var(--ice);
+  border-radius: var(--radius-s);
+  background: #fff;
+  color: var(--navy);
+}
+
+.revisions-diff-results { display: flex; flex-direction: column; gap: 18px; }
+.revisions-diff-results[hidden] { display: none; }
+.revisions-diff-results > .diff-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+.diff-row-badge.badge-added { background: rgba(16, 185, 129, 0.15); color: var(--ocean-dark); }
+.diff-row-badge.badge-modified { background: rgba(30, 33, 51, 0.1); color: var(--navy); }
+.diff-row-key { font-weight: 700; color: var(--navy); }
+
+.diff-object-chips { display: flex; flex-direction: column; gap: 8px; }
+.diff-object-chip {
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--ice);
+  border-left-width: 3px;
+  background: #fff;
+  color: var(--ocean-dark);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.diff-object-ref {
+  font-family: monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--navy);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed var(--ice);
+}
+.diff-object-chip.chip-added { border-left-color: var(--ocean); }
+.diff-object-chip.chip-removed { border-left-color: var(--coral); }
+.diff-object-chip.chip-removed .diff-object-ref { color: var(--coral-dark); text-decoration: line-through; }
+.diff-object-chip.chip-modified { border-left-color: var(--ice); }
+.diff-object-chip.is-hovered {
+  background: var(--cream);
+  box-shadow: 0 0 0 3px rgba(69, 123, 157, 0.14);
+  transform: translateY(-1px);
+}
+.diff-object-chip.is-unmapped {
+  opacity: 0.75;
+}
+.diff-object-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.74rem;
+}
+.diff-object-meta-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.diff-object-meta-label {
+  flex: 0 0 62px;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  color: var(--ocean-dark);
+  opacity: 0.8;
+}
+.diff-object-meta-value {
+  color: var(--navy);
+  word-break: break-word;
+}
+.diff-object-chip.is-unmapped {
+  opacity: 0.85;
+}
+.diff-object-chip.is-unmapped .diff-object-actions {
+  /* Only the "PDF source" button remains for an unmapped object -- nothing
+     else in the card is clickable, unlike the old whole-card click target. */
+  justify-content: flex-start;
+}
+.raw-object-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.raw-object-filter-search {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+.raw-object-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.raw-object-filter-chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ice);
+  background: #fff;
+  color: var(--ocean-dark);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.raw-object-filter-chip:hover { background: var(--cream); }
+.raw-object-filter-chip.is-active {
+  background: var(--ocean);
+  border-color: var(--ocean);
+  color: #fff;
+}
+.raw-object-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ocean-dark);
+  white-space: nowrap;
+}
+.revisions-diff-overview { display: flex; flex-direction: column; gap: 16px; }
+.revisions-diff-overview[hidden] { display: none; }
+.diff-verdict-note { margin: 0; font-size: 0.78rem; color: var(--ocean-dark); }
+.diff-section.is-flashed { animation: diffSectionFlash 1.1s ease-out; }
+
+.visual-diff-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.visual-diff-panel[hidden] { display: none; }
+
+.visual-diff-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--cream);
+  border: 1px solid var(--ice);
+  border-radius: var(--radius-s);
+}
+
+.visual-diff-mode-select, .visual-diff-page-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visual-diff-mode-select label, .visual-diff-page-nav span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+/* Replaces an inline style attribute that sat on the colour picker. */
+.visual-diff-select {
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--navy);
+  background: #fff;
+  border: 1px solid var(--ice);
+  border-radius: 6px;
+}
+.visual-diff-select:disabled { opacity: 0.45; }
+
+.visual-diff-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ocean-dark);
+  line-height: 1.5;
+}
+
+/* What the marks on the page mean, and how many of them there are. */
+.visual-diff-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+.visual-diff-legend:empty { display: none; }
+.visual-diff-legend-note { color: var(--ocean-dark); font-weight: 600; }
+.visual-diff-swatch {
+  width: 22px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid rgba(30, 33, 51, 0.12);
+}
+.visual-diff-swatch.is-outline {
+  background: rgba(69, 123, 157, 0.1);
+  border: 1px dashed var(--ocean);
+}

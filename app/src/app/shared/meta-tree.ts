@@ -19,6 +19,7 @@ import { filterMetaTree, isExpandableMetaValue, metaEntriesOf, type MetaValue } 
       </div>
     }
   `,
+  styleUrl: './meta-tree.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

@@ -52,6 +52,7 @@ import { CertDot } from './cert-dot';
       </ol>
     }
   `,
+  styleUrl: './cert-chain.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })

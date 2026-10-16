@@ -76,6 +76,7 @@ const TAIL_TOPICS: HelpTopic[] = [
 @Component({
   selector: 'div[appHelpModal]',
   templateUrl: './help-modal.html',
+  styleUrl: './help-modal.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'helpModal',

@@ -55,6 +55,7 @@ function overviewTag(kind: string, type: string, name: string | null | undefined
   selector: 'section[appViewer]',
   imports: [NgOptimizedImage, NgTemplateOutlet],
   templateUrl: './viewer.html',
+  styleUrl: './viewer.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'panel viewer-panel viewer-column',

@@ -1,0 +1,10 @@
+.remove-field-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  font-weight: 700;
+  color: var(--coral-dark);
+}

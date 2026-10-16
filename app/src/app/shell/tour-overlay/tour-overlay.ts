@@ -62,6 +62,7 @@ import { TourService } from '../../features/tour/tour.service';
       </div>
     </div>
   `,
+  styleUrl: './tour-overlay.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '(document:keydown)': 'onKeydown($event)',

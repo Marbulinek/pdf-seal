@@ -1,0 +1,55 @@
+.settings-modal-actions {
+  margin-top: 18px;
+  gap: 14px;
+}
+.modal-tabs {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 16px;
+  border-bottom: 1.5px solid var(--ice);
+}
+.modal-tab {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 8px 4px 10px;
+  margin-bottom: -1.5px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ocean-dark);
+  border-bottom: 2.5px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.modal-tab:hover { color: var(--navy); }
+.modal-tab.is-active { color: var(--navy); border-bottom-color: var(--coral); }
+.modal-tab-panel[hidden] { display: none; }
+.settings-template-backup {
+  margin-top: 12px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--ice);
+  border-radius: 12px;
+  background: var(--cream);
+}
+.settings-template-backup-title {
+  margin: 0 0 2px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ocean-dark);
+}
+.settings-template-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0 4px; }
+.settings-template-action {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-template-backup-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--ice);
+}

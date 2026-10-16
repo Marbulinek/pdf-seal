@@ -46,6 +46,7 @@ import { SignaturesStore } from '../../features/signatures/signatures.store';
       }
     </div>
   `,
+  styleUrl: './pending-changes-bar.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     id: 'pendingChangesBar',

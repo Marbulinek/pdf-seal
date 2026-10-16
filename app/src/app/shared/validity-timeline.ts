@@ -66,6 +66,7 @@ import type { ValidityTimeline as TimelineModel } from '../features/certificates
       </div>
     </div>
   `,
+  styleUrl: './validity-timeline.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { style: 'display: contents' },
 })
