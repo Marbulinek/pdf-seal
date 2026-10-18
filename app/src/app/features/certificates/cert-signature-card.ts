@@ -104,12 +104,18 @@ export class CertSignatureCard {
     meta.push(`Field: ${sig.fieldName}`);
     if (sig.reason) meta.push(sig.reason);
     const signedAt = certFormatDate(sig.signedAttributes?.signingTime || sig.signingTimeClaimed);
-    if (signedAt) meta.push(`Claimed ${signedAt}`);
+    const stampedAt = sig.isDocumentTimestamp ? certFormatDate(sig.timestampTime) : null;
+    if (stampedAt) meta.push(`Timestamped ${stampedAt}`);
+    else if (signedAt) meta.push(`Claimed ${signedAt}`);
     return {
       kind: 'signature',
       icon: 'icon-pen',
       avatar: sig.name ? ovInitials(sig.name) : null,
-      label: sig.name ? `Signature ${this.index() + 1} · ${sig.name}` : `Signature ${this.index() + 1}`,
+      label: sig.isDocumentTimestamp
+        ? `Document timestamp ${this.index() + 1}`
+        : sig.name
+          ? `Signature ${this.index() + 1} · ${sig.name}`
+          : `Signature ${this.index() + 1}`,
       subtitle: meta.join(' · '),
       badge: { type: 'cert', status: sig.status },
     };

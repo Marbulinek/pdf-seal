@@ -59,6 +59,15 @@ export interface SignPdfOptions {
   slotBytes?: number;
   /** Identify the signer by subject key identifier instead of issuer+serial. */
   useSubjectKeyIdentifier?: boolean;
+  /** The claimed signing time (signed attribute and /M); defaults to now. */
+  signingTime?: Date;
+  /**
+   * Produce a document timestamp instead of a signature: /Type /DocTimeStamp,
+   * /SubFilter ETSI.RFC3161, and a CMS whose eContent is an RFC 3161 TSTInfo
+   * whose messageImprint is the SHA-256 of the signed byte ranges. The signer
+   * plays the timestamping authority; its genTime is `signingTime`.
+   */
+  documentTimestamp?: boolean;
   /** Omit the signing-time signed attribute. */
   omitSigningTime?: boolean;
   /** Omit the messageDigest signed attribute, leaving nothing to compare against. */
@@ -156,6 +165,24 @@ function patchByteRange(bytes: Uint8Array, byteRange: number[]): void {
   Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).write(replacement, start, 'latin1');
 }
 
+/** An RFC 3161 TSTInfo committing to `imprint` (a SHA-256 digest) at `genTime`, DER-encoded. */
+function buildTstInfo(imprint: ArrayBuffer, genTime: Date): ArrayBuffer {
+  return new asn1js.Sequence({
+    value: [
+      new asn1js.Integer({ value: 1 }), // version
+      new asn1js.ObjectIdentifier({ value: '1.2.3.4' }), // policy (arbitrary)
+      new asn1js.Sequence({
+        value: [
+          new asn1js.Sequence({ value: [new asn1js.ObjectIdentifier({ value: '2.16.840.1.101.3.4.2.1' })] }),
+          new asn1js.OctetString({ valueHex: imprint }),
+        ],
+      }), // messageImprint
+      new asn1js.Integer({ value: 7 }), // serialNumber
+      new asn1js.GeneralizedTime({ valueDate: genTime }),
+    ],
+  }).toBER(false);
+}
+
 /**
  * A minimal, unsigned RFC 3161 timestamp token: a ContentInfo/SignedData
  * shell around a TSTInfo whose only field the extractor reads (genTime) is
@@ -244,6 +271,8 @@ export async function buildSignedPdfFixture(
     signerName = 'Jane Doe',
     slotBytes = 4096,
     useSubjectKeyIdentifier = false,
+    signingTime = new Date(),
+    documentTimestamp = false,
     omitSigningTime = false,
     omitMessageDigest = false,
     timestampToken = false,
@@ -289,7 +318,7 @@ export async function buildSignedPdfFixture(
     Name: PDFString.of(signerName),
     Reason: PDFString.of(reason),
     Location: PDFString.of(location),
-    M: PDFString.fromDate(new Date()),
+    M: PDFString.fromDate(signingTime),
     ByteRange: context.obj([
       PDFNumber.of(0),
       PDFNumber.of(BYTE_RANGE_PLACEHOLDER),
@@ -308,6 +337,13 @@ export async function buildSignedPdfFixture(
       PDFName.of('Cert'),
       hexed.length === 1 ? hexed[0] : (context.obj(hexed) as PDFArray),
     );
+  }
+
+  if (documentTimestamp) {
+    // A document timestamp's time lives in its TSTInfo, not in /M.
+    signatureDict.set(PDFName.of('Type'), PDFName.of('DocTimeStamp'));
+    signatureDict.set(PDFName.of('SubFilter'), PDFName.of('ETSI.RFC3161'));
+    signatureDict.delete(PDFName.of('M'));
   }
 
   if (typeof docMdpLevel === 'number') {
@@ -372,12 +408,18 @@ export async function buildSignedPdfFixture(
     Buffer.from(bytes.subarray(0, gapStart)),
     Buffer.from(bytes.subarray(gapEnd, gapEnd + byteRange[3])),
   ]);
-  const digest = await webcrypto.subtle.digest('SHA-256', covered);
+  const documentDigest = await webcrypto.subtle.digest('SHA-256', covered);
+
+  // A document timestamp signs a TSTInfo that commits to the document; its
+  // messageDigest attribute is then the digest of that TSTInfo.
+  const tstInfoDer = documentTimestamp ? buildTstInfo(documentDigest, signingTime) : null;
+  const eContentType = tstInfoDer ? '1.2.840.113549.1.9.16.1.4' : '1.2.840.113549.1.7.1';
+  const digest = tstInfoDer ? await webcrypto.subtle.digest('SHA-256', tstInfoDer) : documentDigest;
 
   const attributes = [
     new pkijs.Attribute({
       type: '1.2.840.113549.1.9.3',
-      values: [new asn1js.ObjectIdentifier({ value: '1.2.840.113549.1.7.1' })],
+      values: [new asn1js.ObjectIdentifier({ value: eContentType })],
     }),
   ];
   if (!omitMessageDigest) {
@@ -388,11 +430,11 @@ export async function buildSignedPdfFixture(
       }),
     );
   }
-  if (!omitSigningTime) {
+  if (!omitSigningTime && !documentTimestamp) {
     attributes.push(
       new pkijs.Attribute({
         type: '1.2.840.113549.1.9.5',
-        values: [new asn1js.UTCTime({ valueDate: new Date() })],
+        values: [new asn1js.UTCTime({ valueDate: signingTime })],
       }),
     );
   }
@@ -425,7 +467,8 @@ export async function buildSignedPdfFixture(
   const signedData = new pkijs.SignedData({
     version: 1,
     encapContentInfo: new pkijs.EncapsulatedContentInfo({
-      eContentType: '1.2.840.113549.1.7.1',
+      eContentType,
+      ...(tstInfoDer ? { eContent: new asn1js.OctetString({ valueHex: tstInfoDer }) } : {}),
     }),
     signerInfos: [
       new pkijs.SignerInfo({

@@ -449,6 +449,10 @@ export interface ReportSignature {
   cmsError: string | null;
   signedAttributes: { signingTime: string | null } | null;
   hasTimestampToken: boolean;
+  /** A document timestamp (/SubFilter ETSI.RFC3161) rather than a signature. */
+  isDocumentTimestamp: boolean;
+  messageImprint: { digestAlgorithm: string | null; value: string } | null;
+  /** The timestamp token's genTime -- or, for a document timestamp, its own. */
   timestampTime: string | null;
   certificateIds: string[];
   signerCertificateId: string | null;

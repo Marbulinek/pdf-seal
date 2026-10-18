@@ -23,6 +23,7 @@
 import { createHash } from 'node:crypto';
 import PdfRevisionTool from './PdfRevisionTool';
 import * as pkijs from 'pkijs';
+import * as asn1js from 'asn1js';
 import {
   axisOf,
   certificateDisplayName,
@@ -40,6 +41,7 @@ import {
 import {
   extractCertificateSources,
   findCmsSlot,
+  octetStringBytes,
   readCmsFromSlot,
   signedByteRangeSlice,
   type ExtractedSignature,
@@ -288,10 +290,17 @@ async function checkSignature(
   // ---- the two checks that matter ---------------------------------------
   const cms = readCmsFromSlot(bytes, slot);
   const covered = signature.byteRange ? signedByteRangeSlice(bytes, signature.byteRange) : null;
-  const expectedDigest = signature.signedAttributes.messageDigest;
-  const nodeHash = signature.digestAlgorithm
-    ? DIGEST_TO_NODE_HASH[signature.digestAlgorithm]
-    : undefined;
+  // A document timestamp commits to the document through its TSTInfo's
+  // messageImprint; its messageDigest attribute is the hash of that TSTInfo,
+  // not of the document, so comparing the document against it would always fail.
+  const timestamp = signature.isDocumentTimestamp;
+  const expectedDigest = timestamp
+    ? signature.messageImprint?.value ?? null
+    : signature.signedAttributes.messageDigest;
+  const digestAlgorithm = timestamp
+    ? signature.messageImprint?.digestAlgorithm ?? null
+    : signature.digestAlgorithm;
+  const nodeHash = digestAlgorithm ? DIGEST_TO_NODE_HASH[digestAlgorithm] : undefined;
 
   let digestMatches: boolean | null = null;
   if (!expectedDigest) {
@@ -300,9 +309,14 @@ async function checkSignature(
         'sig.messageDigest',
         'Document unchanged',
         'unknown',
-        'The signature states no message digest',
-        'Without a messageDigest signed attribute there is nothing to compare the document’s ' +
-          'current bytes against.',
+        timestamp
+          ? 'The timestamp’s message imprint could not be read'
+          : 'The signature states no message digest',
+        timestamp
+          ? 'A document timestamp commits to the document through the message imprint inside its ' +
+              'TSTInfo, which could not be decoded here, so there is nothing to compare against.'
+          : 'Without a messageDigest signed attribute there is nothing to compare the document’s ' +
+              'current bytes against.',
       ),
     );
   } else if (!nodeHash || !covered) {
@@ -311,7 +325,7 @@ async function checkSignature(
         'sig.messageDigest',
         'Document unchanged',
         'unknown',
-        `Digest algorithm ${signature.digestAlgorithm ?? 'unknown'} is not supported here`,
+        `Digest algorithm ${digestAlgorithm ?? 'unknown'} is not supported here`,
         'The document’s bytes could not be hashed with the algorithm this signature used, so the ' +
           'comparison could not be made. That is not the same as the document having changed.',
       ),
@@ -325,13 +339,14 @@ async function checkSignature(
         'Document unchanged',
         digestMatches ? 'pass' : 'fail',
         digestMatches
-          ? `The document still matches its ${signature.digestAlgorithm} digest`
+          ? `The document still matches its ${digestAlgorithm} digest`
           : 'The document no longer matches the digest that was signed',
-        digestMatches
+        (digestMatches
           ? 'The bytes this signature covers were hashed and compared against the digest recorded ' +
-              'inside the signature. They match, so the covered content has not changed since signing.'
+            'inside the signature. They match, so the covered content has not changed since signing.'
           : 'The bytes this signature covers no longer hash to the value recorded inside the ' +
-              'signature. The document was modified after it was signed.',
+            'signature. The document was modified after it was signed.') +
+          (timestamp ? ' For a document timestamp, that digest is the TSTInfo’s message imprint.' : ''),
       ),
     );
   }
@@ -355,6 +370,14 @@ async function checkSignature(
     const signedData = new pkijs.SignedData({
       schema: pkijs.ContentInfo.fromBER(cms).content,
     });
+    // pkijs reads a TSTInfo straight out of a primitive OCTET STRING, so a
+    // document timestamp whose eContent is BER-constructed (chunked) would fail
+    // its schema check. Hand it the same bytes in one piece.
+    const eContent = signedData.encapContentInfo?.eContent;
+    if (timestamp && eContent?.idBlock?.isConstructed) {
+      const whole = octetStringBytes(eContent);
+      if (whole) signedData.encapContentInfo.eContent = new asn1js.OctetString({ valueHex: whole });
+    }
     const data = covered
       ? covered.buffer.slice(covered.byteOffset, covered.byteOffset + covered.byteLength)
       : undefined;
@@ -421,28 +444,27 @@ async function checkSignature(
   // ---- what we will not claim -------------------------------------------
   // Time evidence, not a property of the signature: a signature with no
   // timestamp is not a worse signature, it just leaves the signing time
-  // unproven. Either way this is 'unknown' on the trust axis.
-  if (signature.hasTimestampToken) {
+  // unproven. Either way this is 'unknown' on the trust axis. A document
+  // timestamp is itself the time evidence, so it gets no such check.
+  if (!timestamp) {
     checks.push(
-      result(
-        'sig.timestamp',
-        'Timestamp',
-        'unknown',
-        'A timestamp is present but was not verified',
-        'This signature carries a timestamp token. pdf-seal does not verify the timestamp or the ' +
-          'authority that issued it, so the signing time below is still only what the signer claims.',
-      ),
-    );
-  } else {
-    checks.push(
-      result(
-        'sig.timestamp',
-        'Timestamp',
-        'unknown',
-        'No timestamp',
-        'Nothing independently attests to when this signature was made, so the signing time is ' +
-          'the signer’s own claim and could be anything.',
-      ),
+      signature.hasTimestampToken
+        ? result(
+            'sig.timestamp',
+            'Timestamp',
+            'unknown',
+            'A timestamp is present but was not verified',
+            'This signature carries a timestamp token. pdf-seal does not verify the timestamp or the ' +
+              'authority that issued it, so the signing time below is still only what the signer claims.',
+          )
+        : result(
+            'sig.timestamp',
+            'Timestamp',
+            'unknown',
+            'No timestamp',
+            'Nothing independently attests to when this signature was made, so the signing time is ' +
+              'the signer’s own claim and could be anything.',
+          ),
     );
   }
 
@@ -718,8 +740,12 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
         signatureFieldName: s.fieldName,
         // The claimed signing time, preferring the signed attribute over the
         // signature dictionary's /M, since the former is at least inside the
-        // signed data even if neither is proven.
-        signingTime: s.signedAttributes.signingTime ?? s.signingTimeClaimed ?? null,
+        // signed data even if neither is proven. A document timestamp's time
+        // is its own genTime, which its (verified) signature covers.
+        signingTime: s.isDocumentTimestamp
+          ? s.timestampTime
+          : s.signedAttributes.signingTime ?? s.signingTimeClaimed ?? null,
+        purpose: s.isDocumentTimestamp ? ('documentTimestamp' as const) : ('signature' as const),
       })),
   );
 

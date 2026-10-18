@@ -582,3 +582,106 @@ describe('buildCertificateReport: what the verdict is and is not about', () => {
     expect(report.summary.status).toBe('fail');
   }, 30000);
 });
+
+describe('buildCertificateReport: signatures that used to read as red', () => {
+  const DAY = 86400000;
+
+  async function historicalChain(leafValidTo: number) {
+    const root = await mint({ commonName: 'Old Root', isCa: true, notBeforeOffsetMs: -DAY * 2000, notAfterOffsetMs: DAY * 2000 });
+    const leaf = await mint({
+      commonName: 'Former Employee',
+      issuer: root,
+      notBeforeOffsetMs: -DAY * 400,
+      notAfterOffsetMs: leafValidTo,
+    });
+    return { root, leaf };
+  }
+
+  it('stays green when the certificate expired after the claimed signing time', async () => {
+    const { root, leaf } = await historicalChain(-DAY * 10);
+    const fx = await buildSignedPdfFixture({
+      signer: leaf,
+      chain: [leaf, root],
+      signingTime: new Date(Date.now() - DAY * 200),
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    const leafCert = report.certificates.find((c) => c.subject.commonName === 'Former Employee')!;
+    expect(leafCert.checks.find((c) => c.id === 'cert.validity.window')?.status).toBe('fail');
+    expect(report.chains[0].checks.find((c) => c.id === 'chain.validityAtSigningTime')?.status).toBe('pass');
+    expect(report.signatures[0].status).toBe('pass');
+    // Nothing proves the signing time: that stays visible beside the verdict.
+    expect(sigCheck(report, 'sig.timestamp')?.detail).toBe('No timestamp');
+  }, 30000);
+
+  it('fails when the claimed signing time falls after the certificate expired', async () => {
+    const { root, leaf } = await historicalChain(-DAY * 10);
+    const fx = await buildSignedPdfFixture({ signer: leaf, chain: [leaf, root], signingTime: new Date() });
+    const report = await buildCertificateReport(fx.bytes);
+
+    const check = report.chains[0].checks.find((c) => c.id === 'chain.validityAtSigningTime');
+    expect(check?.status).toBe('fail');
+    expect(check?.detail).toContain('Former Employee');
+    expect(report.summary.status).toBe('fail');
+  }, 30000);
+
+  it('holds a self-signed signer to signer rules and reports the missing trust beside the verdict', async () => {
+    const selfSigned = await mint({ commonName: 'Developer Test Key' });
+    const fx = await buildSignedPdfFixture({ signer: selfSigned, chain: [selfSigned] });
+    const report = await buildCertificateReport(fx.bytes);
+
+    const cert = report.certificates[0];
+    expect(cert.role).toBe('signer');
+    expect(cert.checks.find((c) => c.id === 'cert.selfSigned')).toMatchObject({ status: 'warn', axis: 'trust' });
+    expect(report.signatures[0].status).toBe('pass');
+  }, 30000);
+});
+
+describe('buildCertificateReport: document timestamps', () => {
+  let tsa: Awaited<ReturnType<typeof mint>>;
+  beforeAll(async () => {
+    tsa = await mint({
+      commonName: 'PDF Seal Test TSA',
+      organization: 'PDF Seal Test',
+      issuer: chain.intermediate,
+      eku: ['1.3.6.1.5.5.7.3.8'],
+    });
+  }, 30000);
+
+  it('checks the document against the timestamp’s message imprint', async () => {
+    const fx = await buildSignedPdfFixture({
+      signer: tsa,
+      chain: [tsa, chain.intermediate, chain.root],
+      documentTimestamp: true,
+    });
+    const report = await buildCertificateReport(fx.bytes);
+    const sig = report.signatures[0];
+
+    expect(sig.isDocumentTimestamp).toBe(true);
+    expect(sig.timestampTime).not.toBeNull();
+    expect(sigCheck(report, 'sig.messageDigest')?.status).toBe('pass');
+    expect(sigCheck(report, 'sig.cryptographic')?.status).toBe('pass');
+    // It is the timestamp; it does not need one of its own.
+    expect(sigCheck(report, 'sig.timestamp')).toBeUndefined();
+    const tsaCert = report.certificates.find((c) => c.subject.commonName === 'PDF Seal Test TSA')!;
+    expect(tsaCert.checks.find((c) => c.id === 'cert.eku')?.status).toBe('pass');
+    // Its own genTime is the time the chain is checked against.
+    expect(report.chains[0].checks.find((c) => c.id === 'chain.validityAtSigningTime')?.status).toBe('pass');
+    expect(sig.status).toBe('pass');
+    expect(report.summary.status).toBe('pass');
+  }, 30000);
+
+  it('fails a document timestamp when the covered bytes changed', async () => {
+    const fx = await buildSignedPdfFixture({
+      signer: tsa,
+      chain: [tsa, chain.intermediate, chain.root],
+      documentTimestamp: true,
+      tamperWithContent: true,
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    expect(sigCheck(report, 'sig.messageDigest')?.status).toBe('fail');
+    expect(sigCheck(report, 'sig.cryptographic')?.detail).toMatch(/document changed after signing/i);
+    expect(report.summary.status).toBe('fail');
+  }, 30000);
+});

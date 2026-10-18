@@ -109,6 +109,9 @@ describe('certificates model', () => {
     const pass = { status: 'pass' as const, detail: '', matchedRootSubject: null, extendedWithIssuer: false };
     expect(trustFacts(r, { [chainId]: pass })[0].value).toBe('Trusted (simulated)');
     expect(trustFacts(r, { [chainId]: { ...pass, status: 'fail' } })[0].value).toBe('Not trusted (simulated)');
+
+    const withDocTimestamp = makeReport({ signatures: [makeSignature(), makeSignature({ fieldName: 'DTS', isDocumentTimestamp: true })] });
+    expect(trustFacts(withDocTimestamp, null)[1].value).toBe('None · 1 document timestamp');
   });
 
   it('offers only the modify operations a signature supports', () => {

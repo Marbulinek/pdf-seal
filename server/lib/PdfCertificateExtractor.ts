@@ -81,10 +81,20 @@ export interface ExtractedSignature {
   signedAttributes: SignedAttributeSummary;
   hasTimestampToken: boolean;
   /**
+   * A document timestamp (/SubFilter ETSI.RFC3161): its CMS carries an RFC 3161
+   * TSTInfo whose messageImprint -- not a messageDigest attribute -- is the
+   * hash of the signed byte ranges. It is its own timestamp, so it never
+   * carries a timestamp token of its own.
+   */
+  isDocumentTimestamp: boolean;
+  /** A document timestamp's TSTInfo messageImprint: what the covered bytes must hash to. */
+  messageImprint: { digestAlgorithm: string | null; value: string } | null;
+  /**
    * The TSA's own claimed time from inside the timestamp token (its genTime),
    * best-effort decoded -- null if there is no token or it could not be read.
    * Still unverified by pdf-seal (the token's signature is not checked), but
    * it is independent of the signer: a forged /M can't move this value.
+   * For a document timestamp, its own TSTInfo genTime.
    */
   timestampTime: string | null;
   docMdpLevel: number | null;
@@ -116,6 +126,7 @@ const OID_MESSAGE_DIGEST = '1.2.840.113549.1.9.4';
 const OID_SIGNING_TIME = '1.2.840.113549.1.9.5';
 const OID_TIMESTAMP_TOKEN = '1.2.840.113549.1.9.16.2.14';
 const OID_SIGNED_DATA = '1.2.840.113549.1.7.2';
+const OID_TST_INFO = '1.2.840.113549.1.9.16.1.4';
 
 const DIGEST_NAMES: Record<string, string> = {
   '1.3.14.3.2.26': 'SHA-1',
@@ -328,8 +339,15 @@ export function readCmsFromSlot(bytes: Uint8Array, slot: CmsSlot): Uint8Array | 
   return read.ok ? read.cms : null;
 }
 
+interface TstInfoFacts {
+  genTime: string | null;
+  messageImprint: { digestAlgorithm: string | null; value: string } | null;
+}
+
 interface CmsFacts {
   certificates: Uint8Array[];
+  /** Set when the SignedData encapsulates an RFC 3161 TSTInfo (a document timestamp). */
+  tstInfo: TstInfoFacts | null;
   signerSid: SignerIdentifier | null;
   digestAlgorithm: string | null;
   signatureAlgorithm: string | null;
@@ -341,6 +359,7 @@ interface CmsFacts {
 function emptyCmsFacts(): CmsFacts {
   return {
     certificates: [],
+    tstInfo: null,
     signerSid: null,
     digestAlgorithm: null,
     signatureAlgorithm: null,
@@ -351,21 +370,11 @@ function emptyCmsFacts(): CmsFacts {
 }
 
 /**
- * Best-effort read of a timestamp token's own claimed time (RFC 3161 TSTInfo
- * genTime). `tokenValue` is the raw ASN.1 node held as the timestamp-token
- * unsigned attribute's value -- a DER-encoded ContentInfo wrapping a nested
- * CMS SignedData whose eContent is the TSTInfo. Never throws: any failure
- * (unexpected shape, unsupported encoding) just means the time is unknown,
- * not that the file is malformed -- the token's own signature is never
- * checked here either way, so a decode failure changes nothing about what
- * pdf-seal actually verifies.
- */
-/**
  * An OCTET STRING's content as one buffer. A CMS eContent can legally be
  * BER-constructed (chunked into child OCTET STRINGs, e.g. by a streaming
  * signer) rather than a single primitive value -- this reads either form.
  */
-function octetStringBytes(node: any): Uint8Array | null {
+export function octetStringBytes(node: any): Uint8Array | null {
   const primitive = node?.valueBlock?.valueHexView;
   if (primitive && primitive.length > 0) return primitive;
   const chunks = node?.valueBlock?.value;
@@ -375,19 +384,47 @@ function octetStringBytes(node: any): Uint8Array | null {
   return null;
 }
 
-function extractTimestampGenTime(tokenValue: any): string | null {
+/**
+ * The parts of an encapsulated RFC 3161 TSTInfo this feature reads: genTime
+ * and messageImprint. Null when the SignedData does not hold one or it cannot
+ * be decoded -- never throws, since reading a timestamp's claims proves
+ * nothing either way; only the signature checks do.
+ */
+function readTstInfo(signedData: pkijs.SignedData): TstInfoFacts | null {
   try {
-    const der = tokenValue.toBER(false);
-    const contentInfo = pkijs.ContentInfo.fromBER(der);
-    const signedData = new pkijs.SignedData({ schema: contentInfo.content });
-    const eContent = signedData.encapContentInfo?.eContent;
+    if (signedData.encapContentInfo?.eContentType !== OID_TST_INFO) return null;
+    const eContent = signedData.encapContentInfo.eContent;
     const tstInfoBytes = eContent ? octetStringBytes(eContent) : null;
     if (!tstInfoBytes) return null;
-    const tstInfo = asn1js.fromBER(tstInfoBytes).result;
+    const tstInfo = asn1js.fromBER(tstInfoBytes).result as any;
     // TSTInfo ::= SEQUENCE { version, policy, messageImprint, serialNumber, genTime, ... }
-    const genTime = (tstInfo as any).valueBlock?.value?.[4];
-    const date = genTime?.toDate?.();
-    return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
+    // MessageImprint ::= SEQUENCE { hashAlgorithm AlgorithmIdentifier, hashedMessage OCTET STRING }
+    const fields = tstInfo.valueBlock?.value ?? [];
+    const imprint = fields[2]?.valueBlock?.value;
+    const algorithmOid = imprint?.[0]?.valueBlock?.value?.[0]?.valueBlock?.toString?.();
+    const hashed = imprint?.[1]?.valueBlock?.valueHexView;
+    const date = fields[4]?.toDate?.();
+    return {
+      genTime: date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : null,
+      messageImprint: hashed
+        ? { digestAlgorithm: algorithmOid ? DIGEST_NAMES[algorithmOid] ?? algorithmOid : null, value: toHex(hashed) }
+        : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort read of a timestamp token's own claimed time. `tokenValue` is
+ * the raw ASN.1 node held as the timestamp-token unsigned attribute's value --
+ * a DER-encoded ContentInfo wrapping a nested CMS SignedData whose eContent is
+ * the TSTInfo. Never throws: a failure just means the time is unknown.
+ */
+function extractTimestampGenTime(tokenValue: any): string | null {
+  try {
+    const contentInfo = pkijs.ContentInfo.fromBER(tokenValue.toBER(false));
+    return readTstInfo(new pkijs.SignedData({ schema: contentInfo.content }))?.genTime ?? null;
   } catch {
     return null;
   }
@@ -412,6 +449,7 @@ export function readCmsFacts(cms: Uint8Array): CmsFacts {
   }
 
   const signedData = new pkijs.SignedData({ schema: contentInfo.content });
+  facts.tstInfo = readTstInfo(signedData);
 
   for (const entry of signedData.certificates ?? []) {
     if (entry instanceof pkijs.Certificate) {
@@ -547,6 +585,8 @@ export async function extractCertificateSources(bytes: Uint8Array): Promise<Extr
       signatureAlgorithm: null,
       signedAttributes: { contentType: null, messageDigest: null, signingTime: null, others: [] },
       hasTimestampToken: false,
+      isDocumentTimestamp: dict.subFilter === 'ETSI.RFC3161',
+      messageImprint: null,
       timestampTime: null,
       docMdpLevel: dict.docMdpLevel,
       objectRef: dict.objectRef,
@@ -591,6 +631,13 @@ export async function extractCertificateSources(bytes: Uint8Array): Promise<Extr
           signature.signedAttributes = facts.signedAttributes;
           signature.hasTimestampToken = facts.hasTimestampToken;
           signature.timestampTime = facts.timestampTime;
+          if (facts.tstInfo) {
+            // A TSTInfo inside the signature itself makes it a document
+            // timestamp even if its /SubFilter says otherwise.
+            signature.isDocumentTimestamp = true;
+            signature.messageImprint = facts.tstInfo.messageImprint;
+            signature.timestampTime = facts.tstInfo.genTime;
+          }
           for (const der of facts.certificates) {
             sources.push({
               der,

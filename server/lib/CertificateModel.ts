@@ -57,14 +57,7 @@ const TRUST_CHECK_IDS = new Set([
   'sig.timestamp',
   'cert.selfSigned',
 ]);
-const DIAGNOSTIC_CHECK_IDS = new Set([
-  'cert.validity.window',
-  'chain.validityNow',
-  // A certificate shared by two signatures carries the checks of whichever
-  // chain was built last; chain.validityAtSigningTime is the per-signature
-  // answer and the one the verdict uses.
-  'cert.validity.atSigningTime',
-]);
+const DIAGNOSTIC_CHECK_IDS = new Set(['cert.validity.window', 'chain.validityNow']);
 
 export function axisOf(id: string): CheckAxis {
   if (TRUST_CHECK_IDS.has(id)) return 'trust';

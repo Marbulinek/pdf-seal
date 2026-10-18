@@ -201,7 +201,7 @@ export function overviewSheetModel(
           { label: 'Coverage', value: coverage },
           { label: 'Field', value: s.name },
         ];
-        model.flags = [['Timestamped', sig.hasTimestampToken]];
+        model.flags = [['Timestamped', sig.hasTimestampToken || sig.isDocumentTimestamp]];
         model.evidence = signatureEvidenceRows(sig, (sig.chainId && trustResults?.[sig.chainId]) || null);
         model.actions.push({ kind: 'open-certificates', field: s.name ?? '' });
       } else {

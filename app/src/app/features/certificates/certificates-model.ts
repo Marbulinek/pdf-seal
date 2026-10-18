@@ -474,9 +474,14 @@ export function trustFacts(
       ? 'Trusted (simulated)'
       : 'Not trusted (simulated)';
 
-  const signed = report.signatures.length;
-  const stamped = report.signatures.filter((s) => s.hasTimestampToken).length;
-  const timestamp = stamped === 0 ? 'None' : stamped === signed ? 'Present, not verified' : `${stamped} of ${signed}, not verified`;
+  // A document timestamp is its own time evidence; count the signatures' tokens.
+  const signatures = report.signatures.filter((s) => !s.isDocumentTimestamp);
+  const signed = signatures.length;
+  const stamped = signatures.filter((s) => s.hasTimestampToken).length;
+  const documentTimestamps = report.signatures.length - signed;
+  const timestamp =
+    (stamped === 0 ? 'None' : stamped === signed ? 'Present, not verified' : `${stamped} of ${signed}, not verified`) +
+    (documentTimestamps ? ` · ${documentTimestamps} document timestamp${documentTimestamps === 1 ? '' : 's'}` : '');
 
   return [
     { label: 'Trust', value: trust },
