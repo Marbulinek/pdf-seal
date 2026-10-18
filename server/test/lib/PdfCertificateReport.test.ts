@@ -5,7 +5,7 @@ import PdfSignatureTool from '../../lib/PdfSignatureTool';
 import { TRUST_NOTE } from '../../lib/CertificateChain';
 import { mint, mintStandardChain, type StandardChain } from './helpers/certificateFactory';
 import { buildSignedPdfFixture, buildUnsignedPdfFixture } from './helpers/pdfSigner';
-import { appendClassicIncrement } from './helpers/classicIncrement';
+import { appendClassicIncrement, appendIncrement, nextObjectNumber } from './helpers/classicIncrement';
 
 let chain: StandardChain;
 let cleanReport: Awaited<ReturnType<typeof buildCertificateReport>>;
@@ -470,7 +470,8 @@ describe('buildCertificateReport: revision coverage', () => {
     // ...and what came after is reported, never passed.
     const later = sigCheck(report, 'sig.laterChanges');
     expect(later?.status).toBe('unknown');
-    expect(later?.detail).toMatch(/1 later revision\(s\), not evaluated/);
+    expect(later?.detail).toBe('1 later revision: metadata changed');
+    expect(later?.explanation).toMatch(/not whether it was permitted/i);
     expect(sigCheck(report, 'sig.docMdp')?.status).toBe('pass');
     expect(sigCheck(report, 'sig.docMdp')?.explanation).toMatch(/not check those later changes/i);
     expect(report.summary.status).toBe('pass');
@@ -589,6 +590,31 @@ describe('buildCertificateReport: what the verdict is and is not about', () => {
     const later = sigCheck(report, 'sig.laterChanges');
     expect(later?.status).toBe('warn');
     expect(later?.detail).toMatch(/no-changes certification/i);
+    expect(report.summary.status).toBe('warn');
+  }, 30000);
+
+  it('warns when a later revision changes what the page shows', async () => {
+    const fx = await buildSignedPdfFixture({});
+    const signed = Buffer.from(fx.bytes);
+    // Rewrite the page in a new revision so it draws a new content stream.
+    const text = signed.toString('latin1');
+    const page = /(\d+) 0 obj\n(<<\n\/Type \/Page\n[\s\S]*?)\nendobj/.exec(text)!;
+    const contentNum = nextObjectNumber(signed);
+    const pageBody = /\/Contents\s+\d+\s+0\s+R/.test(page[2])
+      ? page[2].replace(/\/Contents\s+\d+\s+0\s+R/, `/Contents ${contentNum} 0 R`)
+      : page[2].replace('<<', `<< /Contents ${contentNum} 0 R`);
+    const stream = 'BT /F1 24 Tf 72 720 Td (Paid in full) Tj ET';
+    const edited = appendIncrement(signed, [
+      { body: `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream` },
+      { num: Number(page[1]), body: pageBody },
+    ]);
+    const report = await buildCertificateReport(new Uint8Array(edited));
+
+    expect(sigCheck(report, 'sig.messageDigest')?.status).toBe('pass');
+    const later = sigCheck(report, 'sig.laterChanges');
+    expect(later?.status).toBe('warn');
+    expect(later?.detail).toMatch(/change page content: 1 page content stream changed/);
+    expect(later?.explanation).toMatch(/not what was signed/i);
     expect(report.summary.status).toBe('warn');
   }, 30000);
 

@@ -240,6 +240,64 @@ interface LaterRevisionContext {
   fileEndsAtRevision: boolean;
   /** Every signature whose signed bytes end at a revision boundary. */
   laterSignatures: Array<{ fieldName: string; coveredRevision: number }>;
+  /**
+   * What changed between the end of revision k and the end of the file, per
+   * covered revision k; null when the two could not be compared.
+   */
+  changesAfterRevision: Map<number, LaterChanges | null>;
+}
+
+/** What the revisions after a signed one changed, as far as a structural diff can tell. */
+interface LaterChanges {
+  /** Changes to what a page shows: its content streams, images, the page count. */
+  pageContent: string[];
+  /** Everything else that was added or changed, for the explanation. */
+  other: string[];
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * Diff revision `coveredRevision` against the whole file with the same
+ * machinery as the Versions panel. Only changes to page content are singled
+ * out: a structural diff can show that page content changed, but it cannot
+ * show that a form-field or annotation change left what a reader sees
+ * untouched, so nothing here is ever reported as a pass.
+ */
+async function describeLaterChanges(bytes: Uint8Array, revisionEnd: number): Promise<LaterChanges | null> {
+  let diff: Awaited<ReturnType<typeof PdfRevisionTool.diffSnapshotBytes>>;
+  try {
+    diff = await PdfRevisionTool.diffSnapshotBytes(bytes.subarray(0, revisionEnd), bytes);
+  } catch {
+    return null;
+  }
+  const objects = diff.objectChanges;
+  const category = (key: string) => objects.categories[key];
+  const touched = [...objects.added, ...objects.modified, ...objects.removed];
+
+  const pageContent: string[] = [];
+  if (diff.pageCountDelta !== 0) {
+    pageContent.push(`page count ${diff.pageCountDelta > 0 ? '+' : ''}${diff.pageCountDelta}`);
+  }
+  const contentStreams = touched.filter((key) => category(key) === 'content').length;
+  if (contentStreams) pageContent.push(`${plural(contentStreams, 'page content stream')} changed`);
+  // An added image is drawn only if page content or an appearance uses it; a
+  // replaced or removed one changes whatever already showed it.
+  const images = [...objects.modified, ...objects.removed].filter((key) => category(key) === 'image').length;
+  if (images) pageContent.push(`${plural(images, 'image')} replaced or removed`);
+
+  const other: string[] = [];
+  if (diff.signatureChanges.added.length) other.push(`${plural(diff.signatureChanges.added.length, 'signature')} added`);
+  const describes = (prefix: string) =>
+    [...objects.addedDetails, ...objects.modifiedDetails].some((d) => d.humanName.startsWith(prefix));
+  if (describes('Document Security Store')) other.push('validation data (DSS)');
+  const formFields = touched.filter((key) => category(key) === 'formField').length;
+  if (formFields) other.push(`${plural(formFields, 'form field object')} changed`);
+  const stamps = diff.stampChanges.added.length + diff.stampChanges.removed.length + diff.stampChanges.modified.length;
+  if (stamps) other.push(`${plural(stamps, 'stamp')} changed`);
+  if (diff.metadataChanges.length) other.push('metadata changed');
+
+  return { pageContent, other };
 }
 
 /**
@@ -358,26 +416,44 @@ async function checkSignature(
 
   // ---- what was added after it? -----------------------------------------
   // Only asked when coverage is clean: otherwise the coverage check above has
-  // already said what is wrong. PDF Seal does not analyse what later revisions
-  // changed, so this stays 'unknown' -- except after a certification that
-  // permits no changes at all, where any later revision deserves a look.
+  // already said what is wrong. Never a pass: a structural diff can show that
+  // page content changed, but not that a form-field or annotation change left
+  // what a reader sees -- or what a certification permits -- intact.
   if (coversWholeRevisions && laterRevisions > 0) {
     const noChangesPermitted = signature.docMdpLevel === 1;
+    const changes = later.changesAfterRevision.get(coverage.coveredRevision!) ?? null;
+    const pageChanged = !!changes?.pageContent.length;
     const signedLater = later.laterSignatures
       .filter((s) => s.coveredRevision > coverage.coveredRevision!)
       .map((s) => `revision ${s.coveredRevision} is signed by ${s.fieldName}`);
+    const revisions = plural(laterRevisions, 'later revision');
+    const found = changes ? [...changes.pageContent, ...changes.other] : [];
     checks.push(
       result(
         'sig.laterChanges',
         'Later changes',
-        noChangesPermitted ? 'warn' : 'unknown',
-        noChangesPermitted
-          ? `${laterRevisions} later revision(s) after a no-changes certification`
-          : `${laterRevisions} later revision(s), not evaluated`,
-        `${laterRevisions} revision(s) were added to the file after this signature. They do not ` +
-          'affect what this signature covers, and PDF Seal does not check what they changed — the ' +
-          'Versions section shows it.' +
-          (signedLater.length ? ` Of those, ${signedLater.join('; ')}.` : '') +
+        noChangesPermitted || pageChanged ? 'warn' : 'unknown',
+        pageChanged
+          ? `${revisions} change page content: ${changes!.pageContent.join(', ')}`
+          : noChangesPermitted
+            ? `${revisions} after a no-changes certification`
+            : found.length
+              ? `${revisions}: ${found.join(', ')}`
+              : `${revisions}, not evaluated`,
+        `${plural(laterRevisions, 'revision was', 'revisions were')} added to the file after this ` +
+          'signature. They do not affect what this signature covers. ' +
+          (changes
+            ? `Compared with revision ${coverage.coveredRevision}, ${
+                found.length ? `they contain: ${found.join(', ')}` : 'no change PDF Seal recognises was found'
+              }. ` +
+              (pageChanged
+                ? 'What the page shows was changed after signing, so what a reader sees now is not what ' +
+                  'was signed. '
+                : 'PDF Seal reports what changed but not whether it was permitted: form-field and ' +
+                  'annotation changes can still alter what a reader sees. ')
+            : 'PDF Seal could not compare them with the signed revision. ') +
+          'The Versions section shows every change.' +
+          (signedLater.length ? ` Of those revisions, ${signedLater.join('; ')}.` : '') +
           (noChangesPermitted
             ? ' This is a certifying signature that permits no changes, so anything other than ' +
               'validation data or a document timestamp added afterwards breaks that certification.'
@@ -885,6 +961,14 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
 
   const revisionEnds = PdfRevisionTool.findRevisionBoundaries(bytes).map((b) => b.endOffset);
   const coverages = extraction.signatures.map((s) => coverageFor(s, revisionEnds, bytes));
+  // One diff per signed revision that later revisions follow, however many
+  // signatures share it.
+  const changesAfterRevision = new Map<number, LaterChanges | null>();
+  for (const coverage of coverages) {
+    const k = coverage.coveredRevision;
+    if (k === null || k >= coverage.revisionCount || changesAfterRevision.has(k)) continue;
+    changesAfterRevision.set(k, await describeLaterChanges(bytes, revisionEnds[k - 1]));
+  }
   const later: LaterRevisionContext = {
     fileEndsAtRevision: endsAtRevision(revisionEnds, bytes),
     laterSignatures: extraction.signatures.flatMap((s, i) =>
@@ -892,6 +976,7 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
         ? [{ fieldName: s.fieldName, coveredRevision: coverages[i].coveredRevision! }]
         : [],
     ),
+    changesAfterRevision,
   };
 
   const signatures: ReportSignature[] = [];
