@@ -148,12 +148,7 @@
     @if (state() === 'content' && report(); as r) {
       <div class="overview-header">
         <app-ov-hero [hero]="summaryHero()" />
-        <app-ov-facts
-          [facts]="[
-            { label: 'Certificates', value: '' + r.certificates.length },
-            { label: 'Signatures', value: '' + r.signatures.length },
-          ]"
-        />
+        <app-ov-facts [facts]="summaryFacts()" />
       </div>
       <!-- Always visible, never dismissible: the whole point is not overstating what was checked. -->
       <div class="cert-trust-banner" id="certTrustBanner">

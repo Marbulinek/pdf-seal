@@ -1,5 +1,5 @@
 import { curateRawEntries, type OverviewItem, type OverviewKind } from './document-overview';
-import type { CertificateReport, DocAnnotation, DocField, DocStamp } from '../../core/models';
+import type { CertificateReport, DocAnnotation, DocField, DocStamp, TrustSimulationResult } from '../../core/models';
 import { cssEscape } from '../../core/util/dom';
 import { ovInitials, ovShortDate } from '../../core/util/format';
 import { dateFact, type FactModel } from '../../shared/ov-facts';
@@ -148,9 +148,15 @@ export function placementLines(item: OverviewItem): OverviewSheetModel['placemen
 /**
  * Everything the Overview detail sheet shows for one item. `report` is the
  * Certificates report for the open file (signed signatures read it);
- * `settled` says the report request finished (so "Loading…" can give up).
+ * `settled` says the report request finished (so "Loading…" can give up);
+ * `trustResults` are the trust-simulation results per chain id, when run.
  */
-export function overviewSheetModel(item: OverviewItem, report: CertificateReport | null, settled: boolean): OverviewSheetModel {
+export function overviewSheetModel(
+  item: OverviewItem,
+  report: CertificateReport | null,
+  settled: boolean,
+  trustResults: Record<string, TrustSimulationResult> | null = null,
+): OverviewSheetModel {
   const s = item.source as SheetSource;
   const meta = OVERVIEW_KINDS[item.kind];
   const base = { kind: item.kind, label: item.label, icon: meta.icon, eyebrow: overviewTypeLabel(item.kind, s) };
@@ -196,7 +202,7 @@ export function overviewSheetModel(item: OverviewItem, report: CertificateReport
           { label: 'Field', value: s.name },
         ];
         model.flags = [['Timestamped', sig.hasTimestampToken]];
-        model.evidence = signatureEvidenceRows(sig);
+        model.evidence = signatureEvidenceRows(sig, (sig.chainId && trustResults?.[sig.chainId]) || null);
         model.actions.push({ kind: 'open-certificates', field: s.name ?? '' });
       } else {
         model.hero = { ...base, subtitle: 'Signed', badge: pill('Signed', 'positive') };

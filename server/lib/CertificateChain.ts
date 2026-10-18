@@ -15,6 +15,7 @@
 
 import { X509Certificate } from 'node:crypto';
 import {
+  axisOf,
   certificateDisplayName,
   type ParsedCertificate,
   type ValidationResult,
@@ -72,7 +73,7 @@ function result(
   detail: string,
   explanation: string,
 ): ValidationResult {
-  return { id, label, status, detail, explanation };
+  return { id, label, status, detail, explanation, axis: axisOf(id) };
 }
 
 /** Worst status wins, so a roll-up never reads better than its parts. */
@@ -759,34 +760,12 @@ function checkChain(
     );
   }
 
-  // ---- does the chain reach a root -------------------------------------
-  if (chain.missingIssuerDn) {
-    checks.push(
-      result(
-        'chain.missingIntermediate',
-        'Intermediate certificate',
-        'warn',
-        `Missing: ${chain.missingIssuerDn}`,
-        `The chain stops at ${certificateDisplayName(top)}, which says it was issued by ` +
-          `“${chain.missingIssuerDn}”. That certificate is not embedded in this PDF, so the chain ` +
-          'cannot be followed any further from the file alone.',
-      ),
-    );
-  } else {
-    checks.push(
-      result(
-        'chain.missingIntermediate',
-        'Intermediate certificate',
-        'pass',
-        'No intermediates missing',
-        'Every issuer the chain refers to is present in the file.',
-      ),
-    );
-  }
-
   // ---- root ------------------------------------------------------------
   // A PDF that omits the root is normal and correct: the root belongs in the
-  // verifier's trust store, not in the document. So this warns, never fails.
+  // verifier's trust store, not in the document. Where the chain stops is a
+  // trust question, so an absent issuer is 'unknown' -- without a trust store
+  // there is no telling a root the verifier already holds from an intermediate
+  // the signer forgot to embed.
   if (chain.complete) {
     checks.push(
       result(
@@ -815,11 +794,19 @@ function checkChain(
       result(
         'chain.root',
         'Root certificate',
-        'warn',
-        'Chain does not reach a root in this file',
-        'The chain stops before a self-signed root. This is common and often correct — the root ' +
-          'normally lives in the verifier’s trust store rather than in the document — but it means ' +
-          'the chain cannot be completed from this file alone.',
+        'unknown',
+        chain.missingIssuerDn
+          ? `Issuer not in this file: ${chain.missingIssuerDn}`
+          : 'Chain does not reach a root in this file',
+        `The chain stops at ${certificateDisplayName(top)}` +
+          (chain.missingIssuerDn
+            ? `, which says it was issued by “${chain.missingIssuerDn}”. That certificate is not ` +
+              'embedded in this PDF. '
+            : ' without reaching a self-signed root. ') +
+          'This is common and often correct: the root normally lives in the verifier’s trust store ' +
+          'rather than in the document. If the missing certificate is an intermediate instead, a ' +
+          'verifier without network access cannot complete the chain. Which of the two it is can ' +
+          'only be settled against a trust store — try the trust simulation.',
       ),
     );
   }
@@ -845,26 +832,33 @@ function checkChain(
   );
 
   // ---- and at the claimed signing time ----------------------------------
-  if (context.signingTime) {
-    const atSigning = worstStatus(
-      ordered.map(
-        (c) => c.checks.find((x) => x.id === 'cert.validity.atSigningTime')?.status ?? 'unknown',
-      ),
-    );
-    checks.push(
-      result(
-        'chain.validityAtSigningTime',
-        'Chain validity when signed',
-        atSigning,
-        atSigning === 'pass'
+  // Always emitted: it is one of the checks a signature needs to pass before
+  // its verdict can be green, so a missing signing time has to show up as
+  // 'unknown' rather than as nothing at all.
+  const atSigning = context.signingTime
+    ? worstStatus(
+        ordered.map(
+          (c) => c.checks.find((x) => x.id === 'cert.validity.atSigningTime')?.status ?? 'unknown',
+        ),
+      )
+    : 'unknown';
+  checks.push(
+    result(
+      'chain.validityAtSigningTime',
+      'Chain validity when signed',
+      atSigning,
+      !context.signingTime
+        ? 'No signing time available'
+        : atSigning === 'pass'
           ? `Every certificate was valid on ${formatDate(context.signingTime)}`
-          : 'One or more certificates were outside their validity period at that time',
-        'Reported separately from validity today, because a certificate that has since expired but ' +
-          'was valid when the document was signed is the normal state of an older signed PDF. The ' +
-          'signing time is claimed by the signer and is not proven.',
-      ),
-    );
-  }
+          : atSigning === 'fail'
+            ? 'One or more certificates were outside their validity period at that time'
+            : 'The signing time could not be compared',
+      'Reported separately from validity today, because a certificate that has since expired but ' +
+        'was valid when the document was signed is the normal state of an older signed PDF. The ' +
+        'signing time is claimed by the signer and is not proven.',
+    ),
+  );
 
   // ---- the two things we will not claim ---------------------------------
   checks.push(
@@ -917,13 +911,15 @@ export function buildChains(
   });
 
   // Anything not reachable from a signer still needs its own checks run, or it
-  // would render in the list with an empty validation panel.
+  // would render in the list with an empty validation panel. No signature
+  // relies on these (OCSP responders, TSAs, spare roots in /DSS), so their
+  // results are diagnostics and never colour a signature's verdict.
   const unchained = certificates.filter((c) => !used.has(c.id));
   for (const cert of unchained) {
     if (cert.role === 'unknown') {
       cert.role = cert.selfIssued ? 'root' : cert.extensions.basicConstraints?.isCa ? 'intermediate' : 'unknown';
     }
-    cert.checks = checkCertificate(cert, {});
+    cert.checks = checkCertificate(cert, {}).map((check) => ({ ...check, axis: 'diagnostic' as const }));
   }
 
   return { chains, unchainedIds: unchained.map((c) => c.id) };

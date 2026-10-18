@@ -352,12 +352,20 @@ export interface RevisionDiff {
 
 export type ValidationStatus = 'pass' | 'warn' | 'fail' | 'unknown';
 
+/**
+ * What a check may influence (server/lib/CertificateModel.ts): only
+ * 'signature' checks decide a signature's verdict; 'trust' (trust, time,
+ * revocation) is reported beside it; 'diagnostic' is listed only.
+ */
+export type CheckAxis = 'signature' | 'trust' | 'diagnostic';
+
 export interface ValidationResult {
   id: string;
   label: string;
   status: ValidationStatus;
   detail: string;
   explanation: string;
+  axis: CheckAxis;
 }
 
 export interface DistinguishedName {

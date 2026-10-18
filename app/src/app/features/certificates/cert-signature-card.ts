@@ -119,7 +119,10 @@ export class CertSignatureCard {
     const field = this.doc.fields().find((f) => f.name === this.sig().fieldName);
     return !!field && isRectPracticallyInvisible(field.rect);
   });
-  protected readonly evidence = computed(() => signatureEvidenceRows(this.sig()));
+  protected readonly evidence = computed(() => {
+    const chainId = this.chain()?.id;
+    return signatureEvidenceRows(this.sig(), (chainId && this.certificates.trustResults()?.[chainId]) || null);
+  });
   protected readonly byteMap = computed(() => byteMapOf(this.sig()));
   protected readonly nodes = computed(() => chainNodes(this.chain(), this.sig(), this.certById));
   protected readonly timeline = computed(() => validityTimeline(this.chain(), this.sig(), this.certById));

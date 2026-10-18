@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 import PdfRevisionTool from './PdfRevisionTool';
 import * as pkijs from 'pkijs';
 import {
+  axisOf,
   certificateDisplayName,
   ensureCryptoEngine,
   type ParsedCertificate,
@@ -32,7 +33,6 @@ import {
 } from './CertificateModel';
 import {
   buildChains,
-  rollUp,
   worstStatus,
   TRUST_NOTE,
   type CertificateChain,
@@ -97,7 +97,15 @@ function result(
   detail: string,
   explanation: string,
 ): ValidationResult {
-  return { id, label, status, detail, explanation };
+  return { id, label, status, detail, explanation, axis: axisOf(id) };
+}
+
+/** What the rest of the file looks like from one signature's point of view. */
+interface LaterRevisionContext {
+  /** Only whitespace follows the file's last %%EOF, so its tail is a complete revision. */
+  fileEndsAtRevision: boolean;
+  /** Every signature whose signed bytes end at a revision boundary. */
+  laterSignatures: Array<{ fieldName: string; coveredRevision: number }>;
 }
 
 /**
@@ -111,6 +119,7 @@ async function checkSignature(
   bytes: Uint8Array,
   certificatesById: Map<string, ParsedCertificate>,
   coverage: RevisionCoverage,
+  later: LaterRevisionContext,
 ): Promise<ValidationResult[]> {
   const checks: ValidationResult[] = [];
 
@@ -145,9 +154,29 @@ async function checkSignature(
     ),
   );
 
-  // ---- does it cover the whole file? ------------------------------------
+  // ---- what does it cover? ----------------------------------------------
+  // Coverage asks only whether the signed bytes are a well-formed prefix of
+  // the file: from byte 0 to the end of a revision. Revisions added after that
+  // are a separate question (sig.laterChanges below) -- a signature that
+  // cleanly covers revision 1 of 3 is not a coverage problem.
   const slot = signature.cmsSlot;
-  if (slot.coversWholeFile) {
+  const signedEnd = slot.byteRange[2] + slot.byteRange[3];
+  const laterRevisions =
+    coverage.coveredRevision !== null ? coverage.revisionCount - coverage.coveredRevision : 0;
+  const coversWholeRevisions =
+    !slot.coversWholeFile && coverage.coveredRevision !== null && later.fileEndsAtRevision;
+  if (slot.byteRange[0] !== 0) {
+    checks.push(
+      result(
+        'sig.byteRangeCoverage',
+        'Coverage',
+        'fail',
+        `The first ${slot.byteRange[0]} byte(s) of the file are not signed`,
+        'A signature’s byte ranges must start at the beginning of the file. This one starts at ' +
+          `byte ${slot.byteRange[0]}, so the file header in front of it could be anything.`,
+      ),
+    );
+  } else if (slot.coversWholeFile) {
     checks.push(
       result(
         'sig.byteRangeCoverage',
@@ -161,6 +190,18 @@ async function checkSignature(
             : ''),
       ),
     );
+  } else if (coversWholeRevisions) {
+    checks.push(
+      result(
+        'sig.byteRangeCoverage',
+        'Coverage',
+        'pass',
+        `Covers revision ${coverage.coveredRevision} of ${coverage.revisionCount}`,
+        `This signature covers the file from its first byte to the end of revision ` +
+          `${coverage.coveredRevision}, which is exactly what a signature on an earlier revision ` +
+          'looks like. The revisions added afterwards are reported separately under Later changes.',
+      ),
+    );
   } else {
     checks.push(
       result(
@@ -168,14 +209,44 @@ async function checkSignature(
         'Coverage',
         'warn',
         `${slot.trailingBytes} byte(s) after the signed region`,
-        `This signature covers the file up to byte ${slot.byteRange[2] + slot.byteRange[3]}, and ` +
-          `${slot.trailingBytes} byte(s) follow it. ` +
+        `This signature covers the file up to byte ${signedEnd}, and ${slot.trailingBytes} byte(s) ` +
+          'follow it. ' +
           (coverage.coveredRevision !== null
-            ? `The signed bytes end at revision ${coverage.coveredRevision} of ${coverage.revisionCount}; ` +
-              `${coverage.revisionCount - coverage.coveredRevision} later revision(s) follow. `
+            ? `The signed bytes end at revision ${coverage.coveredRevision} of ${coverage.revisionCount}, ` +
+              'but the bytes after the last revision are not a complete incremental update. '
             : 'The signed bytes do not end at a revision boundary of this file. ') +
-          'That is normally a later incremental update — the Versions section shows what changed — ' +
-          'but those bytes are not covered by this signature.',
+          'Those bytes are not covered by this signature, and they are not shaped like a normal ' +
+          'later revision either.',
+      ),
+    );
+  }
+
+  // ---- what was added after it? -----------------------------------------
+  // Only asked when coverage is clean: otherwise the coverage check above has
+  // already said what is wrong. PDF Seal does not analyse what later revisions
+  // changed, so this stays 'unknown' -- except after a certification that
+  // permits no changes at all, where any later revision deserves a look.
+  if (coversWholeRevisions && laterRevisions > 0) {
+    const noChangesPermitted = signature.docMdpLevel === 1;
+    const signedLater = later.laterSignatures
+      .filter((s) => s.coveredRevision > coverage.coveredRevision!)
+      .map((s) => `revision ${s.coveredRevision} is signed by ${s.fieldName}`);
+    checks.push(
+      result(
+        'sig.laterChanges',
+        'Later changes',
+        noChangesPermitted ? 'warn' : 'unknown',
+        noChangesPermitted
+          ? `${laterRevisions} later revision(s) after a no-changes certification`
+          : `${laterRevisions} later revision(s), not evaluated`,
+        `${laterRevisions} revision(s) were added to the file after this signature. They do not ` +
+          'affect what this signature covers, and PDF Seal does not check what they changed — the ' +
+          'Versions section shows it.' +
+          (signedLater.length ? ` Of those, ${signedLater.join('; ')}.` : '') +
+          (noChangesPermitted
+            ? ' This is a certifying signature that permits no changes, so anything other than ' +
+              'validation data or a document timestamp added afterwards breaks that certification.'
+            : ''),
       ),
     );
   }
@@ -348,6 +419,9 @@ async function checkSignature(
   }
 
   // ---- what we will not claim -------------------------------------------
+  // Time evidence, not a property of the signature: a signature with no
+  // timestamp is not a worse signature, it just leaves the signing time
+  // unproven. Either way this is 'unknown' on the trust axis.
   if (signature.hasTimestampToken) {
     checks.push(
       result(
@@ -364,7 +438,7 @@ async function checkSignature(
       result(
         'sig.timestamp',
         'Timestamp',
-        'warn',
+        'unknown',
         'No timestamp',
         'Nothing independently attests to when this signature was made, so the signing time is ' +
           'the signer’s own claim and could be anything.',
@@ -379,24 +453,21 @@ async function checkSignature(
       2: 'form filling and signing are permitted',
       3: 'form filling, signing and annotations are permitted',
     };
-    const grew = signature.cmsSlot
-      ? !signature.cmsSlot.coversWholeFile
-      : false;
+    // This only states the permission level. Whether anything added later
+    // respects it is sig.laterChanges' question, which is never a pass.
+    const grew = !slot.coversWholeFile;
     checks.push(
       result(
         'sig.docMdp',
         'Certifying signature',
-        // Later changes are never evaluated against P, so don't imply compliance.
-        grew ? 'unknown' : 'pass',
-        grew
-          ? `DocMDP level ${signature.docMdpLevel} — later changes not checked against permissions`
-          : `DocMDP level ${signature.docMdpLevel}`,
+        'pass',
+        `DocMDP level ${signature.docMdpLevel}`,
         `This is a certifying signature: it states that after it was applied, ${
           meanings[signature.docMdpLevel] ?? 'a restricted set of changes is permitted'
         }.` +
           (grew
             ? ' The file has grown since signing, and PDF Seal does not check those later changes ' +
-              'against this permission level.'
+              'against this permission level — see Later changes.'
             : ''),
       ),
     );
@@ -498,7 +569,7 @@ export function collectAllChecks(
 function buildHeadline(report: {
   documentHasSignatures: boolean;
   signatureFieldCount: number;
-  certificates: ParsedCertificate[];
+  signatureCount: number;
   status: ValidationStatus;
 }): string {
   if (!report.documentHasSignatures) {
@@ -507,18 +578,78 @@ function buildHeadline(report: {
       : 'This document is not signed and carries no certificates.';
   }
 
-  const certCount = report.certificates.length;
-  const certs = `${certCount} certificate${certCount === 1 ? '' : 's'}`;
+  const one = report.signatureCount === 1;
   switch (report.status) {
     case 'pass':
-      return `Everything that could be checked about these ${certs} passed. Trust was not evaluated.`;
+      return `${one ? 'The signature is' : `All ${report.signatureCount} signatures are`} intact and ` +
+        'verified against the certificates embedded in this file. Trust was not evaluated.';
     case 'warn':
-      return `These ${certs} raised warnings worth reading before relying on this document.`;
+      return `${one ? 'The signature verifies' : 'The signatures verify'}, with concerns worth reading ` +
+        'before relying on this document. Trust was not evaluated.';
     case 'fail':
-      return `Something is wrong with these ${certs} or the signatures using them.`;
+      return one
+        ? 'The signature does not hold up.'
+        : 'At least one signature does not hold up.';
     default:
-      return `These ${certs} could only be checked in part.`;
+      return one
+        ? 'The signature could only be checked in part.'
+        : 'At least one signature could only be checked in part.';
   }
+}
+
+/**
+ * The checks a signature cannot be green without. Each must be present and
+ * pass; anything less leaves the verdict 'unknown', never 'pass'.
+ */
+const CORE_SIGNATURE_CHECKS = [
+  'sig.contentsSlot',
+  'sig.signerIdentified',
+  'sig.messageDigest',
+  'sig.cryptographic',
+  'chain.validityAtSigningTime',
+];
+
+/**
+ * One signature's verdict, from every check that bears on it: its own, its
+ * chain's, its links' and its chain certificates'. Only 'signature'-axis
+ * checks count -- trust, time and revocation are reported beside the verdict,
+ * not folded into it.
+ *
+ *   fail    -- something was checked and did not hold
+ *   unknown -- a core check could not be made (unsupported algorithm, ...)
+ *   warn    -- everything core passed, with a concern worth reading
+ *   pass    -- the covered bytes match, the signature verifies against the
+ *              embedded signer certificate, every issuer link present in the
+ *              file verifies, and the chain was valid at the claimed signing
+ *              time. Says nothing about who the signer is.
+ *
+ * A non-core 'unknown' (an optional key identifier, a CA without Key Usage, or
+ * later revisions PDF Seal does not analyse) does not block a pass.
+ */
+export function signatureVerdict(checks: ValidationResult[]): ValidationStatus {
+  const relevant = checks.filter((c) => c.axis === 'signature');
+  if (relevant.some((c) => c.status === 'fail')) return 'fail';
+  const coreHolds = CORE_SIGNATURE_CHECKS.every((id) =>
+    relevant.some((c) => c.id === id && c.status === 'pass'),
+  );
+  if (!coreHolds) return 'unknown';
+  if (relevant.some((c) => c.status === 'warn')) return 'warn';
+  return 'pass';
+}
+
+/** Every check that bears on one signature: its own, then its chain's. */
+function checksForSignature(
+  signatureChecks: ValidationResult[],
+  chain: CertificateChain | undefined,
+  certificatesById: Map<string, ParsedCertificate>,
+): ValidationResult[] {
+  if (!chain) return signatureChecks;
+  return [
+    ...signatureChecks,
+    ...chain.checks,
+    ...chain.links.flatMap((link) => link.checks),
+    ...chain.certificateIds.flatMap((id) => certificatesById.get(id)?.checks ?? []),
+  ];
 }
 
 /**
@@ -539,6 +670,15 @@ function coverageFor(signature: ExtractedSignature, ends: number[], bytes: Uint8
     return true;
   });
   return { coveredRevision: i === -1 ? null : i + 1, revisionCount };
+}
+
+/** Only whitespace follows the file's last revision, so its tail is a complete revision. */
+function endsAtRevision(ends: number[], bytes: Uint8Array): boolean {
+  if (ends.length === 0) return false;
+  for (let p = ends[ends.length - 1]; p < bytes.length; p++) {
+    if (bytes[p] !== 0x0a && bytes[p] !== 0x0d && bytes[p] !== 0x20) return false;
+  }
+  return true;
 }
 
 /**
@@ -584,32 +724,41 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
   );
 
   const revisionEnds = PdfRevisionTool.findRevisionBoundaries(bytes).map((b) => b.endOffset);
+  const coverages = extraction.signatures.map((s) => coverageFor(s, revisionEnds, bytes));
+  const later: LaterRevisionContext = {
+    fileEndsAtRevision: endsAtRevision(revisionEnds, bytes),
+    laterSignatures: extraction.signatures.flatMap((s, i) =>
+      coverages[i].coveredRevision !== null
+        ? [{ fieldName: s.fieldName, coveredRevision: coverages[i].coveredRevision! }]
+        : [],
+    ),
+  };
+
   const signatures: ReportSignature[] = [];
-  for (const signature of extraction.signatures) {
-    const revisionCoverage = coverageFor(signature, revisionEnds, bytes);
-    const checks = await checkSignature(signature, bytes, certificatesById, revisionCoverage);
+  for (const [i, signature] of extraction.signatures.entries()) {
+    const revisionCoverage = coverages[i];
+    const checks = await checkSignature(signature, bytes, certificatesById, revisionCoverage, later);
     const chain = chains.find((c) => c.signatureFieldName === signature.fieldName);
     signatures.push({
       ...signature,
       chainId: chain?.id ?? null,
       revisionCoverage,
       checks,
-      status: rollUp(checks),
+      status: signatureVerdict(checksForSignature(checks, chain, certificatesById)),
     });
   }
 
   // ---- roll everything up ----------------------------------------------
+  // The counts cover every check in the report, diagnostics included, so the
+  // list the panel shows always adds up. The verdict does not: it is the worst
+  // of the signatures' own verdicts, so a certificate no signature relies on,
+  // or a trust question nobody could answer, never colours it.
   const everyCheck = collectAllChecks({ signatures, chains, certificates });
 
   const counts = { pass: 0, warn: 0, fail: 0, unknown: 0 };
   for (const check of everyCheck) counts[check.status]++;
 
-  // 'unknown' is excluded from the headline verdict on purpose: trust and
-  // revocation are always unknown by design, so including them would make every
-  // document, however clean, report as unresolved.
-  const status = extraction.signatures.length === 0
-    ? 'unknown'
-    : worstStatus(everyCheck.map((c) => c.status).filter((s) => s !== 'unknown'));
+  const status = worstStatus(signatures.map((s) => s.status));
 
   const documentHasSignatures = extraction.signatures.length > 0;
 
@@ -628,7 +777,7 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
       headline: buildHeadline({
         documentHasSignatures,
         signatureFieldCount: extraction.signatureFieldCount,
-        certificates,
+        signatureCount: signatures.length,
         status,
       }),
       counts,

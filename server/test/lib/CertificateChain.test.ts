@@ -72,12 +72,14 @@ describe('buildChain', () => {
     expect(built.brokenAtIndex).toBe(0);
     expect(built.missingIssuerDn).toContain('PDF Seal Test Signing CA');
 
-    const check = find(built.checks, 'chain.missingIntermediate');
-    expect(check?.status).toBe('warn');
+    const check = find(built.checks, 'chain.root');
+    expect(check?.status).toBe('unknown');
     expect(check?.detail).toContain('PDF Seal Test Signing CA');
+    // One check for where the chain stops, not a second one guessing what is missing.
+    expect(find(built.checks, 'chain.missingIntermediate')).toBeUndefined();
   });
 
-  it('warns rather than fails when the chain simply stops short of a root', () => {
+  it('reports a chain that stops short of a root as a trust question, not a defect', () => {
     // Omitting the root is normal and correct -- it belongs in the verifier's
     // trust store, not in the document.
     const certs = pool().filter((c) => c.subject.commonName !== 'PDF Seal Test Root CA');
@@ -85,7 +87,8 @@ describe('buildChain', () => {
 
     expect(built.complete).toBe(false);
     const rootCheck = find(built.checks, 'chain.root');
-    expect(rootCheck?.status).toBe('warn');
+    expect(rootCheck?.status).toBe('unknown');
+    expect(rootCheck?.axis).toBe('trust');
     expect(rootCheck?.explanation).toMatch(/trust store/i);
   });
 
@@ -472,10 +475,10 @@ describe('chain-level checks', () => {
     expect(check?.detail).toContain('Old Root');
   }, 20000);
 
-  it('reports chain validity at signing time only when a signing time is given', () => {
+  it('reports chain validity at signing time as unknown when no signing time is given', () => {
     const certs = pool();
     const withoutTime = buildChain(certs[0], certs, { id: 'c1' });
-    expect(find(withoutTime.checks, 'chain.validityAtSigningTime')).toBeUndefined();
+    expect(find(withoutTime.checks, 'chain.validityAtSigningTime')?.status).toBe('unknown');
 
     const certs2 = pool();
     const withTime = buildChain(certs2[0], certs2, {

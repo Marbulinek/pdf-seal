@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { buildCertificateReport, collectAllChecks } from '../../lib/PdfCertificateReport';
+import { buildCertificateReport, collectAllChecks, signatureVerdict } from '../../lib/PdfCertificateReport';
+import type { ValidationResult } from '../../lib/CertificateModel';
 import PdfSignatureTool from '../../lib/PdfSignatureTool';
 import { TRUST_NOTE } from '../../lib/CertificateChain';
 import { mint, mintStandardChain, type StandardChain } from './helpers/certificateFactory';
@@ -90,10 +91,19 @@ describe('buildCertificateReport: a properly signed document', () => {
     expect(cleanReport.summary.status).not.toBe('unknown');
   });
 
-  it('warns that the signing time is only a claim when nothing timestamps it', () => {
+  it('says the signing time is only a claim when nothing timestamps it, without judging the signature', () => {
     const check = sigCheck(cleanReport, 'sig.timestamp');
-    expect(check?.status).toBe('warn');
+    expect(check?.status).toBe('unknown');
+    expect(check?.axis).toBe('trust');
     expect(check?.explanation).toMatch(/signer’s own claim/i);
+  });
+
+  it('is green without a timestamp: the signature is intact, and trust is reported apart', () => {
+    expect(cleanReport.signatures[0].status).toBe('pass');
+    expect(cleanReport.summary.status).toBe('pass');
+    expect(cleanReport.summary.headline).toMatch(/Trust was not evaluated/i);
+    // Green never implies trust.
+    expect(cleanReport.chains[0].checks.find((c) => c.id === 'chain.trust')?.status).toBe('unknown');
   });
 
   it('gives every check a label, a detail and an explanation', () => {
@@ -109,6 +119,7 @@ describe('buildCertificateReport: a properly signed document', () => {
       expect(check.detail).toBeTruthy();
       expect(check.explanation.length).toBeGreaterThan(20);
       expect(['pass', 'warn', 'fail', 'unknown']).toContain(check.status);
+      expect(['signature', 'trust', 'diagnostic']).toContain(check.axis);
     }
   });
 
@@ -159,7 +170,7 @@ describe('buildCertificateReport: a document modified after signing', () => {
 });
 
 describe('buildCertificateReport: incomplete chains', () => {
-  it('warns rather than fails when the root is not embedded', async () => {
+  it('stays green when the root is not embedded', async () => {
     const fx = await buildSignedPdfFixture({
       signer: chain.leaf,
       chain: [chain.leaf, chain.intermediate],
@@ -167,8 +178,9 @@ describe('buildCertificateReport: incomplete chains', () => {
     const report = await buildCertificateReport(fx.bytes);
 
     expect(report.chains[0].complete).toBe(false);
-    expect(report.chains[0].checks.find((c) => c.id === 'chain.root')?.status).toBe('warn');
-    expect(report.summary.status).toBe('warn');
+    expect(report.chains[0].checks.find((c) => c.id === 'chain.root')?.status).toBe('unknown');
+    // Where the chain stops is a trust question; it does not colour the verdict.
+    expect(report.summary.status).toBe('pass');
     // The signature itself is untouched by the chain being short.
     expect(sigCheck(report, 'sig.cryptographic')?.status).toBe('pass');
   }, 30000);
@@ -181,8 +193,9 @@ describe('buildCertificateReport: incomplete chains', () => {
     const report = await buildCertificateReport(fx.bytes);
 
     expect(report.chains[0].missingIssuerDn).toContain('PDF Seal Test Signing CA');
-    const check = report.chains[0].checks.find((c) => c.id === 'chain.missingIntermediate');
-    expect(check?.status).toBe('warn');
+    const check = report.chains[0].checks.find((c) => c.id === 'chain.root');
+    expect(check?.status).toBe('unknown');
+    expect(check?.detail).toContain('PDF Seal Test Signing CA');
 
     // The root came along but no chain reaches it.
     const rootCert = report.certificates.find((c) => c.subject.commonName === 'PDF Seal Test Root CA');
@@ -416,11 +429,19 @@ describe('buildCertificateReport: revision coverage', () => {
     const report = await buildCertificateReport(new Uint8Array(grown));
 
     expect(report.signatures[0].revisionCoverage).toEqual({ coveredRevision: 1, revisionCount: 2 });
-    expect(sigCheck(report, 'sig.byteRangeCoverage')?.explanation).toMatch(/revision 1 of 2/);
+    // Covering an earlier revision cleanly is not a coverage problem...
+    const coverage = sigCheck(report, 'sig.byteRangeCoverage');
+    expect(coverage?.status).toBe('pass');
+    expect(coverage?.detail).toMatch(/revision 1 of 2/);
     expect(sigCheck(report, 'sig.messageDigest')?.status).toBe('pass');
     expect(sigCheck(report, 'sig.cryptographic')?.status).toBe('pass');
-    expect(sigCheck(report, 'sig.docMdp')?.status).toBe('unknown');
-    expect(sigCheck(report, 'sig.docMdp')?.detail).toMatch(/not checked/i);
+    // ...and what came after is reported, never passed.
+    const later = sigCheck(report, 'sig.laterChanges');
+    expect(later?.status).toBe('unknown');
+    expect(later?.detail).toMatch(/1 later revision\(s\), not evaluated/);
+    expect(sigCheck(report, 'sig.docMdp')?.status).toBe('pass');
+    expect(sigCheck(report, 'sig.docMdp')?.explanation).toMatch(/not check those later changes/i);
+    expect(report.summary.status).toBe('pass');
   }, 30000);
 
   it('still maps coverage when bytes trail the final revision', async () => {
@@ -428,5 +449,136 @@ describe('buildCertificateReport: revision coverage', () => {
     const report = await buildCertificateReport(fx.bytes);
     expect(report.signatures[0].revisionCoverage.coveredRevision).toBe(1);
     expect(report.signatures[0].revisionCoverage.revisionCount).toBe(1);
+  }, 30000);
+});
+
+/** Shift /ByteRange's first range to start at `a`, keeping every offset after it. */
+function startByteRangeAt(bytes: Uint8Array, a: number): Uint8Array {
+  const out = Buffer.from(bytes);
+  const text = out.toString('latin1');
+  const marker = /\/ByteRange\s*\[([^\]]*)\]/.exec(text)!;
+  const [, b, c, d] = marker[1].trim().split(/\s+/).map(Number);
+  const replacement = ` ${[a, b - a, c, d].join(' ')} `.padEnd(marker[1].length, ' ');
+  out.write(replacement, marker.index + marker[0].indexOf('[') + 1, 'latin1');
+  return new Uint8Array(out);
+}
+
+describe('signature verdicts', () => {
+  const check = (id: string, status: ValidationResult['status'], axis: ValidationResult['axis'] = 'signature') =>
+    ({ id, label: id, status, detail: '', explanation: '', axis }) as ValidationResult;
+  const core = [
+    'sig.contentsSlot',
+    'sig.signerIdentified',
+    'sig.messageDigest',
+    'sig.cryptographic',
+    'chain.validityAtSigningTime',
+  ].map((id) => check(id, 'pass'));
+
+  it('passes only when every core check passes', () => {
+    expect(signatureVerdict(core)).toBe('pass');
+    expect(signatureVerdict(core.filter((c) => c.id !== 'sig.cryptographic'))).toBe('unknown');
+    expect(signatureVerdict([...core.slice(1), check('sig.contentsSlot', 'unknown')])).toBe('unknown');
+  });
+
+  it('lets a failure anywhere on the signature axis win', () => {
+    expect(signatureVerdict([...core, check('link.cryptographic', 'fail')])).toBe('fail');
+  });
+
+  it('warns only once the core holds', () => {
+    expect(signatureVerdict([...core, check('cert.eku', 'warn')])).toBe('warn');
+    expect(signatureVerdict([...core.slice(1), check('cert.eku', 'warn')])).toBe('unknown');
+  });
+
+  it('ignores trust and diagnostic checks, and non-core unknowns', () => {
+    expect(
+      signatureVerdict([
+        ...core,
+        check('chain.trust', 'unknown', 'trust'),
+        check('cert.selfSigned', 'warn', 'trust'),
+        check('cert.validity.window', 'fail', 'diagnostic'),
+        check('link.akiSki', 'unknown'),
+      ]),
+    ).toBe('pass');
+  });
+});
+
+describe('buildCertificateReport: what the verdict is and is not about', () => {
+  it('ignores certificates no signature relies on, however broken', async () => {
+    const strayExpired = await mint({
+      commonName: 'Stray OCSP Responder',
+      issuer: chain.intermediate,
+      notBeforeOffsetMs: -86400000 * 30,
+      notAfterOffsetMs: -86400000,
+    });
+    const fx = await buildSignedPdfFixture({
+      signer: chain.leaf,
+      chain: [chain.leaf, chain.intermediate, chain.root],
+      dssCertificates: [strayExpired],
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    const stray = report.certificates.find((c) => c.subject.commonName === 'Stray OCSP Responder')!;
+    expect(report.unchainedCertificateIds).toContain(stray.id);
+    const window = stray.checks.find((c) => c.id === 'cert.validity.window');
+    expect(window?.status).toBe('fail');
+    expect(window?.axis).toBe('diagnostic');
+    // Still counted, so the list adds up -- just not judged.
+    expect(report.summary.counts.fail).toBeGreaterThan(0);
+    expect(report.summary.status).toBe('pass');
+  }, 30000);
+
+  it('fails a signature whose own chain does not hold, even though its CMS verifies', async () => {
+    // Same name as the real issuing CA, different key: the names line up and
+    // the issuer signature on the leaf does not.
+    const impostor = await mint({
+      commonName: 'PDF Seal Test Signing CA',
+      organization: 'PDF Seal Test',
+      isCa: true,
+      issuer: chain.root,
+    });
+    const fx = await buildSignedPdfFixture({
+      signer: chain.leaf,
+      chain: [chain.leaf, impostor, chain.root],
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    expect(sigCheck(report, 'sig.cryptographic')?.status).toBe('pass');
+    expect(report.chains[0].links[0].checks.find((c) => c.id === 'link.cryptographic')?.status).toBe('fail');
+    expect(report.signatures[0].status).toBe('fail');
+    expect(report.summary.status).toBe('fail');
+  }, 30000);
+
+  it('warns about later revisions after a certification that permits no changes', async () => {
+    const fx = await buildSignedPdfFixture({ docMdpLevel: 1 });
+    const grown = appendClassicIncrement(Buffer.from(fx.bytes), 'Later edit');
+    const report = await buildCertificateReport(new Uint8Array(grown));
+
+    expect(sigCheck(report, 'sig.byteRangeCoverage')?.status).toBe('pass');
+    const later = sigCheck(report, 'sig.laterChanges');
+    expect(later?.status).toBe('warn');
+    expect(later?.detail).toMatch(/no-changes certification/i);
+    expect(report.summary.status).toBe('warn');
+  }, 30000);
+
+  it('reports no later changes when nothing follows the signature', () => {
+    expect(sigCheck(cleanReport, 'sig.laterChanges')).toBeUndefined();
+  });
+
+  it('still warns about bytes after the signature that are not a complete revision', async () => {
+    const fx = await buildSignedPdfFixture({ appendTrailingBytes: 48 });
+    const report = await buildCertificateReport(fx.bytes);
+    expect(sigCheck(report, 'sig.byteRangeCoverage')?.status).toBe('warn');
+    expect(sigCheck(report, 'sig.laterChanges')).toBeUndefined();
+    expect(report.summary.status).toBe('warn');
+  }, 30000);
+
+  it('fails a signature whose byte ranges do not start at the beginning of the file', async () => {
+    const fx = await buildSignedPdfFixture({});
+    const report = await buildCertificateReport(startByteRangeAt(fx.bytes, 5));
+
+    const coverage = sigCheck(report, 'sig.byteRangeCoverage');
+    expect(coverage?.status).toBe('fail');
+    expect(coverage?.detail).toMatch(/first 5 byte/);
+    expect(report.summary.status).toBe('fail');
   }, 30000);
 });

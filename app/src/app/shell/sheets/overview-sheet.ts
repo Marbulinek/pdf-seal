@@ -38,7 +38,7 @@ export class OverviewSheet {
 
   protected readonly model = computed(() => {
     const item = this.overview.activeOverviewItem();
-    return item ? overviewSheetModel(item, this.certificates.reportForActiveFile(), this.overview.sheetSettled()) : null;
+    return item ? overviewSheetModel(item, this.certificates.reportForActiveFile(), this.overview.sheetSettled(), this.certificates.trustResults()) : null;
   });
 
   /** Only the visuals drawn for this very item and file. */
