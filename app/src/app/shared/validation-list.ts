@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import type { ValidationResult } from '../core/models';
+import type { CheckAxis, ValidationResult } from '../core/models';
 import type { CheckSource } from '../features/certificates/certificates-model';
 import { CertDot } from './cert-dot';
 
@@ -33,7 +33,12 @@ export type ListedCheck = ValidationResult & { source?: CheckSource };
           @if (source) {
             <div class="cert-check-source">{{ source.label }}</div>
           }
-          <div class="cert-check-label">{{ check.label }}</div>
+          <div class="cert-check-label">
+            {{ check.label }}
+            @if (check.axis && check.axis !== 'signature') {
+              <span class="cert-check-axis" [title]="axisNote[check.axis]">Not part of the verdict</span>
+            }
+          </div>
           <div class="cert-check-detail">{{ check.detail }}</div>
           <div class="cert-check-why">{{ check.explanation }}</div>
         </div>
@@ -48,6 +53,11 @@ export class ValidationList {
   readonly checks = input.required<ListedCheck[]>();
   readonly showSource = input(false);
   readonly openCert = output<string>();
+
+  protected readonly axisNote: Record<Exclude<CheckAxis, 'signature'>, string> = {
+    trust: 'Trust, time and revocation are reported beside the verdict: pdf-seal has no trust store, verifies no timestamp and checks no revocation.',
+    diagnostic: 'A true fact about this certificate that does not decide whether a signature holds.',
+  };
 
   protected open(source: CheckSource | null): void {
     if (source?.certificateId) this.openCert.emit(source.certificateId);

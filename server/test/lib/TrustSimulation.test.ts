@@ -34,22 +34,11 @@ describe('simulateTrust', () => {
     // itself embedded in the document -- the common real-world case of a
     // root bundle covering more than the document carries.
     const grandRoot = await mint({ commonName: 'Grand Root', isCa: true, pathLen: 3 });
-    const rootSignedByGrand = await mint({
-      // Must match mintStandardChain()'s root DN exactly, since the
-      // intermediate below was minted naming that DN as its issuer.
-      commonName: 'PDF Seal Test Root CA',
-      organization: 'PDF Seal Test',
-      country: 'CZ',
-      isCa: true,
-      pathLen: 2,
-      issuer: grandRoot,
-    });
+    const root = await mint({ commonName: 'Cross-Signed Root', isCa: true, pathLen: 2, issuer: grandRoot });
+    const intermediate = await mint({ commonName: 'Cross Issuing CA', isCa: true, pathLen: 0, issuer: root });
+    const leaf = await mint({ commonName: 'Cross Signer', issuer: intermediate });
 
-    const certs = [
-      parseCertificate(standard.leaf.der),
-      parseCertificate(standard.intermediate.der),
-      parseCertificate(rootSignedByGrand.der),
-    ];
+    const certs = [leaf, intermediate, root].map((c) => parseCertificate(c.der));
     const chain = buildChain(certs[0], certs, { id: 'sim' }).certificateIds.map(
       (id) => certs.find((c) => c.id === id)!,
     );
@@ -65,7 +54,40 @@ describe('simulateTrust', () => {
     const result = simulateTrust(chainCertificates(), [parseCertificate(unrelated.der)]);
     expect(result.status).toBe('fail');
     expect(result.matchedRootSubject).toBeNull();
-    expect(result.detail).toMatch(/no certificate/i);
+    expect(result.detail).toMatch(/not in your bundle/i);
+  });
+
+  it('passes when the user trusts an intermediate rather than the root', () => {
+    const result = simulateTrust(chainCertificates(), [parseCertificate(standard.intermediate.der)]);
+    expect(result.status).toBe('pass');
+    expect(result.extendedWithIssuer).toBe(false);
+    expect(result.detail).toMatch(/every link below it verifies/i);
+  });
+
+  it('fails a chain with a broken link even when its root is trusted', async () => {
+    // Same name as the real issuing CA, different key, itself issued by the
+    // real root: the top of the chain is fine, the step below it is not.
+    const impostor = await mint({
+      commonName: 'PDF Seal Test Signing CA',
+      organization: 'PDF Seal Test',
+      isCa: true,
+      issuer: standard.root,
+    });
+    const chain = [
+      parseCertificate(standard.leaf.der),
+      parseCertificate(impostor.der),
+      parseCertificate(standard.root.der),
+    ];
+    const result = simulateTrust(chain, [parseCertificate(standard.root.der)]);
+    expect(result.status).toBe('fail');
+    expect(result.detail).toMatch(/chain is broken between Jane Doe and PDF Seal Test Signing CA/);
+  });
+
+  it('names the issuer a short chain needs when the bundle does not supply it', async () => {
+    const unrelated = await mint({ commonName: 'Unrelated CA', isCa: true });
+    const result = simulateTrust([parseCertificate(standard.leaf.der)], [parseCertificate(unrelated.der)]);
+    expect(result.status).toBe('fail');
+    expect(result.detail).toMatch(/PDF Seal Test Signing CA/);
   });
 
   it('fails gracefully against an empty bundle', () => {

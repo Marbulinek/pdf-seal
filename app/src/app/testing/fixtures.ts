@@ -1,6 +1,7 @@
 // Small typed builders for the server payloads, shared by the specs.
 import type {
   CertificateChain,
+  CheckAxis,
   CertificateReport,
   DocField,
   ParsedCertificate,
@@ -9,8 +10,8 @@ import type {
   ValidationStatus,
 } from '../core/models';
 
-export function check(id: string, status: ValidationStatus, label = id): ValidationResult {
-  return { id, label, status, detail: `${label} detail`, explanation: `${label} why` };
+export function check(id: string, status: ValidationStatus, label = id, axis: CheckAxis = 'signature'): ValidationResult {
+  return { id, label, status, detail: `${label} detail`, explanation: `${label} why`, axis };
 }
 
 export function makeCert(id: string, patch: Partial<ParsedCertificate> = {}): ParsedCertificate {
@@ -73,7 +74,10 @@ export function makeSignature(patch: Partial<ReportSignature> = {}): ReportSigna
     cmsError: null,
     signedAttributes: null,
     hasTimestampToken: false,
+    isDocumentTimestamp: false,
+    messageImprint: null,
     timestampTime: null,
+    timestampVerified: null,
     certificateIds: ['leaf', 'ca'],
     signerCertificateId: 'leaf',
     chainId: 'chain1',

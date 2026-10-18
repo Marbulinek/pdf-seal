@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ApiService } from '../../core/api.service';
 import { DocumentStore } from '../../core/document.store';
 import { UiService } from '../../core/ui.service';
-import { check, makeCert, makeReport } from '../../testing/fixtures';
+import { check, makeCert, makeChain, makeReport } from '../../testing/fixtures';
 import { provideTestApp } from '../../testing/providers';
 import { CertificatesStore } from './certificates.store';
 
@@ -12,9 +12,11 @@ describe('CertificatesStore', () => {
     summary: { status: 'fail', headline: 'Problems', counts: { pass: 4, warn: 1, fail: 1, unknown: 0 } },
   });
   let calls: string[];
+  let served: typeof report;
 
   beforeEach(() => {
     calls = [];
+    served = report;
     TestBed.configureTestingModule({
       providers: [
         ...provideTestApp(),
@@ -23,7 +25,10 @@ describe('CertificatesStore', () => {
           useValue: {
             postForm: async (url: string) => {
               calls.push(url);
-              return new Response(JSON.stringify({ report }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+              const body = url.endsWith('/simulate-trust')
+                ? { simulated: { status: 'pass', detail: 'ok', matchedRootSubject: 'CN=ca', extendedWithIssuer: false } }
+                : { report: served };
+              return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
             },
           },
         },
@@ -85,5 +90,19 @@ describe('CertificatesStore', () => {
     expect(store.modify()).toMatchObject({ op: 'remove-certificate', fieldName: 'Sig1', targetFingerprint: null });
     store.setModifyTarget('ca');
     expect(store.modify()?.targetFingerprint).toBe('ca');
+  });
+
+  it('runs the trust simulation once per distinct chain, sharing the answer', async () => {
+    // Two signatures by the same certificate: two chains, one path.
+    served = makeReport({
+      ...report,
+      chains: [makeChain({ id: 'chain-1', signatureFieldName: 'Sig1' }), makeChain({ id: 'chain-2', signatureFieldName: 'Sig2' })],
+    });
+    const store = await loaded();
+    calls = [];
+    await store.runTrustSimulation(new File(['-----BEGIN CERTIFICATE-----'], 'roots.pem'));
+
+    expect(calls).toEqual(['/api/certificates/simulate-trust']);
+    expect(Object.keys(store.trustResults() ?? {}).sort()).toEqual(['chain-1', 'chain-2']);
   });
 });

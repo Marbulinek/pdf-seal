@@ -17,6 +17,7 @@ import {
   flatCertNodes,
   signatureEvidenceRows,
   statusCounts,
+  trustFacts,
   validityTimeline,
 } from './certificates-model';
 
@@ -52,7 +53,8 @@ describe('certificates model', () => {
   it('draws the chain root-first with the signature at the bottom', () => {
     const nodes = chainNodes(makeChain({ missingIssuerDn: 'CN=Missing Root, O=X' }), makeSignature(), byId);
     expect(nodes.map((n) => n.name)).toEqual(['Missing Root', 'ca', 'leaf', 'Alex Morgan']);
-    expect(nodes[0]).toMatchObject({ missing: true, isRoot: true, depth: 0 });
+    // A missing issuer is usually the root, kept in the verifier's trust store: unknown, not a warning.
+    expect(nodes[0]).toMatchObject({ missing: true, isRoot: true, depth: 0, status: 'unknown' });
     expect(nodes[3]).toMatchObject({ signatureField: 'Sig1', role: 'Signature — field Sig1', detail: 'Page 1' });
     expect(flatCertNodes([makeCert('x')], () => 'detail')[0]).toMatchObject({ depth: 0, certId: 'x', detail: 'detail' });
   });
@@ -75,8 +77,45 @@ describe('certificates model', () => {
 
   it('lists the signature evidence, offering a later-revisions slot', () => {
     const rows = signatureEvidenceRows(makeSignature());
-    expect(rows.map((r) => r.label)).toEqual(['Signed bytes', 'Digest', 'CMS signature', 'Later revisions', 'Trust and revocation']);
+    expect(rows.map((r) => r.label)).toEqual(['Signed bytes', 'Digest', 'CMS signature', 'Later revisions', 'Trust', 'Revocation']);
     expect(rows[3].slot).toEqual({ from: 1, to: 2 });
+    expect(rows[4]).toMatchObject({ text: 'Not evaluated — no trust store', status: 'unknown' });
+  });
+
+  it('shows trust, timestamp and later changes as their own evidence rows', () => {
+    const sig = makeSignature({
+      checks: [
+        check('sig.laterChanges', 'unknown', 'Later changes'),
+        check('sig.timestamp', 'unknown', 'Timestamp', 'trust'),
+      ],
+    });
+    const trusted = signatureEvidenceRows(sig, { status: 'pass', detail: '', matchedRootSubject: 'CN=Root', extendedWithIssuer: false });
+    expect(trusted.find((r) => r.label === 'Later revisions')).toMatchObject({ text: 'Later changes detail', status: 'unknown' });
+    expect(trusted.find((r) => r.label === 'Trust')).toMatchObject({ text: 'Trusted by your bundle (simulated)', status: 'pass' });
+    expect(trusted.find((r) => r.label === 'Timestamp')).toMatchObject({ text: 'Timestamp detail', status: 'unknown' });
+
+    const untrusted = signatureEvidenceRows(sig, { status: 'fail', detail: '', matchedRootSubject: null, extendedWithIssuer: false });
+    expect(untrusted.find((r) => r.label === 'Trust')).toMatchObject({ status: 'fail' });
+  });
+
+  it('keeps trust, timestamp and revocation facts beside the verdict', () => {
+    const r = makeReport({ signatures: [makeSignature(), makeSignature({ fieldName: 'Sig2', hasTimestampToken: true })] });
+    expect(trustFacts(r, null)).toEqual([
+      { label: 'Trust', value: 'Not evaluated' },
+      { label: 'Timestamp', value: '1 none, 1 not verified' },
+      { label: 'Revocation', value: 'Not checked' },
+    ]);
+    const verified = makeReport({ signatures: [makeSignature({ hasTimestampToken: true, timestampVerified: true })] });
+    expect(trustFacts(verified, null)[1].value).toBe('Verified');
+    const invalid = makeReport({ signatures: [makeSignature({ hasTimestampToken: true, timestampVerified: false })] });
+    expect(trustFacts(invalid, null)[1].value).toBe('Invalid');
+    const chainId = r.chains[0].id;
+    const pass = { status: 'pass' as const, detail: '', matchedRootSubject: null, extendedWithIssuer: false };
+    expect(trustFacts(r, { [chainId]: pass })[0].value).toBe('Trusted (simulated)');
+    expect(trustFacts(r, { [chainId]: { ...pass, status: 'fail' } })[0].value).toBe('Not trusted (simulated)');
+
+    const withDocTimestamp = makeReport({ signatures: [makeSignature(), makeSignature({ fieldName: 'DTS', isDocumentTimestamp: true })] });
+    expect(trustFacts(withDocTimestamp, null)[1].value).toBe('None · 1 document timestamp');
   });
 
   it('offers only the modify operations a signature supports', () => {

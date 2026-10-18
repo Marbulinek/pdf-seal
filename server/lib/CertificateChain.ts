@@ -15,6 +15,7 @@
 
 import { X509Certificate } from 'node:crypto';
 import {
+  axisOf,
   certificateDisplayName,
   type ParsedCertificate,
   type ValidationResult,
@@ -45,6 +46,17 @@ export interface CertificateChain {
 export interface CertificateChainContext {
   /** Claimed signing time, ISO-8601. Claimed, not proven -- there is no verified timestamp. */
   signingTime?: string | null;
+  /**
+   * What the leaf signed. A document timestamp is made by a timestamping
+   * authority, whose certificate is expected to carry the timeStamping EKU and
+   * whose signing time is the token's own genTime rather than a signer's claim.
+   */
+  purpose?: 'signature' | 'documentTimestamp';
+  /**
+   * Where `signingTime` came from: the signer's own claim, or the genTime of
+   * a timestamp whose token verified (a document timestamp is always this).
+   */
+  timeSource?: 'claimed' | 'timestamp';
 }
 
 /** Days before expiry at which a still-valid certificate starts warning. */
@@ -56,7 +68,11 @@ const DOCUMENT_SIGNING_EKUS = new Set([
   '1.3.6.1.5.5.7.3.4', // emailProtection -- what most PDF signers actually carry
   '1.3.6.1.5.5.7.3.36', // documentSigning
   '1.2.840.113583.1.1.5', // Adobe authentic document
+  '1.3.6.1.4.1.311.10.3.12', // Microsoft document signing
 ]);
+
+/** The EKU a timestamping authority carries (RFC 3161). */
+const TIME_STAMPING_EKU = '1.3.6.1.5.5.7.3.8';
 
 const WEAK_SIGNATURE_HASHES = new Set(['MD5', 'SHA-1']);
 
@@ -72,7 +88,7 @@ function result(
   detail: string,
   explanation: string,
 ): ValidationResult {
-  return { id, label, status, detail, explanation };
+  return { id, label, status, detail, explanation, axis: axisOf(id) };
 }
 
 /** Worst status wins, so a roll-up never reads better than its parts. */
@@ -106,9 +122,15 @@ function formatDate(iso: string): string {
    Per-certificate checks
    ------------------------------------------------------------------------ */
 
+/**
+ * What can be said about one certificate on its own, given the role its
+ * position in a chain gave it. Deliberately independent of any one signature's
+ * signing time: a certificate shared by two signatures has one set of checks,
+ * so validity at signing time is a per-chain result (chain.validityAtSigningTime).
+ */
 export function checkCertificate(
   cert: ParsedCertificate,
-  context: CertificateChainContext = {},
+  context: Pick<CertificateChainContext, 'purpose'> = {},
 ): ValidationResult[] {
   const checks: ValidationResult[] = [];
   const role = cert.role;
@@ -149,8 +171,8 @@ export function checkCertificate(
         'fail',
         `Expired on ${to}`,
         `This certificate was valid from ${from} to ${to}. That end date is in the past, so it is ` +
-          'no longer valid today. For a document signed before it expired this may be expected — ' +
-          'see the separate check against the claimed signing time.',
+          'no longer valid today. For a document signed before it expired this is expected — ' +
+          'whether it was valid when signed is the chain’s “Chain validity when signed” check.',
       ),
     );
   } else if (cert.isNotYetValid) {
@@ -181,54 +203,6 @@ export function checkCertificate(
         'pass',
         `Valid from ${from} to ${to}`,
         'The current date falls inside the certificate’s validity period.',
-      ),
-    );
-  }
-
-  // ---- validity at the claimed signing time ----------------------------
-  // Kept separate from the check above on purpose: an expired certificate that
-  // was valid when the document was signed is the normal state of any older
-  // signed PDF, and must not read as a red failure.
-  if (context.signingTime) {
-    const signedAt = new Date(context.signingTime);
-    const notBefore = new Date(cert.validFrom);
-    const notAfter = new Date(cert.validTo);
-    if (Number.isNaN(signedAt.getTime())) {
-      checks.push(
-        result(
-          'cert.validity.atSigningTime',
-          'Valid at claimed signing time',
-          'unknown',
-          'The signing time could not be read',
-          'The signature carries a signing time that is not a date we can parse.',
-        ),
-      );
-    } else {
-      const inWindow = signedAt >= notBefore && signedAt <= notAfter;
-      checks.push(
-        result(
-          'cert.validity.atSigningTime',
-          'Valid at claimed signing time',
-          inWindow ? 'pass' : 'fail',
-          inWindow
-            ? `Valid on ${formatDate(context.signingTime)}`
-            : `Not valid on ${formatDate(context.signingTime)}`,
-          `The signature claims it was made on ${formatDate(context.signingTime)}, which ${
-            inWindow ? 'falls inside' : 'falls outside'
-          } this certificate’s validity period of ${from} to ${to}. That signing time is claimed by ` +
-            'the signer and is not proven — only a verified timestamp could prove it.',
-        ),
-      );
-    }
-  } else {
-    checks.push(
-      result(
-        'cert.validity.atSigningTime',
-        'Valid at claimed signing time',
-        'unknown',
-        'No signing time available',
-        'The signature does not state when it was made, so we cannot check whether this ' +
-          'certificate was valid at that moment.',
       ),
     );
   }
@@ -380,7 +354,11 @@ export function checkCertificate(
         ),
       );
     } else {
-      const suitable = eku.oids.some((oid) => DOCUMENT_SIGNING_EKUS.has(oid));
+      const suitable = eku.oids.some(
+        (oid) =>
+          DOCUMENT_SIGNING_EKUS.has(oid) ||
+          (context.purpose === 'documentTimestamp' && oid === TIME_STAMPING_EKU),
+      );
       checks.push(
         result(
           'cert.eku',
@@ -388,7 +366,9 @@ export function checkCertificate(
           suitable ? 'pass' : 'warn',
           eku.names.join(', '),
           suitable
-            ? 'The Extended Key Usage includes a purpose appropriate to signing documents.'
+            ? context.purpose === 'documentTimestamp'
+              ? 'The Extended Key Usage includes a purpose appropriate to issuing timestamps.'
+              : 'The Extended Key Usage includes a purpose appropriate to signing documents.'
             : 'None of the listed purposes is one commonly used for document signing. Practice ' +
                 'varies between issuers, so this is worth noticing rather than treating as invalid.',
         ),
@@ -427,7 +407,14 @@ export function checkCertificate(
   }
 
   // ---- algorithm and key strength ---------------------------------------
-  if (cert.signatureAlgorithm.hash && WEAK_SIGNATURE_HASHES.has(cert.signatureAlgorithm.hash)) {
+  // A root's self-signature is never what makes it trusted -- a verifier trusts
+  // the root's key because it is in its store -- so a weak hash there is noise.
+  const selfSignedRoot = role === 'root' && cert.selfSigned;
+  if (
+    !selfSignedRoot &&
+    cert.signatureAlgorithm.hash &&
+    WEAK_SIGNATURE_HASHES.has(cert.signatureAlgorithm.hash)
+  ) {
     checks.push(
       result(
         'cert.signatureAlgorithm',
@@ -661,9 +648,19 @@ function findIssuer(
 export function buildChain(
   leaf: ParsedCertificate,
   pool: ParsedCertificate[],
-  options: { id: string; signatureFieldName?: string | null; context?: CertificateChainContext } ,
+  options: {
+    id: string;
+    signatureFieldName?: string | null;
+    context?: CertificateChainContext;
+    /**
+     * The leaf is known to have signed something, so it is the signer even
+     * when it is a lone self-signed certificate. Without this (a certificate
+     * file inspected on its own) a lone self-signed certificate reads as a root.
+     */
+    leafIsSigner?: boolean;
+  },
 ): CertificateChain {
-  const { id, signatureFieldName = null, context = {} } = options;
+  const { id, signatureFieldName = null, context = {}, leafIsSigner = false } = options;
 
   const ordered: ParsedCertificate[] = [leaf];
   const seen = new Set([leaf.id]);
@@ -683,13 +680,13 @@ export function buildChain(
 
   // Roles come from position, and drive the per-certificate checks.
   ordered.forEach((cert, index) => {
-    if (index === 0) cert.role = ordered.length === 1 && cert.selfIssued ? 'root' : 'signer';
+    if (index === 0) cert.role = !leafIsSigner && ordered.length === 1 && cert.selfIssued ? 'root' : 'signer';
     else if (cert.selfIssued) cert.role = 'root';
     else cert.role = 'intermediate';
   });
 
-  for (const cert of ordered) {
-    cert.checks = checkCertificate(cert, context);
+  for (const [index, cert] of ordered.entries()) {
+    cert.checks = checkCertificate(cert, index === 0 ? { purpose: context.purpose } : {});
   }
 
   const links: ChainLink[] = [];
@@ -718,6 +715,72 @@ export function buildChain(
 
   chain.checks = checkChain(chain, ordered, context);
   return chain;
+}
+
+function validityAtSigningTime(
+  ordered: ParsedCertificate[],
+  context: CertificateChainContext,
+): ValidationResult {
+  const provenance =
+    context.purpose === 'documentTimestamp'
+      ? 'The time is the genTime inside this document timestamp, covered by the signature checked ' +
+        'above; whether the authority that issued it is trusted is not evaluated.'
+      : context.timeSource === 'timestamp'
+        ? 'The time is the genTime of this signature’s timestamp, whose token verified; whether the ' +
+          'authority that issued it is trusted is not evaluated.'
+        : 'The signing time is claimed by the signer and is not proven — only a verified timestamp ' +
+          'could prove it.';
+  const explanation =
+    'Reported separately from validity today, because a certificate that has since expired but ' +
+    'was valid when the document was signed is the normal state of an older signed PDF. ' +
+    provenance;
+  const label = 'Chain validity when signed';
+
+  if (!context.signingTime) {
+    return result('chain.validityAtSigningTime', label, 'unknown', 'No signing time available', explanation);
+  }
+  const signedAt = Date.parse(context.signingTime);
+  if (Number.isNaN(signedAt)) {
+    return result(
+      'chain.validityAtSigningTime',
+      label,
+      'unknown',
+      'The signing time could not be read',
+      explanation,
+    );
+  }
+
+  const day = formatDate(context.signingTime);
+  const windows = ordered.map((c) => ({ c, from: Date.parse(c.validFrom), to: Date.parse(c.validTo) }));
+  const unreadable = windows.filter((w) => Number.isNaN(w.from) || Number.isNaN(w.to));
+  const outside = windows.filter(
+    (w) => !unreadable.includes(w) && (signedAt < w.from || signedAt > w.to),
+  );
+  if (outside.length > 0) {
+    return result(
+      'chain.validityAtSigningTime',
+      label,
+      'fail',
+      `Not valid on ${day}: ${outside.map((w) => certificateDisplayName(w.c)).join(', ')}`,
+      explanation,
+    );
+  }
+  if (unreadable.length > 0) {
+    return result(
+      'chain.validityAtSigningTime',
+      label,
+      'unknown',
+      'Some validity periods could not be read',
+      explanation,
+    );
+  }
+  return result(
+    'chain.validityAtSigningTime',
+    label,
+    'pass',
+    `Every certificate was valid on ${day}`,
+    explanation,
+  );
 }
 
 function checkChain(
@@ -759,34 +822,12 @@ function checkChain(
     );
   }
 
-  // ---- does the chain reach a root -------------------------------------
-  if (chain.missingIssuerDn) {
-    checks.push(
-      result(
-        'chain.missingIntermediate',
-        'Intermediate certificate',
-        'warn',
-        `Missing: ${chain.missingIssuerDn}`,
-        `The chain stops at ${certificateDisplayName(top)}, which says it was issued by ` +
-          `“${chain.missingIssuerDn}”. That certificate is not embedded in this PDF, so the chain ` +
-          'cannot be followed any further from the file alone.',
-      ),
-    );
-  } else {
-    checks.push(
-      result(
-        'chain.missingIntermediate',
-        'Intermediate certificate',
-        'pass',
-        'No intermediates missing',
-        'Every issuer the chain refers to is present in the file.',
-      ),
-    );
-  }
-
   // ---- root ------------------------------------------------------------
   // A PDF that omits the root is normal and correct: the root belongs in the
-  // verifier's trust store, not in the document. So this warns, never fails.
+  // verifier's trust store, not in the document. Where the chain stops is a
+  // trust question, so an absent issuer is 'unknown' -- without a trust store
+  // there is no telling a root the verifier already holds from an intermediate
+  // the signer forgot to embed.
   if (chain.complete) {
     checks.push(
       result(
@@ -815,11 +856,19 @@ function checkChain(
       result(
         'chain.root',
         'Root certificate',
-        'warn',
-        'Chain does not reach a root in this file',
-        'The chain stops before a self-signed root. This is common and often correct — the root ' +
-          'normally lives in the verifier’s trust store rather than in the document — but it means ' +
-          'the chain cannot be completed from this file alone.',
+        'unknown',
+        chain.missingIssuerDn
+          ? `Issuer not in this file: ${chain.missingIssuerDn}`
+          : 'Chain does not reach a root in this file',
+        `The chain stops at ${certificateDisplayName(top)}` +
+          (chain.missingIssuerDn
+            ? `, which says it was issued by “${chain.missingIssuerDn}”. That certificate is not ` +
+              'embedded in this PDF. '
+            : ' without reaching a self-signed root. ') +
+          'This is common and often correct: the root normally lives in the verifier’s trust store ' +
+          'rather than in the document. If the missing certificate is an intermediate instead, a ' +
+          'verifier without network access cannot complete the chain. Which of the two it is can ' +
+          'only be settled against a trust store — try the trust simulation.',
       ),
     );
   }
@@ -844,27 +893,12 @@ function checkChain(
     ),
   );
 
-  // ---- and at the claimed signing time ----------------------------------
-  if (context.signingTime) {
-    const atSigning = worstStatus(
-      ordered.map(
-        (c) => c.checks.find((x) => x.id === 'cert.validity.atSigningTime')?.status ?? 'unknown',
-      ),
-    );
-    checks.push(
-      result(
-        'chain.validityAtSigningTime',
-        'Chain validity when signed',
-        atSigning,
-        atSigning === 'pass'
-          ? `Every certificate was valid on ${formatDate(context.signingTime)}`
-          : 'One or more certificates were outside their validity period at that time',
-        'Reported separately from validity today, because a certificate that has since expired but ' +
-          'was valid when the document was signed is the normal state of an older signed PDF. The ' +
-          'signing time is claimed by the signer and is not proven.',
-      ),
-    );
-  }
+  // ---- and at the signing time -----------------------------------------
+  // Always emitted: it is one of the checks a signature needs to pass before
+  // its verdict can be green, so a missing signing time has to show up as
+  // 'unknown' rather than as nothing at all. Computed here, per chain, because
+  // a certificate shared by two signatures was valid at two different times.
+  checks.push(validityAtSigningTime(ordered, context));
 
   // ---- the two things we will not claim ---------------------------------
   checks.push(
@@ -899,7 +933,13 @@ function checkChain(
  */
 export function buildChains(
   certificates: ParsedCertificate[],
-  signers: Array<{ certificateId: string; signatureFieldName: string | null; signingTime?: string | null }>,
+  signers: Array<{
+    certificateId: string;
+    signatureFieldName: string | null;
+    signingTime?: string | null;
+    purpose?: CertificateChainContext['purpose'];
+    timeSource?: CertificateChainContext['timeSource'];
+  }>,
 ): { chains: CertificateChain[]; unchainedIds: string[] } {
   const chains: CertificateChain[] = [];
   const used = new Set<string>();
@@ -910,20 +950,27 @@ export function buildChains(
     const chain = buildChain(leaf, certificates, {
       id: `chain-${index + 1}`,
       signatureFieldName: signer.signatureFieldName,
-      context: { signingTime: signer.signingTime ?? null },
+      context: {
+        signingTime: signer.signingTime ?? null,
+        purpose: signer.purpose ?? 'signature',
+        timeSource: signer.timeSource ?? 'claimed',
+      },
+      leafIsSigner: true,
     });
     chain.certificateIds.forEach((id) => used.add(id));
     chains.push(chain);
   });
 
   // Anything not reachable from a signer still needs its own checks run, or it
-  // would render in the list with an empty validation panel.
+  // would render in the list with an empty validation panel. No signature
+  // relies on these (OCSP responders, TSAs, spare roots in /DSS), so their
+  // results are diagnostics and never colour a signature's verdict.
   const unchained = certificates.filter((c) => !used.has(c.id));
   for (const cert of unchained) {
     if (cert.role === 'unknown') {
       cert.role = cert.selfIssued ? 'root' : cert.extensions.basicConstraints?.isCa ? 'intermediate' : 'unknown';
     }
-    cert.checks = checkCertificate(cert, {});
+    cert.checks = checkCertificate(cert, {}).map((check) => ({ ...check, axis: 'diagnostic' as const }));
   }
 
   return { chains, unchainedIds: unchained.map((c) => c.id) };

@@ -9,6 +9,7 @@ import type {
   ParsedCertificate,
   ReportSignature,
   ScratchpadResult,
+  TrustSimulationResult,
   ValidationResult,
   ValidationStatus,
 } from '../../core/models';
@@ -185,8 +186,10 @@ export function chainNodes(
   if (chain?.missingIssuerDn) {
     // Lead with the common name; keep the precise DN as the detail.
     const cn = /CN=([^,]+)/.exec(chain.missingIssuerDn);
+    // 'unknown', not a warning: usually this is the root, which belongs in the
+    // verifier's trust store rather than in the document.
     push({
-      status: 'warn',
+      status: 'unknown',
       name: cn ? cn[1].trim() : chain.missingIssuerDn,
       role: 'Issuer not present in this file',
       detail: chain.missingIssuerDn,
@@ -371,7 +374,15 @@ export function validityTimeline(
         cls: 'is-timestamp',
         label: 'Timestamped',
         left: pct(ms),
-        note: `${certFormatDate(timestampTime)} — from the timestamp token itself; not verified by pdf-seal, but independent of the signer's own claim`,
+        note:
+          `${certFormatDate(timestampTime)} — ` +
+          (signature.isDocumentTimestamp
+            ? 'this document timestamp’s own time; the authority that issued it is not evaluated'
+            : signature.timestampVerified === true
+              ? 'from a timestamp token that verified; the authority that issued it is not evaluated'
+              : signature.timestampVerified === false
+                ? 'from a timestamp token that does not verify, so it proves nothing'
+                : "from the timestamp token itself; not verified, but independent of the signer's own claim"),
       });
     }
   }
@@ -405,8 +416,21 @@ export interface EvidenceRow {
   slot?: { from: number; to: number } | null;
 }
 
-/** One fact per row; never a verdict -- "unknown" and "not checked" print literally. */
-export function signatureEvidenceRows(sig: ReportSignature): EvidenceRow[] {
+/** The Trust row's wording for one chain: the simulation's answer, or none. */
+function trustRow(trust: TrustSimulationResult | null): EvidenceRow {
+  if (!trust) return { label: 'Trust', text: 'Not evaluated — no trust store', status: 'unknown' };
+  return trust.status === 'pass'
+    ? { label: 'Trust', text: 'Trusted by your bundle (simulated)', status: 'pass' }
+    : { label: 'Trust', text: 'Not trusted by your bundle (simulated)', status: 'fail' };
+}
+
+/**
+ * One fact per row; never a verdict -- "unknown" and "not checked" print
+ * literally. Trust, timestamp and revocation are separate rows because they
+ * are separate questions from whether the signature holds; `trust` is this
+ * signature's chain's trust-simulation result, when one was run.
+ */
+export function signatureEvidenceRows(sig: ReportSignature, trust: TrustSimulationResult | null = null): EvidenceRow[] {
   const cov = sig.revisionCoverage;
   const check = (id: string) => sig.checks.find((c) => c.id === id);
   const rows: EvidenceRow[] = [];
@@ -425,16 +449,64 @@ export function signatureEvidenceRows(sig: ReportSignature): EvidenceRow[] {
   if (cms) rows.push({ label: 'CMS signature', text: cms.detail, status: cms.status });
   if (cov && cov.coveredRevision !== null) {
     const later = cov.revisionCount - cov.coveredRevision;
+    const laterCheck = check('sig.laterChanges');
     rows.push({
       label: 'Later revisions',
-      text: later > 0 ? `${later} later revision${later === 1 ? '' : 's'}` : 'None',
+      text: laterCheck?.detail ?? (later > 0 ? `${later} later revision${later === 1 ? '' : 's'}` : 'None'),
+      status: laterCheck?.status,
       slot: later > 0 ? { from: cov.coveredRevision, to: cov.revisionCount } : null,
     });
   }
   const mdp = check('sig.docMdp');
   if (mdp) rows.push({ label: 'Certification (DocMDP)', text: mdp.detail, status: mdp.status });
-  rows.push({ label: 'Trust and revocation', text: 'Unknown — not evaluated', status: 'unknown' });
+  rows.push(trustRow(trust));
+  const timestamp = check('sig.timestamp');
+  if (timestamp) rows.push({ label: 'Timestamp', text: timestamp.detail, status: timestamp.status });
+  rows.push({ label: 'Revocation', text: 'Not checked', status: 'unknown' });
   return rows;
+}
+
+const TIMESTAMP_FACT: Record<string, string> = {
+  none: 'None',
+  verified: 'Verified',
+  invalid: 'Invalid',
+  'not verified': 'Present, not verified',
+};
+
+/**
+ * The document-level answers kept beside the verdict: trust (from the trust
+ * simulation, when one was run), timestamps and revocation. None of them
+ * changes the badge.
+ */
+export function trustFacts(
+  report: CertificateReport,
+  trustResults: Record<string, TrustSimulationResult> | null,
+): { label: string; value: string }[] {
+  const simulated = report.chains.map((c) => trustResults?.[c.id]).filter((r): r is TrustSimulationResult => !!r);
+  const trust = !simulated.length
+    ? 'Not evaluated'
+    : simulated.every((r) => r.status === 'pass')
+      ? 'Trusted (simulated)'
+      : 'Not trusted (simulated)';
+
+  // A document timestamp is its own time evidence; count the signatures' tokens.
+  const signatures = report.signatures.filter((s) => !s.isDocumentTimestamp);
+  const kinds = signatures.map((s) =>
+    !s.hasTimestampToken ? 'none' : s.timestampVerified === true ? 'verified' : s.timestampVerified === false ? 'invalid' : 'not verified',
+  );
+  const distinct = [...new Set(kinds)];
+  const documentTimestamps = report.signatures.length - signatures.length;
+  const timestamp =
+    (distinct.length === 1
+      ? TIMESTAMP_FACT[distinct[0]]
+      : distinct.map((k) => `${kinds.filter((x) => x === k).length} ${k}`).join(', ')) +
+    (documentTimestamps ? ` · ${documentTimestamps} document timestamp${documentTimestamps === 1 ? '' : 's'}` : '');
+
+  return [
+    { label: 'Trust', value: trust },
+    { label: 'Timestamp', value: timestamp },
+    { label: 'Revocation', value: 'Not checked' },
+  ];
 }
 
 // ---------------------------------------------------------------------------

@@ -33,6 +33,36 @@ export interface ValidationResult {
   detail: string;
   /** What was actually computed, in plain language. */
   explanation: string;
+  /** Which verdict this check feeds -- see CheckAxis. */
+  axis: CheckAxis;
+}
+
+/**
+ * What a check is allowed to influence.
+ *
+ *   signature  -- whether a signature holds up from the file's own evidence;
+ *                 these, and only these, colour the badge
+ *   trust      -- trust, time and revocation: shown as separate facts, never
+ *                 folded into the badge, because pdf-seal has no trust store,
+ *                 verifies no timestamp and fetches no revocation data
+ *   diagnostic -- true facts about a certificate that do not decide whether a
+ *                 signature holds (e.g. "expired today" on an old signature)
+ */
+export type CheckAxis = 'signature' | 'trust' | 'diagnostic';
+
+const TRUST_CHECK_IDS = new Set([
+  'chain.trust',
+  'chain.root',
+  'chain.revocation',
+  'sig.timestamp',
+  'cert.selfSigned',
+]);
+const DIAGNOSTIC_CHECK_IDS = new Set(['cert.validity.window', 'chain.validityNow']);
+
+export function axisOf(id: string): CheckAxis {
+  if (TRUST_CHECK_IDS.has(id)) return 'trust';
+  if (DIAGNOSTIC_CHECK_IDS.has(id)) return 'diagnostic';
+  return 'signature';
 }
 
 export interface DistinguishedNamePart {

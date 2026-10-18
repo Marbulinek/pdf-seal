@@ -72,12 +72,14 @@ describe('buildChain', () => {
     expect(built.brokenAtIndex).toBe(0);
     expect(built.missingIssuerDn).toContain('PDF Seal Test Signing CA');
 
-    const check = find(built.checks, 'chain.missingIntermediate');
-    expect(check?.status).toBe('warn');
+    const check = find(built.checks, 'chain.root');
+    expect(check?.status).toBe('unknown');
     expect(check?.detail).toContain('PDF Seal Test Signing CA');
+    // One check for where the chain stops, not a second one guessing what is missing.
+    expect(find(built.checks, 'chain.missingIntermediate')).toBeUndefined();
   });
 
-  it('warns rather than fails when the chain simply stops short of a root', () => {
+  it('reports a chain that stops short of a root as a trust question, not a defect', () => {
     // Omitting the root is normal and correct -- it belongs in the verifier's
     // trust store, not in the document.
     const certs = pool().filter((c) => c.subject.commonName !== 'PDF Seal Test Root CA');
@@ -85,7 +87,8 @@ describe('buildChain', () => {
 
     expect(built.complete).toBe(false);
     const rootCheck = find(built.checks, 'chain.root');
-    expect(rootCheck?.status).toBe('warn');
+    expect(rootCheck?.status).toBe('unknown');
+    expect(rootCheck?.axis).toBe('trust');
     expect(rootCheck?.explanation).toMatch(/trust store/i);
   });
 
@@ -230,43 +233,10 @@ describe('checkCertificate', () => {
     expect(check?.detail).toMatch(/Expires in \d+ days/);
   });
 
-  it('separates validity today from validity at the claimed signing time', async () => {
-    const expired = parseCertificate(
-      (await mint({
-        commonName: 'Valid When Signed',
-        notBeforeOffsetMs: -86400000 * 400,
-        notAfterOffsetMs: -86400000 * 10,
-      })).der,
-    );
-    expired.role = 'signer';
-    const signedAt = new Date(Date.now() - 86400000 * 200).toISOString();
-    const checks = checkCertificate(expired, { signingTime: signedAt });
-
-    // Expired today, but it was valid when the document was signed -- the whole
-    // point of keeping these two apart.
-    expect(find(checks, 'cert.validity.window')?.status).toBe('fail');
-    expect(find(checks, 'cert.validity.atSigningTime')?.status).toBe('pass');
-    expect(find(checks, 'cert.validity.atSigningTime')?.explanation).toMatch(/claimed by/i);
-  });
-
-  it('fails the signing-time check when the certificate was not yet valid then', () => {
+  it('leaves validity at signing time to the chain, since one certificate can serve several signatures', () => {
     const cert = parseCertificate(chain.leaf.der);
     cert.role = 'signer';
-    const longAgo = new Date(Date.now() - 86400000 * 3650).toISOString();
-    expect(find(checkCertificate(cert, { signingTime: longAgo }), 'cert.validity.atSigningTime')?.status).toBe('fail');
-  });
-
-  it('reports the signing-time check as unknown when there is no signing time', () => {
-    const cert = parseCertificate(chain.leaf.der);
-    cert.role = 'signer';
-    expect(find(checkCertificate(cert), 'cert.validity.atSigningTime')?.status).toBe('unknown');
-  });
-
-  it('reports the signing-time check as unknown when the time is unparseable', () => {
-    const cert = parseCertificate(chain.leaf.der);
-    cert.role = 'signer';
-    const checks = checkCertificate(cert, { signingTime: 'not a date' });
-    expect(find(checks, 'cert.validity.atSigningTime')?.status).toBe('unknown');
+    expect(find(checkCertificate(cert), 'cert.validity.atSigningTime')).toBeUndefined();
   });
 
   describe('basic constraints', () => {
@@ -366,6 +336,19 @@ describe('checkCertificate', () => {
       expect(check?.explanation).toMatch(/Practice\s+varies/i);
     });
 
+    it('accepts Microsoft document signing', async () => {
+      const cert = parseCertificate((await mint({ commonName: 'MS Signer', eku: ['1.3.6.1.4.1.311.10.3.12'] })).der);
+      cert.role = 'signer';
+      expect(find(checkCertificate(cert), 'cert.eku')?.status).toBe('pass');
+    });
+
+    it('accepts timeStamping only on the signer of a document timestamp', async () => {
+      const cert = parseCertificate((await mint({ commonName: 'TSA', eku: ['1.3.6.1.5.5.7.3.8'] })).der);
+      cert.role = 'signer';
+      expect(find(checkCertificate(cert), 'cert.eku')?.status).toBe('warn');
+      expect(find(checkCertificate(cert, { purpose: 'documentTimestamp' }), 'cert.eku')?.status).toBe('pass');
+    });
+
     it('passes when no extended key usage is stated', async () => {
       const cert = parseCertificate((await mint({ commonName: 'No EKU' })).der);
       cert.role = 'signer';
@@ -401,6 +384,13 @@ describe('checkCertificate', () => {
     cert.role = 'signer';
     cert.signatureAlgorithm = { oid: '1.2.840.113549.1.1.5', name: 'RSA with SHA-1', hash: 'SHA-1' };
     expect(find(checkCertificate(cert), 'cert.signatureAlgorithm')?.status).toBe('warn');
+  });
+
+  it('does not warn about a weak hash on a self-signed root, whose self-signature carries no weight', () => {
+    const cert = parseCertificate(chain.root.der);
+    cert.role = 'root';
+    cert.signatureAlgorithm = { oid: '1.2.840.113549.1.1.5', name: 'RSA with SHA-1', hash: 'SHA-1' };
+    expect(find(checkCertificate(cert), 'cert.signatureAlgorithm')).toBeUndefined();
   });
 
   it('warns about an RSA key below 2048 bits', () => {
@@ -472,10 +462,67 @@ describe('chain-level checks', () => {
     expect(check?.detail).toContain('Old Root');
   }, 20000);
 
-  it('reports chain validity at signing time only when a signing time is given', () => {
+  it('separates validity today from validity at the claimed signing time', async () => {
+    const issuer = await mint({
+      commonName: 'Long-Lived CA',
+      isCa: true,
+      notBeforeOffsetMs: -86400000 * 1000,
+      notAfterOffsetMs: 86400000 * 3650,
+    });
+    const expiredLeaf = await mint({
+      commonName: 'Valid When Signed',
+      issuer,
+      notBeforeOffsetMs: -86400000 * 400,
+      notAfterOffsetMs: -86400000 * 10,
+    });
+    const certs = [parseCertificate(expiredLeaf.der), parseCertificate(issuer.der)];
+    const signedAt = new Date(Date.now() - 86400000 * 200).toISOString();
+    const built = buildChain(certs[0], certs, { id: 'c1', context: { signingTime: signedAt } });
+
+    // Expired today, but it was valid when the document was signed -- the whole
+    // point of keeping these two apart. Only the second decides the verdict.
+    expect(find(certs[0].checks, 'cert.validity.window')?.status).toBe('fail');
+    expect(find(certs[0].checks, 'cert.validity.window')?.axis).toBe('diagnostic');
+    expect(find(built.checks, 'chain.validityNow')?.axis).toBe('diagnostic');
+    const atSigning = find(built.checks, 'chain.validityAtSigningTime');
+    expect(atSigning?.status).toBe('pass');
+    expect(atSigning?.axis).toBe('signature');
+    expect(atSigning?.explanation).toMatch(/claimed by the signer/i);
+  }, 20000);
+
+  it('fails validity at signing time and names the certificates that were not valid then', () => {
+    const certs = pool();
+    const longAgo = new Date(Date.now() - 86400000 * 3650).toISOString();
+    const built = buildChain(certs[0], certs, { id: 'c1', context: { signingTime: longAgo } });
+    const check = find(built.checks, 'chain.validityAtSigningTime');
+    expect(check?.status).toBe('fail');
+    expect(check?.detail).toContain('Jane Doe');
+  });
+
+  it('reports validity at signing time as unknown when the time is unparseable', () => {
+    const certs = pool();
+    const built = buildChain(certs[0], certs, { id: 'c1', context: { signingTime: 'not a date' } });
+    expect(find(built.checks, 'chain.validityAtSigningTime')?.status).toBe('unknown');
+  });
+
+  it('keeps each signature’s signing time apart when two chains share a certificate', () => {
+    // Two signatures by the same certificate: one now, one claiming a date
+    // after the leaf expires. Building the second chain must not change the
+    // first chain's answer.
+    const certificates = pool();
+    const afterExpiry = new Date(Date.now() + 86400000 * 400).toISOString();
+    const { chains } = buildChains(certificates, [
+      { certificateId: certificates[0].id, signatureFieldName: 'Signature1', signingTime: new Date().toISOString() },
+      { certificateId: certificates[0].id, signatureFieldName: 'Signature2', signingTime: afterExpiry },
+    ]);
+    expect(find(chains[0].checks, 'chain.validityAtSigningTime')?.status).toBe('pass');
+    expect(find(chains[1].checks, 'chain.validityAtSigningTime')?.status).toBe('fail');
+  });
+
+  it('reports chain validity at signing time as unknown when no signing time is given', () => {
     const certs = pool();
     const withoutTime = buildChain(certs[0], certs, { id: 'c1' });
-    expect(find(withoutTime.checks, 'chain.validityAtSigningTime')).toBeUndefined();
+    expect(find(withoutTime.checks, 'chain.validityAtSigningTime')?.status).toBe('unknown');
 
     const certs2 = pool();
     const withTime = buildChain(certs2[0], certs2, {
@@ -527,6 +574,21 @@ describe('buildChains', () => {
     const orphanIntermediate = parseCertificate(chain.intermediate.der);
     buildChains([orphanIntermediate], []);
     expect(orphanIntermediate.role).toBe('intermediate');
+  });
+
+  it('treats a lone self-signed signing certificate as a signer, not as a root CA', async () => {
+    const selfSigned = parseCertificate((await mint({ commonName: 'Self Signer' })).der);
+    const { chains } = buildChains([selfSigned], [
+      { certificateId: selfSigned.id, signatureFieldName: 'Signature1', signingTime: new Date().toISOString() },
+    ]);
+
+    expect(selfSigned.role).toBe('signer');
+    // Held to signer rules, not CA rules: no cA=false / keyCertSign failures.
+    expect(selfSigned.checks.filter((c) => c.status === 'fail')).toEqual([]);
+    const selfCheck = find(selfSigned.checks, 'cert.selfSigned');
+    expect(selfCheck?.status).toBe('warn');
+    expect(selfCheck?.axis).toBe('trust');
+    expect(find(chains[0].checks, 'chain.validityAtSigningTime')?.status).toBe('pass');
   });
 
   it('skips a signer whose certificate is not among the certificates', () => {

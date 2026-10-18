@@ -352,12 +352,20 @@ export interface RevisionDiff {
 
 export type ValidationStatus = 'pass' | 'warn' | 'fail' | 'unknown';
 
+/**
+ * What a check may influence (server/lib/CertificateModel.ts): only
+ * 'signature' checks decide a signature's verdict; 'trust' (trust, time,
+ * revocation) is reported beside it; 'diagnostic' is listed only.
+ */
+export type CheckAxis = 'signature' | 'trust' | 'diagnostic';
+
 export interface ValidationResult {
   id: string;
   label: string;
   status: ValidationStatus;
   detail: string;
   explanation: string;
+  axis: CheckAxis;
 }
 
 export interface DistinguishedName {
@@ -441,7 +449,13 @@ export interface ReportSignature {
   cmsError: string | null;
   signedAttributes: { signingTime: string | null } | null;
   hasTimestampToken: boolean;
+  /** A document timestamp (/SubFilter ETSI.RFC3161) rather than a signature. */
+  isDocumentTimestamp: boolean;
+  messageImprint: { digestAlgorithm: string | null; value: string } | null;
+  /** The timestamp token's genTime -- or, for a document timestamp, its own. */
   timestampTime: string | null;
+  /** The token verified (true), is invalid (false), or is absent / could not be checked (null). TSA trust is never evaluated. */
+  timestampVerified: boolean | null;
   certificateIds: string[];
   signerCertificateId: string | null;
   chainId: string | null;

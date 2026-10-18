@@ -18,4 +18,14 @@
 .cert-check-text { flex: 1; min-width: 0; }
 .cert-check-source { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ocean-dark); margin-bottom: 2px; }
 .cert-check-label { font-size: 0.79rem; font-weight: 700; color: var(--navy); }
+.cert-check-axis {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--ice);
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--ocean-dark);
+  white-space: nowrap;
+}
 .cert-check-detail { font-size: 0.75rem; color: var(--navy); }

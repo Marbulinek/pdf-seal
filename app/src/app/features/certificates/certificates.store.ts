@@ -374,8 +374,15 @@ export const CertificatesStore = signalStore(
         patchState(store, { trustError: null, trustLoading: true });
         const results: Record<string, TrustSimulationResult> = {};
         try {
+          // Signatures by the same certificate share a chain; each request is
+          // an upload against the server's rate limit, so ask once per chain.
+          const chainIdsByPath = new Map<string, string[]>();
           for (const chain of report.chains) {
-            const chainCerts = chain.certificateIds.map(certById).filter((c): c is ParsedCertificate => !!c);
+            const path = chain.certificateIds.join(',');
+            chainIdsByPath.set(path, [...(chainIdsByPath.get(path) ?? []), chain.id]);
+          }
+          for (const [path, chainIds] of chainIdsByPath) {
+            const chainCerts = path.split(',').map(certById).filter((c): c is ParsedCertificate => !!c);
             if (!chainCerts.length) continue;
             const formData = new FormData();
             formData.append('rootBundle', bundleFile);
@@ -383,7 +390,7 @@ export const CertificatesStore = signalStore(
             const response = await store._api.postForm('/api/certificates/simulate-trust', formData);
             const payload = (await response.json().catch(() => ({}))) as { simulated?: TrustSimulationResult } & ErrorPayload;
             if (!response.ok || !payload.simulated) throw new Error(payload?.error || 'That root bundle could not be read.');
-            results[chain.id] = payload.simulated;
+            for (const id of chainIds) results[id] = payload.simulated;
           }
           patchState(store, { trustResults: results });
         } catch (err) {

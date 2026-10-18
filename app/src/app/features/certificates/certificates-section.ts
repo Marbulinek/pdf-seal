@@ -15,13 +15,22 @@ import {
   certWorstStatus,
   checkMatchesFilterText,
   flatCertNodes,
+  trustFacts,
   type CertificateOperation,
 } from './certificates-model';
 import { CertificatesStore } from './certificates.store';
 
 const STATUS_ROWS: { status: ValidationStatus; label: (n: number) => string; detail: string }[] = [
-  { status: 'fail', label: (n) => `${n} check${n === 1 ? '' : 's'} failed`, detail: 'Something here does not hold up.' },
-  { status: 'warn', label: (n) => `${n} warning${n === 1 ? '' : 's'}`, detail: 'Worth reading before relying on this document.' },
+  {
+    status: 'fail',
+    label: (n) => `${n} check${n === 1 ? '' : 's'} failed`,
+    detail: 'Something here does not hold up. Checks marked “Not part of the verdict” do not change the badge.',
+  },
+  {
+    status: 'warn',
+    label: (n) => `${n} warning${n === 1 ? '' : 's'}`,
+    detail: 'Worth reading before relying on this document. Checks marked “Not part of the verdict” do not change the badge.',
+  },
   { status: 'pass', label: (n) => `${n} check${n === 1 ? '' : 's'} passed`, detail: 'Verified against what this file contains.' },
   { status: 'unknown', label: (n) => `${n} not checked`, detail: 'Includes trust and revocation, which pdf-seal never evaluates.' },
 ];
@@ -81,6 +90,17 @@ export class CertificatesSection {
     subtitle: 'Checked against what this file contains',
     badge: { type: 'cert', status: this.report()?.summary.status ?? 'unknown' },
   }));
+
+  /** Kept beside the badge, never folded into it. */
+  protected readonly summaryFacts = computed(() => {
+    const report = this.report();
+    if (!report) return [];
+    return [
+      { label: 'Certificates', value: '' + report.certificates.length },
+      { label: 'Signatures', value: '' + report.signatures.length },
+      ...trustFacts(report, this.certificates.trustResults()),
+    ];
+  });
 
   /** One expandable row per outcome that occurred, worst first, listing exactly the checks it counts. */
   protected readonly statusRows = computed(() => {
