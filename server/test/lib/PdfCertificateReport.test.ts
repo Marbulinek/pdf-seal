@@ -38,7 +38,7 @@ describe('buildCertificateReport: a signature written with BER indefinite length
     expect(sigCheck(report, 'sig.messageDigest')?.status).toBe('pass');
     expect(sigCheck(report, 'sig.cryptographic')?.status).toBe('pass');
     expect(report.certificates).toHaveLength(3);
-  }, 60000);
+  }, 30000);
 });
 
 describe('buildCertificateReport: a properly signed document', () => {
@@ -261,7 +261,7 @@ describe('buildCertificateReport: several signatures', () => {
     expect(report.chains[0].certificateIds).toHaveLength(3);
     // The other chain's certificates are present but unreachable from a signature.
     expect(report.unchainedCertificateIds).toHaveLength(2);
-  }, 60000);
+  }, 30000);
 });
 
 describe('buildCertificateReport: legacy and certifying signatures', () => {
@@ -760,5 +760,43 @@ describe('buildCertificateReport: document timestamps', () => {
     expect(sigCheck(report, 'sig.messageDigest')?.status).toBe('fail');
     expect(sigCheck(report, 'sig.cryptographic')?.detail).toMatch(/document changed after signing/i);
     expect(report.summary.status).toBe('fail');
+  }, 30000);
+});
+
+describe('buildCertificateReport: finding the signer', () => {
+  it('verifies a signature whose signer certificate is only in /DSS', async () => {
+    const fx = await buildSignedPdfFixture({
+      signer: chain.leaf,
+      chain: [chain.intermediate, chain.root],
+      dssCertificates: [chain.leaf],
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    const identified = sigCheck(report, 'sig.signerIdentified');
+    expect(identified?.status).toBe('pass');
+    expect(identified?.explanation).toMatch(/document security store/i);
+    expect(sigCheck(report, 'sig.cryptographic')?.status).toBe('pass');
+    expect(report.chains[0].certificateIds).toHaveLength(3);
+    expect(report.signatures[0].status).toBe('pass');
+  }, 30000);
+
+  it('matches the signer by issuer and serial number, not by serial number alone', async () => {
+    const otherCa = await mint({ commonName: 'Other Issuing CA', isCa: true });
+    const decoy = await mint({ commonName: 'Same Serial, Other Issuer', issuer: otherCa, serialNumber: 0x7777 });
+    const signer = await mint({
+      commonName: 'Real Signer',
+      organization: 'PDF Seal Test',
+      issuer: chain.intermediate,
+      serialNumber: 0x7777,
+    });
+    const fx = await buildSignedPdfFixture({
+      signer,
+      chain: [decoy, signer, chain.intermediate, chain.root],
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    const signerCert = report.certificates.find((c) => c.id === report.signatures[0].signerCertificateId);
+    expect(signerCert?.subject.commonName).toBe('Real Signer');
+    expect(sigCheck(report, 'sig.cryptographic')?.status).toBe('pass');
   }, 30000);
 });

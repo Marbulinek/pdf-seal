@@ -49,6 +49,8 @@ export interface MintOptions {
   keyUsage?: string[];
   /** Skip BasicConstraints entirely (a CA that forgot to declare itself). */
   omitBasicConstraints?: boolean;
+  /** A fixed serial number, e.g. to give two certificates from different issuers the same one. */
+  serialNumber?: number;
   /** Skip SubjectKeyIdentifier/AuthorityKeyIdentifier. */
   omitKeyIdentifiers?: boolean;
   /** Add a critical extension with an OID nothing decodes. */
@@ -120,6 +122,7 @@ export async function mint(options: MintOptions): Promise<MintedCertificate> {
     eku,
     keyUsage,
     omitBasicConstraints = false,
+    serialNumber,
     omitKeyIdentifiers = false,
     unknownCriticalExtension,
     subjectAltNames,
@@ -149,7 +152,7 @@ export async function mint(options: MintOptions): Promise<MintedCertificate> {
 
   const cert = new pkijs.Certificate();
   cert.version = 2;
-  cert.serialNumber = new asn1js.Integer({ value: ++serialCounter });
+  cert.serialNumber = new asn1js.Integer({ value: serialNumber ?? ++serialCounter });
 
   cert.subject.typesAndValues.push(dnEntry('2.5.4.3', commonName));
   if (organization) cert.subject.typesAndValues.push(dnEntry('2.5.4.10', organization));

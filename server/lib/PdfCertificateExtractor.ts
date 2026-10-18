@@ -22,6 +22,7 @@ import * as pkijs from 'pkijs';
 import * as asn1js from 'asn1js';
 import PdfSignatureTool from './PdfSignatureTool';
 import {
+  encodedName,
   ensureCryptoEngine,
   parseCertificate,
   type ParsedCertificate,
@@ -51,7 +52,13 @@ export interface CmsSlot {
 }
 
 export type SignerIdentifier =
-  | { type: 'issuerAndSerial'; issuerDn: string; serial: string }
+  | {
+      type: 'issuerAndSerial';
+      issuerDn: string;
+      serial: string;
+      /** The issuer Name exactly as encoded, for an exact match against a certificate's issuer. */
+      issuerDerHex: string;
+    }
   | { type: 'subjectKeyIdentifier'; ski: string };
 
 export interface SignedAttributeSummary {
@@ -484,6 +491,7 @@ export function readCmsFacts(cms: Uint8Array): CmsFacts {
       type: 'issuerAndSerial',
       issuerDn: parts,
       serial: toHex(sid.serialNumber?.valueBlock?.valueHexView),
+      issuerDerHex: encodedName(sid.issuer)?.toString('hex').toUpperCase() ?? '',
     };
   } else if (sid?.valueBlock?.valueHexView) {
     facts.signerSid = { type: 'subjectKeyIdentifier', ski: toHex(sid.valueBlock.valueHexView) };
@@ -713,7 +721,11 @@ export async function extractCertificateSources(bytes: Uint8Array): Promise<Extr
       c.sources.some((s) => s.signatureFieldName === signature.fieldName),
     );
     signature.certificateIds = own.map((c) => c.id);
-    signature.signerCertificateId = identifySigner(signature, own);
+    // A signature that names its signer may rely on /DSS for the certificate
+    // itself, so look there too -- but only by that name, never by guessing.
+    signature.signerCertificateId =
+      identifySigner(signature, own) ??
+      (signature.signerSid ? identifySigner(signature, certificates) : null);
   }
 
   return {
@@ -723,6 +735,17 @@ export async function extractCertificateSources(bytes: Uint8Array): Promise<Extr
     unsignedSignatureFieldNames,
     warnings,
   };
+}
+
+/** A certificate's issuer Name exactly as encoded, as uppercase hex ('' if unreadable). */
+function issuerDerHex(cert: ParsedCertificate): string {
+  if (cert.parseError) return '';
+  try {
+    const pki = pkijs.Certificate.fromBER(Buffer.from(cert.derBase64, 'base64'));
+    return encodedName(pki.issuer)?.toString('hex').toUpperCase() ?? '';
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -741,10 +764,13 @@ export function identifySigner(
 
   const sid = signature.signerSid;
   if (sid) {
+    // Serial numbers are only unique per issuer, so both have to match.
     const match =
       sid.type === 'issuerAndSerial'
         ? candidates.find(
-            (c) => c.serialNumber.replace(/^0+/, '') === sid.serial.replace(/^0+/, ''),
+            (c) =>
+              c.serialNumber.replace(/^0+/, '') === sid.serial.replace(/^0+/, '') &&
+              (!sid.issuerDerHex || issuerDerHex(c) === sid.issuerDerHex),
           )
         : candidates.find((c) => c.extensions.subjectKeyIdentifier === sid.ski);
 

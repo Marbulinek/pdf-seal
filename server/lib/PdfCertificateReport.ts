@@ -466,6 +466,13 @@ async function checkSignature(
   const signerCert = signature.signerCertificateId
     ? certificatesById.get(signature.signerCertificateId)
     : undefined;
+  // The signer's certificate normally travels inside the signature; a PAdES
+  // file may keep it only in /DSS instead.
+  const signerOutsideCms =
+    !!signerCert &&
+    !signerCert.sources.some(
+      (s) => s.signatureFieldName === signature.fieldName && (s.kind === 'cms' || s.kind === 'sig-cert'),
+    );
   if (signerCert) {
     checks.push(
       result(
@@ -473,14 +480,18 @@ async function checkSignature(
         'Signer certificate',
         'pass',
         signerCert.subject.commonName ?? signerCert.subject.formatted,
-        signature.signerSid
+        (signature.signerSid
           ? `The signature names its signer by ${
               signature.signerSid.type === 'issuerAndSerial'
                 ? 'issuer and serial number'
                 : 'subject key identifier'
             }, and exactly one embedded certificate matches.`
           : 'The signature does not name its signer explicitly, but only one embedded certificate ' +
-              'could be the signer.',
+            'could be the signer.') +
+          (signerOutsideCms
+            ? ' That certificate is not inside the signature itself; it was found in the document ' +
+              'security store (/DSS).'
+            : ''),
       ),
     );
   } else {
@@ -580,6 +591,13 @@ async function checkSignature(
       schema: pkijs.ContentInfo.fromBER(cms).content,
     });
     if (timestamp) joinEContent(signedData);
+    // pkijs only looks for the signer among the signature's own certificates.
+    if (signerCert && signerOutsideCms) {
+      signedData.certificates = [
+        ...(signedData.certificates ?? []),
+        pkijs.Certificate.fromBER(Buffer.from(signerCert.derBase64, 'base64')),
+      ];
+    }
     const data = covered
       ? covered.buffer.slice(covered.byteOffset, covered.byteOffset + covered.byteLength)
       : undefined;
