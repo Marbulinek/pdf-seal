@@ -288,7 +288,7 @@ describe('buildCertificateReport: legacy and certifying signatures', () => {
 });
 
 describe('buildCertificateReport: timestamps and clean verdicts', () => {
-  it('reports a timestamp as present but explicitly unverified', async () => {
+  it('reports an unreadable timestamp token as invalid, beside the verdict', async () => {
     const fx = await buildSignedPdfFixture({
       signer: chain.leaf,
       chain: [chain.leaf, chain.intermediate, chain.root],
@@ -297,9 +297,11 @@ describe('buildCertificateReport: timestamps and clean verdicts', () => {
     const report = await buildCertificateReport(fx.bytes);
 
     const check = sigCheck(report, 'sig.timestamp');
-    expect(check?.status).toBe('unknown');
-    expect(check?.detail).toMatch(/not verified/i);
-    expect(check?.explanation).toMatch(/does not verify the timestamp/i);
+    expect(check).toMatchObject({ status: 'fail', axis: 'trust' });
+    expect(check?.detail).toMatch(/could not be read/i);
+    expect(report.signatures[0].timestampVerified).toBe(false);
+    // The signature itself is no worse for it.
+    expect(report.signatures[0].status).toBe('pass');
   }, 30000);
 
   it('decodes the timestamp token\'s own genTime, independent of the signer\'s claimed time', async () => {
@@ -329,20 +331,50 @@ describe('buildCertificateReport: timestamps and clean verdicts', () => {
     expect((await buildCertificateReport(placeholder.bytes)).signatures[0].timestampTime).toBeNull();
   }, 30000);
 
-  it('reaches a clean pass when nothing at all is wrong', async () => {
-    // A timestamp removes the only warning a well-formed fixture otherwise
-    // raises, so this is the one path that reports an unqualified pass.
+  it('verifies a genuine timestamp token against the TSA certificate it carries', async () => {
+    const tsa = await mint({ commonName: 'PDF Seal Test TSA', issuer: chain.intermediate, eku: ['1.3.6.1.5.5.7.3.8'] });
     const fx = await buildSignedPdfFixture({
       signer: chain.leaf,
       chain: [chain.leaf, chain.intermediate, chain.root],
-      timestampToken: true,
+      timestampAuthority: tsa,
     });
     const report = await buildCertificateReport(fx.bytes);
+
+    const check = sigCheck(report, 'sig.timestamp');
+    expect(check).toMatchObject({ status: 'pass', axis: 'trust' });
+    expect(check?.detail).toMatch(/^Verified: issued by PDF Seal Test TSA/);
+    expect(check?.explanation).toMatch(/not evaluated/i);
+    expect(report.signatures[0].timestampVerified).toBe(true);
+    expect(report.signatures[0].timestampTime).not.toBeNull();
+    // The chain is then measured at the verified time, and says so.
+    const atSigning = report.chains[0].checks.find((c) => c.id === 'chain.validityAtSigningTime');
+    expect(atSigning?.status).toBe('pass');
+    expect(atSigning?.explanation).toMatch(/whose token verified/i);
 
     expect(report.summary.counts.fail).toBe(0);
     expect(report.summary.counts.warn).toBe(0);
     expect(report.summary.status).toBe('pass');
     expect(report.summary.headline).toMatch(/Trust was not evaluated/i);
+  }, 30000);
+
+  it('fails a timestamp token that timestamps something other than this signature', async () => {
+    const tsa = await mint({ commonName: 'PDF Seal Test TSA', issuer: chain.intermediate, eku: ['1.3.6.1.5.5.7.3.8'] });
+    const fx = await buildSignedPdfFixture({
+      signer: chain.leaf,
+      chain: [chain.leaf, chain.intermediate, chain.root],
+      timestampAuthority: tsa,
+      timestampForeignImprint: true,
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    const check = sigCheck(report, 'sig.timestamp');
+    expect(check?.status).toBe('fail');
+    expect(check?.explanation).toMatch(/message imprint does not match/i);
+    expect(report.signatures[0].timestampVerified).toBe(false);
+    // An invalid timestamp is not evidence of time: the claim is used instead.
+    const atSigning = report.chains[0].checks.find((c) => c.id === 'chain.validityAtSigningTime');
+    expect(atSigning?.explanation).toMatch(/claimed by the signer/i);
+    expect(report.signatures[0].status).toBe('pass');
   }, 30000);
 
   it('cannot check the document when the signature states no digest', async () => {
@@ -612,6 +644,25 @@ describe('buildCertificateReport: signatures that used to read as red', () => {
     expect(report.signatures[0].status).toBe('pass');
     // Nothing proves the signing time: that stays visible beside the verdict.
     expect(sigCheck(report, 'sig.timestamp')?.detail).toBe('No timestamp');
+  }, 30000);
+
+  it('measures validity at a verified timestamp rather than at the signer’s claim', async () => {
+    const { root, leaf } = await historicalChain(-DAY * 10);
+    const tsa = await mint({ commonName: 'Long-Lived TSA', issuer: root, notBeforeOffsetMs: -DAY * 1000, eku: ['1.3.6.1.5.5.7.3.8'] });
+    const fx = await buildSignedPdfFixture({
+      signer: leaf,
+      chain: [leaf, root],
+      // The signer claims "now", after its certificate expired; the timestamp
+      // proves the signature existed 200 days ago, when it was still valid.
+      signingTime: new Date(),
+      timestampAuthority: tsa,
+      timestampGenTime: new Date(Date.now() - DAY * 200),
+    });
+    const report = await buildCertificateReport(fx.bytes);
+
+    expect(sigCheck(report, 'sig.timestamp')?.status).toBe('pass');
+    expect(report.chains[0].checks.find((c) => c.id === 'chain.validityAtSigningTime')?.status).toBe('pass');
+    expect(report.signatures[0].status).toBe('pass');
   }, 30000);
 
   it('fails when the claimed signing time falls after the certificate expired', async () => {

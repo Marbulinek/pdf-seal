@@ -52,6 +52,11 @@ export interface CertificateChainContext {
    * whose signing time is the token's own genTime rather than a signer's claim.
    */
   purpose?: 'signature' | 'documentTimestamp';
+  /**
+   * Where `signingTime` came from: the signer's own claim, or the genTime of
+   * a timestamp whose token verified (a document timestamp is always this).
+   */
+  timeSource?: 'claimed' | 'timestamp';
 }
 
 /** Days before expiry at which a still-valid certificate starts warning. */
@@ -716,12 +721,15 @@ function validityAtSigningTime(
   ordered: ParsedCertificate[],
   context: CertificateChainContext,
 ): ValidationResult {
-  const fromTimestamp = context.purpose === 'documentTimestamp';
-  const provenance = fromTimestamp
-    ? 'The time is the genTime inside this document timestamp, covered by the signature checked ' +
-      'above; whether the authority that issued it is trusted is not evaluated.'
-    : 'The signing time is claimed by the signer and is not proven — only a verified timestamp ' +
-      'could prove it.';
+  const provenance =
+    context.purpose === 'documentTimestamp'
+      ? 'The time is the genTime inside this document timestamp, covered by the signature checked ' +
+        'above; whether the authority that issued it is trusted is not evaluated.'
+      : context.timeSource === 'timestamp'
+        ? 'The time is the genTime of this signature’s timestamp, whose token verified; whether the ' +
+          'authority that issued it is trusted is not evaluated.'
+        : 'The signing time is claimed by the signer and is not proven — only a verified timestamp ' +
+          'could prove it.';
   const explanation =
     'Reported separately from validity today, because a certificate that has since expired but ' +
     'was valid when the document was signed is the normal state of an older signed PDF. ' +
@@ -930,6 +938,7 @@ export function buildChains(
     signatureFieldName: string | null;
     signingTime?: string | null;
     purpose?: CertificateChainContext['purpose'];
+    timeSource?: CertificateChainContext['timeSource'];
   }>,
 ): { chains: CertificateChain[]; unchainedIds: string[] } {
   const chains: CertificateChain[] = [];
@@ -941,7 +950,11 @@ export function buildChains(
     const chain = buildChain(leaf, certificates, {
       id: `chain-${index + 1}`,
       signatureFieldName: signer.signatureFieldName,
-      context: { signingTime: signer.signingTime ?? null, purpose: signer.purpose ?? 'signature' },
+      context: {
+        signingTime: signer.signingTime ?? null,
+        purpose: signer.purpose ?? 'signature',
+        timeSource: signer.timeSource ?? 'claimed',
+      },
       leafIsSigner: true,
     });
     chain.certificateIds.forEach((id) => used.add(id));

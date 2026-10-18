@@ -374,7 +374,15 @@ export function validityTimeline(
         cls: 'is-timestamp',
         label: 'Timestamped',
         left: pct(ms),
-        note: `${certFormatDate(timestampTime)} — from the timestamp token itself; not verified by pdf-seal, but independent of the signer's own claim`,
+        note:
+          `${certFormatDate(timestampTime)} — ` +
+          (signature.isDocumentTimestamp
+            ? 'this document timestamp’s own time; the authority that issued it is not evaluated'
+            : signature.timestampVerified === true
+              ? 'from a timestamp token that verified; the authority that issued it is not evaluated'
+              : signature.timestampVerified === false
+                ? 'from a timestamp token that does not verify, so it proves nothing'
+                : "from the timestamp token itself; not verified, but independent of the signer's own claim"),
       });
     }
   }
@@ -458,6 +466,13 @@ export function signatureEvidenceRows(sig: ReportSignature, trust: TrustSimulati
   return rows;
 }
 
+const TIMESTAMP_FACT: Record<string, string> = {
+  none: 'None',
+  verified: 'Verified',
+  invalid: 'Invalid',
+  'not verified': 'Present, not verified',
+};
+
 /**
  * The document-level answers kept beside the verdict: trust (from the trust
  * simulation, when one was run), timestamps and revocation. None of them
@@ -476,11 +491,15 @@ export function trustFacts(
 
   // A document timestamp is its own time evidence; count the signatures' tokens.
   const signatures = report.signatures.filter((s) => !s.isDocumentTimestamp);
-  const signed = signatures.length;
-  const stamped = signatures.filter((s) => s.hasTimestampToken).length;
-  const documentTimestamps = report.signatures.length - signed;
+  const kinds = signatures.map((s) =>
+    !s.hasTimestampToken ? 'none' : s.timestampVerified === true ? 'verified' : s.timestampVerified === false ? 'invalid' : 'not verified',
+  );
+  const distinct = [...new Set(kinds)];
+  const documentTimestamps = report.signatures.length - signatures.length;
   const timestamp =
-    (stamped === 0 ? 'None' : stamped === signed ? 'Present, not verified' : `${stamped} of ${signed}, not verified`) +
+    (distinct.length === 1
+      ? TIMESTAMP_FACT[distinct[0]]
+      : distinct.map((k) => `${kinds.filter((x) => x === k).length} ${k}`).join(', ')) +
     (documentTimestamps ? ` · ${documentTimestamps} document timestamp${documentTimestamps === 1 ? '' : 's'}` : '');
 
   return [

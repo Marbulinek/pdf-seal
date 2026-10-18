@@ -102,9 +102,13 @@ describe('certificates model', () => {
     const r = makeReport({ signatures: [makeSignature(), makeSignature({ fieldName: 'Sig2', hasTimestampToken: true })] });
     expect(trustFacts(r, null)).toEqual([
       { label: 'Trust', value: 'Not evaluated' },
-      { label: 'Timestamp', value: '1 of 2, not verified' },
+      { label: 'Timestamp', value: '1 none, 1 not verified' },
       { label: 'Revocation', value: 'Not checked' },
     ]);
+    const verified = makeReport({ signatures: [makeSignature({ hasTimestampToken: true, timestampVerified: true })] });
+    expect(trustFacts(verified, null)[1].value).toBe('Verified');
+    const invalid = makeReport({ signatures: [makeSignature({ hasTimestampToken: true, timestampVerified: false })] });
+    expect(trustFacts(invalid, null)[1].value).toBe('Invalid');
     const chainId = r.chains[0].id;
     const pass = { status: 'pass' as const, detail: '', matchedRootSubject: null, extendedWithIssuer: false };
     expect(trustFacts(r, { [chainId]: pass })[0].value).toBe('Trusted (simulated)');

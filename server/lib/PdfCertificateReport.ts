@@ -28,6 +28,7 @@ import {
   axisOf,
   certificateDisplayName,
   ensureCryptoEngine,
+  parseCertificate,
   type ParsedCertificate,
   type ValidationResult,
   type ValidationStatus,
@@ -57,6 +58,12 @@ export interface RevisionCoverage {
 export interface ReportSignature extends ExtractedSignature {
   chainId: string | null;
   revisionCoverage: RevisionCoverage;
+  /**
+   * The signature's timestamp token: true when it verified against the TSA
+   * certificate it carries, false when it is invalid, null when there is none
+   * or it could not be checked. Says nothing about whether the TSA is trusted.
+   */
+  timestampVerified: boolean | null;
   checks: ValidationResult[];
   status: ValidationStatus;
 }
@@ -102,6 +109,131 @@ function result(
   return { id, label, status, detail, explanation, axis: axisOf(id) };
 }
 
+/**
+ * pkijs reads a TSTInfo straight out of a primitive OCTET STRING, so a
+ * timestamp whose eContent is BER-constructed (chunked -- legal, and what
+ * pkijs itself writes) fails its schema check. Hand it the same bytes in one
+ * piece.
+ */
+function joinEContent(signedData: pkijs.SignedData): void {
+  const eContent = signedData.encapContentInfo?.eContent;
+  if (!eContent?.idBlock?.isConstructed) return;
+  const whole = octetStringBytes(eContent);
+  if (whole) signedData.encapContentInfo.eContent = new asn1js.OctetString({ valueHex: whole });
+}
+
+/**
+ * pkijs SignedDataVerifyError codes that mean "could not be checked here"
+ * rather than "checked and wrong": no certificates in the token, the TSA's
+ * certificate not among them, an algorithm this platform does not support.
+ */
+const UNCHECKABLE_TOKEN_CODES = new Set([2, 3, 7]);
+
+/**
+ * Verify a signature's RFC 3161 timestamp token from the bytes alone: the
+ * token's own signature against the TSA certificate it carries, and its
+ * message imprint against the signature value it timestamps. No network and
+ * no trust store, so a pass proves the token is intact and covers this
+ * signature -- not that the authority that issued it is trustworthy.
+ *
+ * Returns null when the signature carries no token.
+ */
+async function verifyTimestampToken(
+  cms: Uint8Array,
+  genTime: string | null,
+): Promise<{ check: ValidationResult; verified: boolean | null } | null> {
+  let signer: pkijs.SignerInfo | undefined;
+  try {
+    signer = new pkijs.SignedData({ schema: pkijs.ContentInfo.fromBER(cms).content }).signerInfos?.[0];
+  } catch {
+    return null;
+  }
+  const attribute = signer?.unsignedAttrs?.attributes.find(
+    (a) => String(a.type) === '1.2.840.113549.1.9.16.2.14',
+  );
+  if (!signer || !attribute) return null;
+
+  const label = 'Timestamp';
+  const fail = (detail: string, why: string) => ({
+    check: result('sig.timestamp', label, 'fail', detail, why),
+    verified: false,
+  });
+
+  let token: pkijs.SignedData;
+  try {
+    token = new pkijs.SignedData({
+      schema: pkijs.ContentInfo.fromBER(attribute.values[0].toBER(false)).content,
+    });
+    joinEContent(token);
+  } catch {
+    return fail(
+      'The timestamp token could not be read',
+      'This signature carries a timestamp attribute, but its content is not an RFC 3161 timestamp ' +
+        'token, so it attests to nothing.',
+    );
+  }
+
+  let outcome: any = null;
+  let code: number | null = null;
+  let message = '';
+  try {
+    outcome = await token.verify({
+      signer: 0,
+      // The token timestamps the signature value, not the document.
+      data: signer.signature.valueBlock.valueHexView.slice().buffer,
+      checkChain: false,
+      extendedMode: true,
+    } as any);
+  } catch (error: any) {
+    code = typeof error?.code === 'number' ? error.code : null;
+    message = String(error?.message ?? error);
+  }
+
+  const when = genTime ? ` at ${genTime.slice(0, 19).replace('T', ' ')} UTC` : '';
+  if (outcome?.signatureVerified === true) {
+    const tsa = outcome.signerCertificate
+      ? certificateDisplayName(
+          parseCertificate(new Uint8Array(outcome.signerCertificate.toSchema(true).toBER(false))),
+        )
+      : 'its issuer';
+    return {
+      check: result(
+        'sig.timestamp',
+        label,
+        'pass',
+        `Verified: issued by ${tsa}${when}`,
+        'The timestamp token’s signature verifies against the timestamping authority’s certificate ' +
+          'inside it, and its message imprint matches this signature’s value — so this signature ' +
+          'existed at that time, as far as that authority is concerned. Whether the authority itself ' +
+          'is trusted is not evaluated.',
+      ),
+      verified: true,
+    };
+  }
+  if (code !== null && UNCHECKABLE_TOKEN_CODES.has(code)) {
+    return {
+      check: result(
+        'sig.timestamp',
+        label,
+        'unknown',
+        'A timestamp is present but could not be checked',
+        `The timestamp token could not be verified here: ${message}. That is not the same as it ` +
+          'being invalid, but until it is checked the signing time is still only what the signer claims.',
+      ),
+      verified: null,
+    };
+  }
+  return fail(
+    'The timestamp token does not verify',
+    /TSTInfo verification/i.test(message)
+      ? 'The timestamp token’s message imprint does not match this signature’s value, so the token ' +
+          'was made for something else and does not timestamp this signature.'
+      : 'The timestamp token is not intact: its own signature does not verify against the ' +
+          'timestamping authority’s certificate.' +
+          (message ? ` The verifier reported: ${message}` : ''),
+  );
+}
+
 /** What the rest of the file looks like from one signature's point of view. */
 interface LaterRevisionContext {
   /** Only whitespace follows the file's last %%EOF, so its tail is a complete revision. */
@@ -122,6 +254,7 @@ async function checkSignature(
   certificatesById: Map<string, ParsedCertificate>,
   coverage: RevisionCoverage,
   later: LaterRevisionContext,
+  timestampCheck: ValidationResult | null,
 ): Promise<ValidationResult[]> {
   const checks: ValidationResult[] = [];
 
@@ -370,14 +503,7 @@ async function checkSignature(
     const signedData = new pkijs.SignedData({
       schema: pkijs.ContentInfo.fromBER(cms).content,
     });
-    // pkijs reads a TSTInfo straight out of a primitive OCTET STRING, so a
-    // document timestamp whose eContent is BER-constructed (chunked) would fail
-    // its schema check. Hand it the same bytes in one piece.
-    const eContent = signedData.encapContentInfo?.eContent;
-    if (timestamp && eContent?.idBlock?.isConstructed) {
-      const whole = octetStringBytes(eContent);
-      if (whole) signedData.encapContentInfo.eContent = new asn1js.OctetString({ valueHex: whole });
-    }
+    if (timestamp) joinEContent(signedData);
     const data = covered
       ? covered.buffer.slice(covered.byteOffset, covered.byteOffset + covered.byteLength)
       : undefined;
@@ -441,23 +567,15 @@ async function checkSignature(
     );
   }
 
-  // ---- what we will not claim -------------------------------------------
-  // Time evidence, not a property of the signature: a signature with no
-  // timestamp is not a worse signature, it just leaves the signing time
-  // unproven. Either way this is 'unknown' on the trust axis. A document
-  // timestamp is itself the time evidence, so it gets no such check.
+  // ---- time evidence ----------------------------------------------------
+  // Not a property of the signature: a signature with no timestamp is not a
+  // worse signature, it just leaves the signing time unproven, so this sits on
+  // the trust axis whatever it says. A document timestamp is itself the time
+  // evidence, so it gets no such check.
   if (!timestamp) {
     checks.push(
-      signature.hasTimestampToken
-        ? result(
-            'sig.timestamp',
-            'Timestamp',
-            'unknown',
-            'A timestamp is present but was not verified',
-            'This signature carries a timestamp token. pdf-seal does not verify the timestamp or the ' +
-              'authority that issued it, so the signing time below is still only what the signer claims.',
-          )
-        : result(
+      timestampCheck ??
+        result(
             'sig.timestamp',
             'Timestamp',
             'unknown',
@@ -729,24 +847,40 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
 
   const certificatesById = new Map(certificates.map((c) => [c.id, c]));
 
-  // Chains first: they assign each certificate its role, which the
+  // Timestamp tokens first: a verified one is better evidence of when a
+  // signature was made than the signer's own claim, so it is what the chain's
+  // validity at signing time is then measured against.
+  const timestamps = await Promise.all(
+    extraction.signatures.map(async (s) => {
+      const cms = s.hasTimestampToken && s.cmsSlot ? readCmsFromSlot(bytes, s.cmsSlot) : null;
+      return cms ? verifyTimestampToken(cms, s.timestampTime) : null;
+    }),
+  );
+
+  // Chains next: they assign each certificate its role, which the
   // per-certificate checks depend on to know what to expect of it.
   const { chains, unchainedIds } = buildChains(
     certificates,
-    extraction.signatures
-      .filter((s) => s.signerCertificateId)
-      .map((s) => ({
-        certificateId: s.signerCertificateId!,
-        signatureFieldName: s.fieldName,
-        // The claimed signing time, preferring the signed attribute over the
-        // signature dictionary's /M, since the former is at least inside the
-        // signed data even if neither is proven. A document timestamp's time
-        // is its own genTime, which its (verified) signature covers.
-        signingTime: s.isDocumentTimestamp
-          ? s.timestampTime
-          : s.signedAttributes.signingTime ?? s.signingTimeClaimed ?? null,
-        purpose: s.isDocumentTimestamp ? ('documentTimestamp' as const) : ('signature' as const),
-      })),
+    extraction.signatures.flatMap((s, i) => {
+      if (!s.signerCertificateId) return [];
+      const stampVerified = timestamps[i]?.verified === true && !!s.timestampTime;
+      return [
+        {
+          certificateId: s.signerCertificateId,
+          signatureFieldName: s.fieldName,
+          // A document timestamp's time is its own genTime, which its signature
+          // covers; a verified signature timestamp's genTime comes next; failing
+          // both, the claimed signing time -- the signed attribute ahead of the
+          // dictionary's /M, since it is at least inside the signed data.
+          signingTime:
+            s.isDocumentTimestamp || stampVerified
+              ? s.timestampTime
+              : (s.signedAttributes.signingTime ?? s.signingTimeClaimed ?? null),
+          purpose: s.isDocumentTimestamp ? ('documentTimestamp' as const) : ('signature' as const),
+          timeSource: s.isDocumentTimestamp || stampVerified ? ('timestamp' as const) : ('claimed' as const),
+        },
+      ];
+    }),
   );
 
   const revisionEnds = PdfRevisionTool.findRevisionBoundaries(bytes).map((b) => b.endOffset);
@@ -763,12 +897,20 @@ export async function buildCertificateReport(bytes: Uint8Array): Promise<Certifi
   const signatures: ReportSignature[] = [];
   for (const [i, signature] of extraction.signatures.entries()) {
     const revisionCoverage = coverages[i];
-    const checks = await checkSignature(signature, bytes, certificatesById, revisionCoverage, later);
+    const checks = await checkSignature(
+      signature,
+      bytes,
+      certificatesById,
+      revisionCoverage,
+      later,
+      timestamps[i]?.check ?? null,
+    );
     const chain = chains.find((c) => c.signatureFieldName === signature.fieldName);
     signatures.push({
       ...signature,
       chainId: chain?.id ?? null,
       revisionCoverage,
+      timestampVerified: timestamps[i]?.verified ?? null,
       checks,
       status: signatureVerdict(checksForSignature(checks, chain, certificatesById)),
     });

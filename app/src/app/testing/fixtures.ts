@@ -77,6 +77,7 @@ export function makeSignature(patch: Partial<ReportSignature> = {}): ReportSigna
     isDocumentTimestamp: false,
     messageImprint: null,
     timestampTime: null,
+    timestampVerified: null,
     certificateIds: ['leaf', 'ca'],
     signerCertificateId: 'leaf',
     chainId: 'chain1',

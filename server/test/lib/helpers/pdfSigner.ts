@@ -84,6 +84,15 @@ export interface SignPdfOptions {
    * Takes precedence over `timestampToken`'s placeholder.
    */
   timestampGenTime?: Date;
+  /**
+   * Attach a genuine RFC 3161 token: a TSTInfo over the signature value,
+   * signed by this certificate acting as the timestamping authority, which is
+   * embedded in the token. genTime is `timestampGenTime`, else `signingTime`.
+   * Takes precedence over `timestampToken` and `timestampGenTime`'s placeholder.
+   */
+  timestampAuthority?: MintedCertificate;
+  /** With `timestampAuthority`: put a zero imprint in the token, so it timestamps something else. */
+  timestampForeignImprint?: boolean;
   /** Append bytes after the signed region, as an incremental update would. */
   appendTrailingBytes?: number;
   /** Flip a byte inside the signed region, breaking the message digest. */
@@ -183,6 +192,44 @@ function buildTstInfo(imprint: ArrayBuffer, genTime: Date): ArrayBuffer {
   }).toBER(false);
 }
 
+/** A genuine RFC 3161 timestamp token over `imprint`, signed by `tsa`, as a ContentInfo. */
+async function buildSignedTimestampToken(
+  tsa: MintedCertificate,
+  imprint: ArrayBuffer,
+  genTime: Date,
+): Promise<asn1js.Sequence> {
+  const tstInfoDer = buildTstInfo(imprint, genTime);
+  const token = new pkijs.SignedData({
+    version: 3,
+    encapContentInfo: new pkijs.EncapsulatedContentInfo({
+      eContentType: '1.2.840.113549.1.9.16.1.4', // id-ct-TSTInfo
+      eContent: new asn1js.OctetString({ valueHex: tstInfoDer }),
+    }),
+    signerInfos: [
+      new pkijs.SignerInfo({
+        version: 1,
+        sid: new pkijs.IssuerAndSerialNumber({ issuer: tsa.cert.issuer, serialNumber: tsa.cert.serialNumber }),
+        signedAttrs: new pkijs.SignedAndUnsignedAttributes({
+          type: 0,
+          attributes: [
+            new pkijs.Attribute({
+              type: '1.2.840.113549.1.9.3',
+              values: [new asn1js.ObjectIdentifier({ value: '1.2.840.113549.1.9.16.1.4' })],
+            }),
+            new pkijs.Attribute({
+              type: '1.2.840.113549.1.9.4',
+              values: [new asn1js.OctetString({ valueHex: await webcrypto.subtle.digest('SHA-256', tstInfoDer) })],
+            }),
+          ],
+        }),
+      }),
+    ],
+    certificates: [tsa.cert],
+  });
+  await token.sign(tsa.privateKey, 0, 'SHA-256', undefined, pkijs.getCrypto(true));
+  return new pkijs.ContentInfo({ contentType: '1.2.840.113549.1.7.2', content: token.toSchema(true) }).toSchema() as asn1js.Sequence;
+}
+
 /**
  * A minimal, unsigned RFC 3161 timestamp token: a ContentInfo/SignedData
  * shell around a TSTInfo whose only field the extractor reads (genTime) is
@@ -277,6 +324,8 @@ export async function buildSignedPdfFixture(
     omitMessageDigest = false,
     timestampToken = false,
     timestampGenTime,
+    timestampAuthority,
+    timestampForeignImprint = false,
     appendTrailingBytes = 0,
     tamperWithContent = false,
     corruptByteRange = false,
@@ -458,7 +507,9 @@ export async function buildSignedPdfFixture(
     });
   }
 
-  const timestampAttributeValue = timestampGenTime
+  const timestampAttributeValue = timestampAuthority
+    ? null // added after signing: it timestamps the signature value
+    : timestampGenTime
     ? buildMinimalTimestampToken(timestampGenTime)
     : timestampToken
       ? new asn1js.OctetString({ valueHex: new Uint8Array([1, 2, 3]).buffer })
@@ -494,6 +545,20 @@ export async function buildSignedPdfFixture(
   });
 
   await signedData.sign(signer.privateKey, 0, 'SHA-256', undefined, pkijs.getCrypto(true));
+
+  if (timestampAuthority) {
+    // Unsigned attributes sit outside what the signer signed, so the token can
+    // be attached now that the signature value it covers exists.
+    const signatureValue = signedData.signerInfos[0].signature.valueBlock.valueHexView;
+    const imprint = timestampForeignImprint
+      ? new Uint8Array(32).buffer
+      : await webcrypto.subtle.digest('SHA-256', signatureValue);
+    const token = await buildSignedTimestampToken(timestampAuthority, imprint, timestampGenTime ?? signingTime);
+    signedData.signerInfos[0].unsignedAttrs = new pkijs.SignedAndUnsignedAttributes({
+      type: 1,
+      attributes: [new pkijs.Attribute({ type: '1.2.840.113549.1.9.16.2.14', values: [token] })],
+    });
+  }
 
   const cms = new pkijs.ContentInfo({
     contentType: '1.2.840.113549.1.7.2',

@@ -454,6 +454,8 @@ export interface ReportSignature {
   messageImprint: { digestAlgorithm: string | null; value: string } | null;
   /** The timestamp token's genTime -- or, for a document timestamp, its own. */
   timestampTime: string | null;
+  /** The token verified (true), is invalid (false), or is absent / could not be checked (null). TSA trust is never evaluated. */
+  timestampVerified: boolean | null;
   certificateIds: string[];
   signerCertificateId: string | null;
   chainId: string | null;
